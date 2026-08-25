@@ -1,0 +1,9 @@
+[workspace]
+members = ["clicky-core", "clicky-desktop", "clicky-web", "relativity"]
+exclude = ["vendor/armv4t_emu"]
+
+[profile.release]
+panic = "abort"
+debug = true
+[patch."https://github.com/daniel5151/armv4t_emu.git"]
+armv4t_emu = { path = "vendor/armv4t_emu" }

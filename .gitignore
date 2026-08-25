@@ -1,0 +1,34 @@
+/target
+**/*.rs.bk
+
+.gdb_history
+sysdump.log
+*.img*
+
+# I use a custom config to speed up link times
+.cargo/
+
+# Large FairPlay key material (kept local, not committed)
+docs/sc_info/CoreFP.dll
+docs/sc_info/SC Info.sidd
+docs/sc_info/accounts/*/SC Info.sidd
+docs/game_tests/debug_logs/
+
+# Temp/test files from Research
+.DS_Store
+log.txt
+test_init.exe
+test_simple.exe
+.ralph/
+
+# Local-only game, firmware, identity, and emulator-run artifacts.
+/data/
+/docs/sc_info/
+/Games_RO/
+/local/
+/test-artifacts/
+docs/game_tests/*_logs/
+docs/game_tests/*_decrypted_games.md
+!docs/game_tests/20260825_hle_baseline.md
+*.ipg
+*.ipsw
