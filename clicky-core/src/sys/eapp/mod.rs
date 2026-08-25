@@ -5204,6 +5204,16 @@ impl Eapp {
             if !is_ptr(arg) || arg == 0 {
                 continue;
             }
+            let audio_path = (0..=3u32).find_map(|offset| {
+                let addr = arg.wrapping_add(offset);
+                let text = self.try_read_c_string(addr, 256)?;
+                let lower = text.to_ascii_lowercase();
+                let is_audio_asset = lower.ends_with(".wav")
+                    || lower.ends_with(".m4a")
+                    || lower.ends_with(".aac")
+                    || lower.ends_with(".blob");
+                is_audio_asset.then(|| (offset, addr, text))
+            });
             let preview = match self.read_guest_bytes(arg, 64) {
                 Some(b) => b,
                 None => continue,
@@ -5216,6 +5226,17 @@ impl Eapp {
                 .join(" ");
             if !detail.is_empty() {
                 detail.push_str(" ");
+            }
+            if let Some((offset, string_addr, path)) = audio_path {
+                let host = self
+                    .resolve_bundle_path(&path)
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_else(|| "<missing>".to_string());
+                detail.push_str(&format!(
+                    "r{}={:#010x}->AUDIO_PATH+{}={:?} host={}",
+                    i, string_addr, offset, path, host
+                ));
+                continue;
             }
             // RIFF/WAVE sniff: "RIFF" <len:le32> "WAVE" "fmt " ...
             let riff = preview.len() >= 12
