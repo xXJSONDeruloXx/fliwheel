@@ -6,7 +6,7 @@ Game-by-game compatibility and launch documentation.
 
 | Game | Bundle | Script | Status | Docs |
 |------|---------|--------|--------|------|
-| Tetris | 66666 | `./scripts/tetris.sh` | ✅ WORKS | [→](66666_tetris.md) |
+| Tetris | 66666 | `./scripts/tetris.sh` | 🟡 Splash/boot | [→](66666_tetris.md) |
 | Cubis 2 | 99999 | `./scripts/cubis2.sh` | ✅ WORKS | [→](99999_cubis2.md) |
 | Texas Hold'em | 33333 | `./scripts/holdem.sh` | ✅ WORKS | [→](33333_holdem.md) |
 | Ms. Pac-Man | 14004 | `./scripts/mspacman.sh` | ✅ WORKS | [→](14004_mspacman.md) |
@@ -23,13 +23,15 @@ Game-by-game compatibility and launch documentation.
 | TWA/iQuiz | 11002 | — | ❌ Pack load | [→](11002_twa.md) |
 | Lost | 1B200 | — | ❌ Shader | [→](1B200_lost.md) |
 
-**Summary:** 10 fully working + 2 DMA working = 12/16 showing content. 2 partial. 2 blocked.
+**Summary:** The matrix is a rendering/startup smoke baseline, not a playable-game count. Tetris now has measured wheel ingress, but its first-run scene transition and host audio sink remain open; individual title pages are the authority for current claims.
 
 ## Running Games
 
-### Working Games (10)
+### Rendering-smoke Games
 
-Each working game has a launch script in `scripts/`:
+These launch scripts exercise the rendering HLE and startup path; “working” in
+older notes does not mean input, persistence, gameplay, and sound are all
+verified.
 
 ```bash
 ./scripts/tetris.sh                # most tested

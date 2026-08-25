@@ -375,6 +375,10 @@ pub struct Eapp {
     /// valid pointer to the current held-state. Keep the prior mask so we can
     /// emit edge nodes and clear the guest list head when no edge occurred.
     input_event_prev_mask: u8,
+    /// Absolute clickwheel position reported by InputEvents:0. The guest
+    /// packet uses the low byte for the position and bit 30 for an active
+    /// wheel report; positions wrap over the physical 96-detent circle.
+    wheel_position: u8,
     render_state: Arc<Mutex<Vec<u32>>>,
     controls: Option<EappBinds>,
     next_alloc: u32,
@@ -613,6 +617,7 @@ impl Eapp {
             recent_pcs: VecDeque::with_capacity(RECENT_PC_LIMIT),
             input_state,
             input_event_prev_mask: 0,
+            wheel_position: 0,
             render_state,
             controls: Some(controls),
             next_alloc: WORK_RAM_BASE + 0x1000,
@@ -4848,7 +4853,9 @@ impl Eapp {
             // for callers that use r0, but also write it through both pointer
             // args so pointer-output ABI users actually see host input.
             0 => {
-                let bits = Self::input_state_bits(&state) | self.env_input_script_bits();
+                let bits = Self::input_state_bits(&state)
+                    | self.env_input_script_bits()
+                    | self.wheel_input_bits(state.wheel_delta);
                 if args[0] != 0 {
                     self.write_guest_u32(args[0], bits);
                 }
@@ -4908,8 +4915,14 @@ impl Eapp {
         }
     }
 
-    fn effective_input_state(&self) -> EappInputState {
-        let mut state = self.input_state.lock().unwrap().clone();
+    fn effective_input_state(&mut self) -> EappInputState {
+        let mut live_state = self.input_state.lock().unwrap();
+        let mut state = live_state.clone();
+        // Wheel callbacks deliver relative motion. Consume it once when the
+        // guest polls InputEvents so a single host scroll cannot be replayed
+        // on every subsequent frame.
+        live_state.wheel_delta = 0.0;
+        drop(live_state);
         self.apply_env_input_script(&mut state);
         state
     }
@@ -4937,8 +4950,27 @@ impl Eapp {
         bits
     }
 
+    /// Convert a relative host scroll amount into the compact InputEvents
+    /// wheel packet used by the decrypted games. The guest consumes an
+    /// absolute position, so keep that position in the HLE and wrap it over
+    /// the 96 detents documented by the original clicky wheel path.
+    fn wheel_frame_bits(position: &mut u8, delta: f32) -> u32 {
+        let clicks = (-delta * 2.0) as i16;
+        if clicks == 0 {
+            return 0;
+        }
+        *position = ((*position as i16 + clicks).rem_euclid(96)) as u8;
+        (1 << 30) | *position as u32
+    }
+
+    fn wheel_input_bits(&mut self, delta: f32) -> u32 {
+        Self::wheel_frame_bits(&mut self.wheel_position, delta)
+    }
+
     /// Headless input smoke-test helper. Format:
     /// `CLICKY_EAPP_INPUT_SCRIPT="menu:190-200,menu:230-240,action:260-270"`.
+    /// Wheel detents can be scripted with `wheelup`, `wheeldown`, or an
+    /// explicit relative delta such as `wheel=-2:300-305`.
     /// Raw masks can also be injected for ABI discovery, e.g.
     /// `bits=0x40000001:190-195`. This intentionally layers on top of live host
     /// input and is ignored when unset, so normal headed input remains
@@ -4961,14 +4993,26 @@ impl Eapp {
             if self.frame_counter < start || self.frame_counter > end {
                 continue;
             }
-            match key.trim().to_ascii_lowercase().as_str() {
+            let key = key.trim().to_ascii_lowercase();
+            match key.as_str() {
                 "up" => state.up = true,
                 "down" => state.down = true,
                 "left" => state.left = true,
                 "right" => state.right = true,
                 "action" | "select" | "enter" => state.action = true,
                 "menu" | "m" => state.menu = true,
-                _ => {}
+                // A positive GUI scroll delta is the same direction as a
+                // wheel-down event. The sign is preserved in the packet
+                // conversion below, matching the desktop callback path.
+                "wheel" | "wheeldown" | "scroll" => state.wheel_delta += 1.0,
+                "wheelup" => state.wheel_delta -= 1.0,
+                _ => {
+                    if let Some(raw) = key.strip_prefix("wheel=") {
+                        if let Ok(delta) = raw.parse::<f32>() {
+                            state.wheel_delta += delta;
+                        }
+                    }
+                }
             }
         }
     }
@@ -7911,4 +7955,27 @@ fn vma_to_offset(addr: u32) -> Result<u32, EappBuildError> {
     addr.checked_sub(FILE_VMA_BASE).ok_or_else(|| {
         EappBuildError::InvalidImage(format!("address {:#010x} is outside file VMA", addr))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Eapp;
+
+    #[test]
+    fn wheel_packet_uses_absolute_96_detent_position() {
+        let mut position = 0;
+
+        assert_eq!(Eapp::wheel_frame_bits(&mut position, -1.0), 0x4000_0002);
+        assert_eq!(position, 2);
+        assert_eq!(Eapp::wheel_frame_bits(&mut position, 1.0), 0x4000_0000);
+        assert_eq!(position, 0);
+    }
+
+    #[test]
+    fn wheel_packet_omits_idle_reports() {
+        let mut position = 17;
+
+        assert_eq!(Eapp::wheel_frame_bits(&mut position, 0.0), 0);
+        assert_eq!(position, 17);
+    }
 }

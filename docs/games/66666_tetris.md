@@ -1,6 +1,6 @@
 # Tetris (Bundle 66666)
 
-**Status:** ✅ WORKS | **Draws:** 10,572 (8s) | **Engine:** Tetris Runtime (reference)
+**Status:** 🟡 SPLASH/BOOT VERIFIED | **Draws:** 10,572 (8s) | **Engine:** Tetris Runtime (reference)
 
 ## Quick Start
 ```bash
@@ -21,7 +21,7 @@
 - **Logo:** `tetrisLogoT_4444.pix` (250×162, RGBA4444), `eaLogo_5551.pix` (50×50, RGBA5551)
 - **Fonts:** `f8x10`, `f10x12`, `f13x13menu`, `f16x16menu`, `f17x16game`, `f23x22game` (all A8 alpha atlases)
 - **UI:** `arrows_a8.pix`, `battery_5551.pix`, `battery_8888.pix`
-- **Audio:** 11 `.wav` files (Clear, Drop, Hold, LevelUp, Line, Lock, Move, Rotate, Score, Tetris, Touch)
+- **Audio:** 11 `.wav` files are staged during parsed boot; host playback is not implemented yet.
 
 ## Save Files
 Loaded from `.clicky-saves/` in the bundle directory:
@@ -64,4 +64,5 @@ CLICKY_STARTUP_PROGRESS_TRACE=1
 - Best-tested game in the emulator (reference implementation)
 - GL trace fixture: `clicky-core/tests/fixtures/eapp/tetris_gl_trace.json`
 - Tetris-specific code paths in `eapp/mod.rs` gated by bundle ID "66666"
+- Clickwheel ingress evidence: [`20260825_clickwheel_input.md`](../game_tests/20260825_clickwheel_input.md)
 - Frame capture produces PPM files visible with `open /tmp/tetris_capture_*.ppm`
