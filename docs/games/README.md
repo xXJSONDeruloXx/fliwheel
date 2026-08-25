@@ -15,7 +15,7 @@ Game-by-game compatibility and launch documentation.
 | Mini Golf | 88888 | `./scripts/minigolf.sh` | ✅ WORKS | [→](88888_minigolf.md) |
 | Sims Bowling | 1500C | `./scripts/simsbowling.sh` | ✅ WORKS | [→](1500C_simsbowling.md) |
 | Sims Pool | 1500E | `./scripts/simspool.sh` | ✅ WORKS | [→](1500E_simspool.md) |
-| Sudoku | 50513 | — | ✅ WORKS | [→](50513_sudoku.md) |
+| Sudoku | 50513 | — | 🟡 MENU VERIFIED | [→](50513_sudoku.md) |
 | Bejeweled | 55555 | `./scripts/bejeweled.sh` | ✅ DMA | [→](55555_bejeweled.md) |
 | Zuma | 44444 | `./scripts/zuma.sh` | ✅ DMA | [→](44444_zuma.md) |
 | Solitaire | 50514 | — | ⚠️ UV skip | — |
@@ -158,6 +158,8 @@ TETRIS_BUNDLE=/path/to/66666 ./scripts/tetris.sh
 
 ## See Also
 
+- [2026-08-25 full decrypted matrix](../game_tests/20260825_full_matrix.md)
+- [2026-08-25 Sudoku input regression](../game_tests/20260825_sudoku_input.md)
 - [Compatibility Report](../game_tests/20260625_compatibility_report.md) — full metrics
 - [Debug Analysis](../game_tests/debug_analysis.md) — root cause analysis
 - [EAPP Format Specification](../EAPP_FORMAT_SPECIFICATION.md)

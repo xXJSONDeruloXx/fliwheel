@@ -448,6 +448,8 @@ struct StagedFile {
     payload_addr: u32,
     /// Length in bytes.
     len: u32,
+    /// Current guest-visible file position for handle-backed reads.
+    offset: usize,
     /// Host path the bytes came from.
     host_path: PathBuf,
 }
@@ -457,6 +459,8 @@ struct PendingGuestCall {
     pc: u32,
     arg0: u32,
     arg1: u32,
+    arg2: u32,
+    arg3: u32,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -481,6 +485,13 @@ struct EappBus {
     /// Set to true when DMA FB has been written at least once.
     /// Cleared by the Eapp struct after presenting the DMA content.
     hw_dma_dirty: bool,
+    /// Remaining hardware accesses to log when `CLICKY_EAPP_HW_TRACE` is set.
+    /// This is intentionally bounded because a framebuffer upload can produce
+    /// tens of thousands of accesses before the interesting completion poll.
+    hw_trace_remaining: usize,
+    /// Optional read-only hardware trace budget. This lets RE runs skip the
+    /// large pixel upload and observe the status/read phase that follows it.
+    hw_trace_read_remaining: usize,
     /// Optional write-watchpoint range (start, end exclusive). When set,
     /// every byte write whose address falls in [start, end) is recorded to
     /// `watch_log` tagged with `pending_pc`. Used for RE: attributing
@@ -588,6 +599,8 @@ impl Eapp {
                 hw_fb_write_max: 0,
                 hw_dma_frame: 0,
                 hw_dma_dirty: false,
+                hw_trace_remaining: Self::parse_hw_trace_env(),
+                hw_trace_read_remaining: Self::parse_hw_trace_reads_env(),
                 watch: None,
                 pending_pc: 0,
                 watch_log: Vec::new(),
@@ -1867,6 +1880,23 @@ impl Eapp {
         let addr = parse_num(addr_str)?;
         let len = parse_num(len_str).unwrap_or(0x20);
         Some((addr, addr.wrapping_add(len)))
+    }
+
+    /// Parse `CLICKY_EAPP_HW_TRACE`. `1` enables a bounded trace with the
+    /// default limit; a decimal value selects an explicit access limit.
+    fn parse_hw_trace_env() -> usize {
+        match std::env::var("CLICKY_EAPP_HW_TRACE") {
+            Ok(value) if value.trim() == "1" => 256,
+            Ok(value) => value.trim().parse::<usize>().unwrap_or(0),
+            Err(_) => 0,
+        }
+    }
+
+    fn parse_hw_trace_reads_env() -> usize {
+        std::env::var("CLICKY_EAPP_HW_TRACE_READS")
+            .ok()
+            .and_then(|value| value.trim().parse::<usize>().ok())
+            .unwrap_or(0)
     }
 
     /// Read the experimental GL HLE env flags and construct live state only
@@ -4826,9 +4856,28 @@ impl Eapp {
                     self.write_guest_u32(args[1], bits);
                 }
                 let event_list = self.build_input_event_list(&state);
-                let input_obj = self.cpu.reg_get(self.cpu.mode(), 4);
-                let input_ctx = self.cpu.reg_get(self.cpu.mode(), 5);
-                if (WORK_RAM_BASE..WORK_RAM_BASE + WORK_RAM_SIZE as u32).contains(&input_obj) {
+                let mode = self.cpu.mode();
+                let r4 = self.cpu.reg_get(mode, 4);
+                let r5 = self.cpu.reg_get(mode, 5);
+                // Most titles pass the event-list owner in r4 and a context in
+                // r5 (Tetris is the reference shape). The Sudoku/Solitaire
+                // family reverses those registers: r5 is the owner and r4 is
+                // empty. Select the work-RAM register rather than assuming a
+                // single caller convention so the linked event list reaches
+                // both guest consumers.
+                let r4_is_work_ram =
+                    (WORK_RAM_BASE..WORK_RAM_BASE + WORK_RAM_SIZE as u32).contains(&r4);
+                let r5_is_work_ram =
+                    (WORK_RAM_BASE..WORK_RAM_BASE + WORK_RAM_SIZE as u32).contains(&r5);
+                let input_obj = if r4_is_work_ram {
+                    r4
+                } else if r5_is_work_ram {
+                    r5
+                } else {
+                    0
+                };
+                let input_ctx = if input_obj == r4 { r5 } else { r4 };
+                if input_obj != 0 {
                     // Tetris' post-import wrapper passes [input_obj+0x30] as
                     // the event-list head to the event consumer. input_ctx+0x20
                     // is a filter/state mask, not the list pointer. Always
@@ -5267,14 +5316,25 @@ impl Eapp {
             let req = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
             let req_cb = self.read_guest_u32(req.wrapping_add(0x0c)).unwrap_or(0);
             let req_ctx = self.read_guest_u32(req.wrapping_add(0x10)).unwrap_or(0);
+            let owner_cb = self.read_guest_u32(owner.wrapping_add(0x0c)).unwrap_or(0);
+            let owner_ctx = self.read_guest_u32(owner.wrapping_add(0x10)).unwrap_or(0);
+            let owner_internal_cb = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
+            let owner_internal_ctx = self.read_guest_u32(owner.wrapping_add(0x38)).unwrap_or(0);
+            let generic_complete = std::env::var("CLICKY_EAPP_ASYNC1_GENERIC")
+                .map(|v| v == "1" || v == "true")
+                .unwrap_or(false);
             info!(
                 target: "EAPP_IMPORT",
-                "AsyncFileIO:1 owner={:#010x} req={:#010x} req_cb={:#010x} req_ctx={:#010x} complete={}",
+                "AsyncFileIO:1 owner={:#010x} req={:#010x} req_cb={:#010x} req_ctx={:#010x} owner_cb={:#010x} owner_ctx={:#010x} internal_cb={:#010x} internal_ctx={:#010x} complete={}",
                 owner,
                 req,
                 req_cb,
                 req_ctx,
-                (complete && is_tetris) as u8
+                owner_cb,
+                owner_ctx,
+                owner_internal_cb,
+                owner_internal_ctx,
+                (complete && is_tetris || generic_complete && !is_tetris) as u8
             );
             if complete && is_tetris && owner != 0 && req != 0 {
                 // Ordinal 1 is a no-path/control completion used by initiator C
@@ -5295,6 +5355,8 @@ impl Eapp {
                     pc: 0x1801_fbfc,
                     arg0: owner,
                     arg1: 0,
+                    arg2: 0,
+                    arg3: 0,
                 });
                 if self.startup_progress.enabled {
                     info!(
@@ -5308,6 +5370,36 @@ impl Eapp {
                         self.async_pending_requests.len()
                     );
                 }
+            }
+            if generic_complete && !is_tetris && owner != 0 && req != 0 && req_cb != 0 {
+                // 0x1802c2d0 stores the request callback/context at
+                // request+0x0c/+0x10, not on the transient owner. The
+                // generic completion helper at 0x1802c194 operates on that
+                // request object, transitions request+4, and forwards
+                // (request, status, byte-count, context) to Sudoku's
+                // 0x18026124 -> 0x180263a4 chain.
+                let status = std::env::var("CLICKY_EAPP_ASYNC1_STATUS")
+                    .ok()
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .unwrap_or(0);
+                self.async_callback_queued_count =
+                    self.async_callback_queued_count.wrapping_add(1);
+                self.pending_guest_calls.push_back(PendingGuestCall {
+                    pc: 0x1802_c194,
+                    arg0: req,
+                    arg1: status,
+                    arg2: 0,
+                    arg3: 0,
+                });
+                info!(
+                    target: "EAPP_IMPORT",
+                    "AsyncFileIO:1 experimental generic completion owner={:#010x} req={:#010x} cb={:#010x} ctx={:#010x} status={}",
+                    owner,
+                    req,
+                    req_cb,
+                    req_ctx,
+                    status
+                );
             }
             return 1;
         }
@@ -5349,6 +5441,8 @@ impl Eapp {
                     pc: callback_pc,
                     arg0: owner,
                     arg1: callback_ctx,
+                    arg2: 0,
+                    arg3: 0,
                 });
                 if self.startup_progress.enabled {
                     info!(
@@ -5362,6 +5456,81 @@ impl Eapp {
                         self.async_pending_requests.len()
                     );
                 }
+            }
+            let generic_complete = std::env::var("CLICKY_EAPP_ASYNC2_GENERIC")
+                .map(|v| v == "1" || v == "true")
+                .unwrap_or(false);
+            if generic_complete && !is_tetris && owner != 0 && callback_pc != 0 {
+                // The resource-manager callback at 0x18025ec4 is entered as
+                // (status, manager-entry), unlike the audio callbacks above.
+                // The callback reads entry+0x14c/0x120 and branches on
+                // entry+0x04; passing the transient owner here makes it
+                // interpret the owner's 0x05 operation byte as an entry
+                // state and launches a bogus nested request.
+                let owner_op = self.read_guest_u8(owner.wrapping_add(0x04)).unwrap_or(0);
+                if owner_op == 3 {
+                    let destination = self.read_guest_u32(owner.wrapping_add(0x14)).unwrap_or(0);
+                    let requested = self.read_guest_u32(owner.wrapping_add(0x18)).unwrap_or(0) as usize;
+                    let handle = self.read_guest_u32(owner.wrapping_add(0x2c)).unwrap_or(0);
+                    let req = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
+                    let staged_range = self.staged_files.get(&req).and_then(|staged| {
+                        (staged.payload_addr == handle).then(|| {
+                            (
+                                staged.payload_addr,
+                                staged.len,
+                                staged.offset,
+                                staged.host_path.clone(),
+                            )
+                        })
+                    });
+                    if destination != 0 && requested != 0 {
+                        if let Some((payload_addr, payload_len, file_offset, host_path)) = staged_range {
+                            let source_offset = file_offset.min(payload_len as usize);
+                            let source = payload_addr.wrapping_add(source_offset as u32);
+                            let available = (payload_len as usize).saturating_sub(source_offset);
+                            let count = requested.min(available);
+                            let payload = self.read_guest_bytes(source, count);
+                            let delivered = payload
+                                .as_deref()
+                                .map(|bytes| self.write_guest_bytes(destination, bytes))
+                                .unwrap_or(false);
+                            if delivered {
+                                if let Some(staged) = self.staged_files.get_mut(&req) {
+                                    staged.offset = staged.offset.saturating_add(count);
+                                }
+                                self.write_guest_u32(callback_ctx.wrapping_add(0x14c), count as u32);
+                                info!(
+                                    target: "EAPP_IMPORT",
+                                    "AsyncFileIO:2 staged read owner={:#010x} entry={:#010x} handle={:#010x} source={:#010x}+{} dest={:#010x} requested={} delivered={} path={}",
+                                    owner,
+                                    callback_ctx,
+                                    handle,
+                                    source,
+                                    source_offset,
+                                    destination,
+                                    requested,
+                                    count,
+                                    host_path.display()
+                                );
+                            }
+                        }
+                    }
+                }
+                self.async_callback_queued_count =
+                    self.async_callback_queued_count.wrapping_add(1);
+                self.pending_guest_calls.push_back(PendingGuestCall {
+                    pc: callback_pc,
+                    arg0: 0,
+                    arg1: callback_ctx,
+                    arg2: 0,
+                    arg3: 0,
+                });
+                info!(
+                    target: "EAPP_IMPORT",
+                    "AsyncFileIO:2 experimental generic completion owner={:#010x} cb_pc={:#010x}",
+                    owner,
+                    callback_pc
+                );
             }
             return 1;
         }
@@ -5402,13 +5571,17 @@ impl Eapp {
                 //   [owner+0x20] = status (0 means success for this path)
                 //   [owner+0x24] = byte_count
                 //   [owner+0x08] = linked request
-                // and forwards those values to the request callback. Keep the
-                // completion env-gated with the AsyncFileIO:3 byte-count path
-                // until the full parsed-resource boot reaches the final menu.
+                // and forwards those values to the request callback. The
+                // callback is supplied by the guest in owner+0x34; it is not a
+                // fixed address because every EAPP binary has its own code
+                // layout. Keep the completion env-gated with the
+                // AsyncFileIO:3 byte-count path until the full parsed-resource
+                // boot reaches the final menu.
                 let owner = args[3];
                 let complete = std::env::var("CLICKY_EAPP_ASYNC3_COMPLETE")
                     .map(|v| v == "1" || v == "true")
                     .unwrap_or(false);
+                let callback_pc = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
                 if let Some(host_path) = self.resolve_or_create_host_path(&path) {
                     let bytes = fs::read(&host_path).unwrap_or_else(|e| {
                         warn!(target: "EAPP_IMPORT", "AsyncFileIO:0 read error for {}: {}", host_path.display(), e);
@@ -5423,26 +5596,105 @@ impl Eapp {
                         n,
                         complete as u8
                     );
-                    if complete && owner != 0 {
+                    if complete && owner != 0 && callback_pc != 0 {
+                        // AsyncFileIO:0 is a whole-file load, not just a
+                        // completion notification. The guest owner callback
+                        // copies [owner+0x2c] into [request+0] before it calls
+                        // the request callback; that pointer is the loaded
+                        // RLB/WAV payload. Keep the payload in synthetic app
+                        // RAM for the guest to parse after completion.
+                        // Parsed-resource startup can reopen the same RLB for
+                        // several stream objects. Reuse an existing staged
+                        // image instead of consuming another 16 MiB guest-RAM
+                        // region for every open.
+                        let existing_stage = self
+                            .staged_files
+                            .values()
+                            .filter(|staged| staged.len == n && staged.host_path == host_path)
+                            .max_by_key(|staged| staged.generation)
+                            .map(|staged| (staged.payload_addr, staged.offset));
+                        let payload_addr = existing_stage
+                            .map(|(payload_addr, _)| payload_addr)
+                            .unwrap_or_else(|| self.alloc_zeroed(n));
+                        let payload_offset = existing_stage.map(|(_, offset)| offset).unwrap_or(0);
+                        let payload_written = existing_stage.is_some()
+                            || (payload_addr != 0 && self.write_guest_bytes(payload_addr, &bytes));
+                        if payload_written {
+                            self.write_guest_u32(owner.wrapping_add(0x2c), payload_addr);
+                            let req = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
+                            if req != 0 {
+                                self.staged_file_generation =
+                                    self.staged_file_generation.wrapping_add(1);
+                                self.staged_files.insert(
+                                    req,
+                                    StagedFile {
+                                        generation: self.staged_file_generation,
+                                        payload_addr,
+                                        len: n,
+                                        offset: payload_offset,
+                                        host_path: host_path.clone(),
+                                    },
+                                );
+                            }
+                            info!(
+                                target: "EAPP_IMPORT",
+                                "AsyncFileIO:0 staged {} bytes at {:#010x}",
+                                n,
+                                payload_addr
+                            );
+                        } else {
+                            warn!(
+                                target: "EAPP_IMPORT",
+                                "AsyncFileIO:0 could not stage {} bytes for {}",
+                                n,
+                                host_path.display()
+                            );
+                        }
+                        if let Some(result_spec) = std::env::var_os("CLICKY_EAPP_ASYNC0_RESULT") {
+                            let result_spec = result_spec.to_string_lossy();
+                            let result = if result_spec == "length" {
+                                Some(n)
+                            } else if let Some(hex) = result_spec.strip_prefix("0x") {
+                                u32::from_str_radix(hex, 16).ok()
+                            } else {
+                                result_spec.parse::<u32>().ok()
+                            };
+                            if let (Some(result), Some(req)) =
+                                (result, self.read_guest_u32(owner.wrapping_add(0x08)))
+                            {
+                                if req != 0 {
+                                    self.write_guest_u32(req.wrapping_add(0x08), result);
+                                    info!(
+                                        target: "EAPP_IMPORT",
+                                        "AsyncFileIO:0 experimental result={} req={:#010x}",
+                                        result,
+                                        req
+                                    );
+                                }
+                            }
+                        }
                         self.write_guest_u32(owner.wrapping_add(0x20), 0);
                         self.write_guest_u32(owner.wrapping_add(0x24), n);
+                        let req = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
                         self.async_callback_queued_count =
                             self.async_callback_queued_count.wrapping_add(1);
                         self.pending_guest_calls.push_back(PendingGuestCall {
-                            pc: 0x1801_fbfc,
+                            pc: callback_pc,
                             arg0: owner,
                             arg1: 0,
+                            arg2: n,
+                            arg3: 0,
                         });
                         if self.startup_progress.enabled {
-                            let req = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
                             info!(
                                 target: "EAPP_PROGRESS",
-                                "async0_callback_queued frame={} queued={} owner={:#010x} req={:#010x} bytes={} pending_async={}",
+                                "async0_callback_queued frame={} queued={} owner={:#010x} req={:#010x} bytes={} cb_pc={:#010x} pending_async={}",
                                 self.frame_counter,
                                 self.async_callback_queued_count,
                                 owner,
                                 req,
                                 n,
+                                callback_pc,
                                 self.async_pending_requests.len()
                             );
                         }
@@ -5534,53 +5786,6 @@ impl Eapp {
                                     self.write_guest_u32(req.wrapping_add(0x20), 1);
                                     self.write_guest_u32(req.wrapping_add(0x24), n as u32);
                                 }
-                                if std::env::var_os("EAPP_ASYNC_OWNER").is_some() {
-                                    let owner =
-                                        self.read_guest_u32(req.wrapping_add(0x08)).unwrap_or(0);
-                                    let (ostate, oresult, ocb, octx) = if owner != 0 {
-                                        (
-                                            self.read_guest_u32(owner.wrapping_add(0x04)).unwrap_or(0),
-                                            self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0),
-                                            self.read_guest_u32(owner.wrapping_add(0x0c)).unwrap_or(0),
-                                            self.read_guest_u32(owner.wrapping_add(0x10)).unwrap_or(0),
-                                        )
-                                    } else {
-                                        (0, 0, 0, 0)
-                                    };
-                                    // `0x1801d370` reads the per-load processor
-                                    // from [ctx+0x164] and the load-bar/owner
-                                    // accounting from [ctx+0x11c/0x120/0x124].
-                                    // Dump them so we can follow the chain.
-                                    let (c120, c124, c164, c168) = if octx != 0 {
-                                        (
-                                            self.read_guest_u32(octx.wrapping_add(0x120)).unwrap_or(0),
-                                            self.read_guest_u32(octx.wrapping_add(0x124)).unwrap_or(0),
-                                            self.read_guest_u32(octx.wrapping_add(0x164)).unwrap_or(0),
-                                            self.read_guest_u32(octx.wrapping_add(0x168)).unwrap_or(0),
-                                        )
-                                    } else {
-                                        (0, 0, 0, 0)
-                                    };
-                                    info!(
-                                        target: "EAPP_ASYNC_OWNER",
-                                        "owner_dump frame={} req={:#010x} owner={:#010x} path={} bytes={} want={} complete={} [o+4]={:#010x} [o+8]={:#010x} [o+c]={:#010x} [o+10]={:#010x} [ctx+120]={:#010x} [ctx+124]={:#010x} [ctx+164]={:#010x} [ctx+168]={:#010x}",
-                                        self.frame_counter,
-                                        req,
-                                        owner,
-                                        host_path.display(),
-                                        n,
-                                        requested_len,
-                                        complete as u8,
-                                        ostate,
-                                        oresult,
-                                        ocb,
-                                        octx,
-                                        c120,
-                                        c124,
-                                        c164,
-                                        c168
-                                    );
-                                }
                                 info!(
                                     target: "EAPP_IMPORT",
                                     "AsyncFileIO:3 loaded {} ({} bytes, requested {}) -> guest dest {:#010x}",
@@ -5597,6 +5802,7 @@ impl Eapp {
                                         generation: self.staged_file_generation,
                                         payload_addr: dest,
                                         len: n as u32,
+                                        offset: 0,
                                         host_path: host_path.clone(),
                                     },
                                 );
@@ -5626,6 +5832,8 @@ impl Eapp {
                             pc: callback_pc,
                             arg0: req,
                             arg1: callback_ctx,
+                            arg2: 0,
+                            arg3: 0,
                         });
                         if self.startup_progress.enabled {
                             info!(
@@ -5700,6 +5908,8 @@ impl Eapp {
                                 pc: cb_pc,
                                 arg0: req,
                                 arg1: cb_ctx,
+                                arg2: 0,
+                                arg3: 0,
                             });
                         }
 
@@ -6198,25 +6408,31 @@ impl Eapp {
             if self.startup_progress.enabled {
                 info!(
                     target: "EAPP_PROGRESS",
-                    "callback_dispatch frame={} count={} pc={:#010x} arg0={:#010x} arg1={:#010x} pending_async={}",
+                    "callback_dispatch frame={} count={} pc={:#010x} arg0={:#010x} arg1={:#010x} arg2={:#010x} arg3={:#010x} pending_async={}",
                     self.frame_counter,
                     self.guest_callback_invocation_count,
                     call.pc,
                     call.arg0,
                     call.arg1,
+                    call.arg2,
+                    call.arg3,
                     self.async_pending_requests.len()
                 );
             } else {
                 debug!(
                     target: "EAPP",
-                    "dispatching guest callback pc={:#010x} arg0={:#010x} arg1={:#010x}",
+                    "dispatching guest callback pc={:#010x} arg0={:#010x} arg1={:#010x} arg2={:#010x} arg3={:#010x}",
                     call.pc,
                     call.arg0,
-                    call.arg1
+                    call.arg1,
+                    call.arg2,
+                    call.arg3
                 );
             }
             self.cpu.reg_set(self.cpu.mode(), 0, call.arg0);
             self.cpu.reg_set(self.cpu.mode(), 1, call.arg1);
+            self.cpu.reg_set(self.cpu.mode(), 2, call.arg2);
+            self.cpu.reg_set(self.cpu.mode(), 3, call.arg3);
             self.cpu
                 .reg_set(self.cpu.mode(), reg::LR, GUEST_CALLBACK_RETURN_PC);
             self.cpu.reg_set(self.cpu.mode(), reg::PC, call.pc);
@@ -7175,6 +7391,59 @@ fn upload_summary(upload: &live_gl::LiveGlUpload) -> String {
     )
 }
 
+impl EappBus {
+    fn trace_hw_read(&mut self, width: u8, offset: u32, value: u32) {
+        let remaining = if self.hw_trace_read_remaining > 0 {
+            self.hw_trace_read_remaining -= 1;
+            self.hw_trace_read_remaining
+        } else if self.hw_trace_remaining > 0 {
+            self.hw_trace_remaining -= 1;
+            self.hw_trace_remaining
+        } else {
+            return;
+        };
+        let rel = offset.wrapping_sub(HW_STUB_BASE);
+        let kind = if rel < 0x20000 {
+            format!("control+{:#06x}", rel)
+        } else {
+            format!("framebuf+{:#08x}", rel - 0x20000)
+        };
+        info!(
+            target: "EAPP_HW",
+            "hw r{} addr={:#010x} {} val={:#010x} pc={:#010x} remaining={}",
+            width,
+            offset,
+            kind,
+            value,
+            self.pending_pc,
+            remaining,
+        );
+    }
+
+    fn trace_hw_write(&mut self, width: u8, offset: u32, value: u32) {
+        if self.hw_trace_remaining == 0 {
+            return;
+        }
+        self.hw_trace_remaining -= 1;
+        let rel = offset.wrapping_sub(HW_STUB_BASE);
+        let kind = if rel < 0x20000 {
+            format!("control+{:#06x}", rel)
+        } else {
+            format!("framebuf+{:#08x}", rel - 0x20000)
+        };
+        info!(
+            target: "EAPP_HW",
+            "hw w{} addr={:#010x} {} val={:#010x} pc={:#010x} remaining={}",
+            width,
+            offset,
+            kind,
+            value,
+            self.pending_pc,
+            self.hw_trace_remaining,
+        );
+    }
+}
+
 impl TakeControls for Eapp {
     type Controls = EappBinds;
 
@@ -7249,20 +7518,22 @@ impl Memory for EappBus {
             }
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
                 let rel = offset - HW_STUB_BASE;
-                if rel < 0x20000 {
+                let value: u32 = if rel < 0x20000 {
                     // DMA control registers
-                    Ok(1)
+                    1
                 } else {
                     // DMA framebuffer: read back stored pixel data
                     let fb_off = (rel - 0x20000) as u32;
                     if (fb_off as usize) + 4 <= DMA_FB_SIZE {
                         let mut buf = [0u8; 4];
                         self.dma_framebuf.bulk_read(fb_off, &mut buf);
-                        Ok(u32::from_le_bytes(buf))
+                        u32::from_le_bytes(buf)
                     } else {
-                        Ok(0)
+                        0
                     }
-                }
+                };
+                self.trace_hw_read(4, offset, value);
+                Ok(value)
             }
             _ => Err(MemException::Unexpected),
         }
@@ -7290,6 +7561,7 @@ impl Memory for EappBus {
                 self.work_ram.w32(offset - WORK_RAM_BASE, val)
             }
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
+                self.trace_hw_write(4, offset, val);
                 let rel = offset - HW_STUB_BASE;
                 if rel < 0x20000 {
                     // DMA control register writes
@@ -7328,18 +7600,20 @@ impl Memory for EappBus {
             }
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
                 let rel = offset - HW_STUB_BASE;
-                if rel < 0x20000 {
-                    Ok(1)
+                let value: u8 = if rel < 0x20000 {
+                    1
                 } else {
                     let fb_off = (rel - 0x20000) as usize;
                     if fb_off < DMA_FB_SIZE {
                         let mut buf = [0u8; 1];
                         self.dma_framebuf.bulk_read(fb_off as u32, &mut buf);
-                        Ok(buf[0])
+                        buf[0]
                     } else {
-                        Ok(0)
+                        0
                     }
-                }
+                };
+                self.trace_hw_read(1, offset, value as u32);
+                Ok(value)
             }
             _ => Err(MemException::Unexpected),
         }
@@ -7355,18 +7629,20 @@ impl Memory for EappBus {
             }
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
                 let rel = offset - HW_STUB_BASE;
-                if rel < 0x20000 {
-                    Ok(1)
+                let value: u16 = if rel < 0x20000 {
+                    1
                 } else {
                     let fb_off = (rel - 0x20000) as usize;
                     if fb_off + 2 <= DMA_FB_SIZE {
                         let mut buf = [0u8; 2];
                         self.dma_framebuf.bulk_read(fb_off as u32, &mut buf);
-                        Ok(u16::from_le_bytes(buf))
+                        u16::from_le_bytes(buf)
                     } else {
-                        Ok(0)
+                        0
                     }
-                }
+                };
+                self.trace_hw_read(2, offset, value as u32);
+                Ok(value)
             }
             _ => Err(MemException::Unexpected),
         }
@@ -7393,6 +7669,7 @@ impl Memory for EappBus {
                 self.work_ram.w8(offset - WORK_RAM_BASE, val)
             }
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
+                self.trace_hw_write(1, offset, val as u32);
                 let rel = offset - HW_STUB_BASE;
                 if rel >= 0x20000 {
                     let fb_off = (rel - 0x20000) as u32;
@@ -7428,6 +7705,7 @@ impl Memory for EappBus {
                 self.work_ram.w16(offset - WORK_RAM_BASE, val)
             }
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
+                self.trace_hw_write(2, offset, val as u32);
                 let rel = offset - HW_STUB_BASE;
                 if rel >= 0x20000 {
                     let fb_off = (rel - 0x20000) as u32;
