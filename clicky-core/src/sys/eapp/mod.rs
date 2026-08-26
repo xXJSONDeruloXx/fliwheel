@@ -214,6 +214,24 @@ fn ordinal45_resource_format(format: u32) -> Option<TextureFormat> {
     }
 }
 
+fn decode_palette8_rgba8(raw: &[u8], width: usize, height: usize) -> Option<Vec<Rgba8>> {
+    let pixel_count = width.checked_mul(height)?;
+    let expected = 1024usize.checked_add(pixel_count)?;
+    if raw.len() < expected {
+        return None;
+    }
+
+    Some(
+        raw[1024..expected]
+            .iter()
+            .map(|&index| {
+                let base = index as usize * 4;
+                Rgba8::rgba(raw[base], raw[base + 1], raw[base + 2], raw[base + 3])
+            })
+            .collect(),
+    )
+}
+
 fn quad_from_slice(pts: &[(f32, f32)]) -> [(f32, f32); 4] {
     debug_assert!(pts.len() >= 4);
     [pts[0], pts[1], pts[2], pts[3]]
@@ -2159,16 +2177,21 @@ impl Eapp {
                 info!(target: "EAPP_GL", "ordinal_153: viewport x={} y={} w={} h={}", x, y, w, h);
                 0
             }
-            // Ordinal 19: unknown render dispatch. Called from Lost's render
-            // function (0x18007264) which is currently unreachable because the
-            // rserver dispatch table is empty.
+            // Ordinal 19 is glCompressedTexImage2D for the clickwheel titles
+            // that use paletted artwork. Keep the old render-server diagnostic
+            // fallback for non-texture calls until that alternate ABI is
+            // proven, but decode the observed GL_PALETTE8_RGBA8_OES shape.
             19 => {
-                if let Some(program) = self.usse_program.as_ref() {
-                    program.step_placeholder(&mut self.usse_vm, 64);
-                    info!(target: "EAPP_GL", "ordinal_19: render_dispatch r0={:#010x} r1={:#010x} r2={:#010x} r3={:#010x} usse_pc={} executed={} r0_raw={:#010x} halted={}",
-                        args[0], args[1], args[2], args[3], self.usse_vm.pc_word, self.usse_vm.executed_words, self.usse_vm.scalar_regs[0], self.usse_vm.halted);
+                if args[0] == 0x0de1 && args[2] == 0x8b96 {
+                    self.live_handle_compressed_upload(args);
                 } else {
-                    info!(target: "EAPP_GL", "ordinal_19: render_dispatch r0={:#010x} r1={:#010x} r2={:#010x} r3={:#010x} usse=<none>", args[0], args[1], args[2], args[3]);
+                    if let Some(program) = self.usse_program.as_ref() {
+                        program.step_placeholder(&mut self.usse_vm, 64);
+                        info!(target: "EAPP_GL", "ordinal_19: render_dispatch r0={:#010x} r1={:#010x} r2={:#010x} r3={:#010x} usse_pc={} executed={} r0_raw={:#010x} halted={}",
+                            args[0], args[1], args[2], args[3], self.usse_vm.pc_word, self.usse_vm.executed_words, self.usse_vm.scalar_regs[0], self.usse_vm.halted);
+                    } else {
+                        info!(target: "EAPP_GL", "ordinal_19: render_dispatch r0={:#010x} r1={:#010x} r2={:#010x} r3={:#010x} usse=<none>", args[0], args[1], args[2], args[3]);
+                    }
                 }
                 0
             }
@@ -2663,6 +2686,111 @@ impl Eapp {
             upload
                 .tex_name
                 .map(|n| format!("{:#x}", n))
+                .unwrap_or_else(|| "<none>".to_string()),
+        );
+        if let Some(lg) = self.live_gl.as_mut() {
+            lg.uploads.push(upload);
+        }
+    }
+
+    /// Ordinal 19: GL_PALETTE8_RGBA8_OES / glCompressedTexImage2D.
+    ///
+    /// The iPod's compressed texture call uses four register arguments and
+    /// four stack arguments: target, level, format, width, then height,
+    /// border, image size, and a pointer to a 1024-byte RGBA palette followed
+    /// by width*height one-byte indices. The data is copied immediately so a
+    /// later async-file buffer reuse cannot change the captured texture.
+    fn live_handle_compressed_upload(&mut self, args: [u32; 4]) {
+        let width = args[3] as usize;
+        let sp = self.cpu.reg_get(self.cpu.mode(), reg::SP);
+        let height = self.read_guest_u32(sp).unwrap_or(0) as usize;
+        let image_size = self.read_guest_u32(sp.wrapping_add(0x08)).unwrap_or(0) as usize;
+        let source_ptr = self.read_guest_u32(sp.wrapping_add(0x0c)).unwrap_or(0);
+
+        if width == 0 || height == 0 || width > 4096 || height > 4096 || source_ptr == 0 {
+            warn!(
+                target: "EAPP_GL",
+                "compressed_upload skipped: invalid dims/ptr {}x{} src={:#010x}",
+                width,
+                height,
+                source_ptr
+            );
+            return;
+        }
+        let pixel_count = width.saturating_mul(height);
+        let expected = 1024usize.saturating_add(pixel_count);
+        if image_size < expected {
+            warn!(
+                target: "EAPP_GL",
+                "compressed_upload skipped: short image_size={} want={} {}x{} src={:#010x}",
+                image_size,
+                expected,
+                width,
+                height,
+                source_ptr
+            );
+            return;
+        }
+        let Some(raw) = self.read_guest_bytes(source_ptr, expected) else {
+            warn!(
+                target: "EAPP_GL",
+                "compressed_upload skipped: invalid source ptr {:#010x} want={} bytes",
+                source_ptr,
+                expected
+            );
+            return;
+        };
+        let Some(pixels) = decode_palette8_rgba8(&raw, width, height) else {
+            warn!(
+                target: "EAPP_GL",
+                "compressed_upload skipped: palette data is shorter than {}x{}",
+                width,
+                height
+            );
+            return;
+        };
+
+        let index = self.live_gl.as_ref().map(|l| l.uploads.len()).unwrap_or(0);
+        let backing = self.file_backing_for_addr(source_ptr);
+        let tex_name = self.live_gl.as_mut().and_then(|l| l.pending_tex_name.take());
+        let upload = live_gl::LiveGlUpload {
+            index,
+            target: args[0],
+            width,
+            height,
+            source_format: args[2],
+            pixel_type: image_size as u32,
+            source_ptr,
+            source_file: backing.as_ref().map(|b| b.path.clone()),
+            source_file_offset: backing
+                .as_ref()
+                .map(|b| source_ptr.saturating_sub(b.base_addr)),
+            format: Some(TextureFormat::Rgba8888),
+            texture: Some(Texture {
+                width,
+                height,
+                pixels,
+            }),
+            tex_name,
+        };
+        info!(
+            target: "EAPP_GL",
+            "compressed_upload idx={} {}x{} format={:#x} image_size={} src_ptr={:#010x} bytes={} file={} file_off={} tex_name={}",
+            index,
+            width,
+            height,
+            args[2],
+            image_size,
+            source_ptr,
+            expected,
+            upload.source_file.as_deref().unwrap_or("<unknown>"),
+            upload
+                .source_file_offset
+                .map(|off| format!("{}", off))
+                .unwrap_or_else(|| "<unknown>".to_string()),
+            upload
+                .tex_name
+                .map(|name| format!("{:#x}", name))
                 .unwrap_or_else(|| "<none>".to_string()),
         );
         if let Some(lg) = self.live_gl.as_mut() {
@@ -5592,6 +5720,11 @@ impl Eapp {
                 .bundle_dir
                 .to_str()
                 .map_or(false, |p| p.contains("66666"));
+            let is_texas = self
+                .metadata
+                .bundle_dir
+                .to_str()
+                .map_or(false, |p| p.contains("33333"));
             let owner = args[0];
             let req = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
             let req_cb = self.read_guest_u32(req.wrapping_add(0x0c)).unwrap_or(0);
@@ -5600,7 +5733,8 @@ impl Eapp {
             let owner_ctx = self.read_guest_u32(owner.wrapping_add(0x10)).unwrap_or(0);
             let owner_internal_cb = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
             let owner_internal_ctx = self.read_guest_u32(owner.wrapping_add(0x38)).unwrap_or(0);
-            let generic_complete = std::env::var("CLICKY_EAPP_ASYNC1_GENERIC")
+            let texas_complete = is_texas
+                && std::env::var("EAPP_TEXAS_ASYNC1_COMPLETE")
                 .map(|v| v == "1" || v == "true")
                 .unwrap_or(false);
             info!(
@@ -5614,7 +5748,7 @@ impl Eapp {
                 owner_ctx,
                 owner_internal_cb,
                 owner_internal_ctx,
-                (complete && is_tetris || generic_complete && !is_tetris) as u8
+                (complete && is_tetris || texas_complete) as u8
             );
             if complete && is_tetris && owner != 0 && req != 0 {
                 // Ordinal 1 is a no-path/control completion used by initiator C
@@ -5651,34 +5785,39 @@ impl Eapp {
                     );
                 }
             }
-            if generic_complete && !is_tetris && owner != 0 && req != 0 && req_cb != 0 {
+            if texas_complete && owner != 0 && req != 0 && req_cb != 0 {
                 // 0x1802c2d0 stores the request callback/context at
                 // request+0x0c/+0x10, not on the transient owner. The
-                // generic completion helper at 0x1802c194 operates on that
+                // completion trampoline at 0x1802fcf0 operates on that
                 // request object, transitions request+4, and forwards
-                // (request, status, byte-count, context) to Sudoku's
-                // 0x18026124 -> 0x180263a4 chain.
-                let status = std::env::var("CLICKY_EAPP_ASYNC1_STATUS")
+                // (request, status, byte-count, context) to Hold'em's
+                // 0x180054fc callback.
+                let status = std::env::var("EAPP_TEXAS_ASYNC1_STATUS")
+                    .ok()
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .unwrap_or(0);
+                let byte_count = std::env::var("EAPP_TEXAS_ASYNC1_BYTES")
                     .ok()
                     .and_then(|v| v.parse::<u32>().ok())
                     .unwrap_or(0);
                 self.async_callback_queued_count =
                     self.async_callback_queued_count.wrapping_add(1);
                 self.pending_guest_calls.push_back(PendingGuestCall {
-                    pc: 0x1802_c194,
+                    pc: 0x1802_fcf0,
                     arg0: req,
                     arg1: status,
-                    arg2: 0,
+                    arg2: byte_count,
                     arg3: 0,
                 });
                 info!(
                     target: "EAPP_IMPORT",
-                    "AsyncFileIO:1 experimental generic completion owner={:#010x} req={:#010x} cb={:#010x} ctx={:#010x} status={}",
+                    "AsyncFileIO:1 Texas completion owner={:#010x} req={:#010x} cb={:#010x} ctx={:#010x} status={} bytes={}",
                     owner,
                     req,
                     req_cb,
                     req_ctx,
-                    status
+                    status,
+                    byte_count
                 );
             }
             return 1;
@@ -5702,6 +5841,11 @@ impl Eapp {
                 .bundle_dir
                 .to_str()
                 .map_or(false, |p| p.contains("66666"));
+            let is_texas = self
+                .metadata
+                .bundle_dir
+                .to_str()
+                .map_or(false, |p| p.contains("33333"));
             let owner = args[0];
             let callback_pc = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
             let callback_ctx = self.read_guest_u32(owner.wrapping_add(0x38)).unwrap_or(0);
@@ -5737,16 +5881,15 @@ impl Eapp {
                     );
                 }
             }
-            let generic_complete = std::env::var("CLICKY_EAPP_ASYNC2_GENERIC")
+            let texas_complete = is_texas
+                && std::env::var("EAPP_TEXAS_ASYNC2_COMPLETE")
                 .map(|v| v == "1" || v == "true")
                 .unwrap_or(false);
-            if generic_complete && !is_tetris && owner != 0 && callback_pc != 0 {
-                // The resource-manager callback at 0x18025ec4 is entered as
-                // (status, manager-entry), unlike the audio callbacks above.
-                // The callback reads entry+0x14c/0x120 and branches on
-                // entry+0x04; passing the transient owner here makes it
-                // interpret the owner's 0x05 operation byte as an entry
-                // state and launches a bogus nested request.
+            if texas_complete && owner != 0 && callback_pc != 0 {
+                // Hold'em's resource callback at 0x18004a14 is entered as
+                // (owner, entry). The two pointers are the same object for
+                // this AsyncFileIO:2 wrapper; it compares them and then
+                // consumes owner+0x20 as the completion status.
                 let owner_op = self.read_guest_u8(owner.wrapping_add(0x04)).unwrap_or(0);
                 if owner_op == 3 {
                     let destination = self.read_guest_u32(owner.wrapping_add(0x14)).unwrap_or(0);
@@ -5800,14 +5943,14 @@ impl Eapp {
                     self.async_callback_queued_count.wrapping_add(1);
                 self.pending_guest_calls.push_back(PendingGuestCall {
                     pc: callback_pc,
-                    arg0: 0,
+                    arg0: owner,
                     arg1: callback_ctx,
                     arg2: 0,
                     arg3: 0,
                 });
                 info!(
                     target: "EAPP_IMPORT",
-                    "AsyncFileIO:2 experimental generic completion owner={:#010x} cb_pc={:#010x}",
+                    "AsyncFileIO:2 Texas completion owner={:#010x} cb_pc={:#010x}",
                     owner,
                     callback_pc
                 );
@@ -5863,10 +6006,20 @@ impl Eapp {
                     .bundle_dir
                     .to_str()
                     .map_or(false, |p| p.contains("66666"));
-                let complete = is_tetris
+                let is_texas = self
+                    .metadata
+                    .bundle_dir
+                    .to_str()
+                    .map_or(false, |p| p.contains("33333"));
+                let tetris_complete = is_tetris
                     && std::env::var("CLICKY_EAPP_ASYNC3_COMPLETE")
                         .map(|v| v == "1" || v == "true")
                         .unwrap_or(false);
+                let texas_complete = is_texas
+                    && std::env::var("EAPP_TEXAS_ASYNC0_COMPLETE")
+                        .map(|v| v == "1" || v == "true")
+                        .unwrap_or(false);
+                let complete = tetris_complete || texas_complete;
                 let callback_pc = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
                 if let Some(host_path) = self.resolve_or_create_host_path(&path) {
                     self.note_audio_asset_path(&host_path);
@@ -5960,7 +6113,23 @@ impl Eapp {
                                 }
                             }
                         }
-                        self.write_guest_u32(owner.wrapping_add(0x20), 0);
+                        // Hold'em uses the same ordinal for its first-run save probe and
+                        // ordinary resource loads.  A missing save should report an error,
+                        // while a resource such as constant.blob must still report success;
+                        // applying one status to every ordinal-0 request makes the latter
+                        // look missing and leaves its object tables uninitialized.
+                        let texas_missing_save = host_path
+                            .to_str()
+                            .map_or(false, |p| p.contains(".clicky-saves"));
+                        let status = if texas_complete && texas_missing_save {
+                            std::env::var("EAPP_TEXAS_ASYNC0_STATUS")
+                                .ok()
+                                .and_then(|v| v.parse::<u32>().ok())
+                                .unwrap_or(0)
+                        } else {
+                            0
+                        };
+                        self.write_guest_u32(owner.wrapping_add(0x20), status);
                         self.write_guest_u32(owner.wrapping_add(0x24), n);
                         let req = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
                         self.async_callback_queued_count =
@@ -5968,7 +6137,7 @@ impl Eapp {
                         self.pending_guest_calls.push_back(PendingGuestCall {
                             pc: callback_pc,
                             arg0: owner,
-                            arg1: 0,
+                            arg1: status,
                             arg2: n,
                             arg3: 0,
                         });
@@ -6072,12 +6241,30 @@ impl Eapp {
                                     .bundle_dir
                                     .to_str()
                                     .map_or(false, |p| p.contains("66666"));
-                                let complete = is_tetris
+                                let is_texas = self
+                                    .metadata
+                                    .bundle_dir
+                                    .to_str()
+                                    .map_or(false, |p| p.contains("33333"));
+                                let tetris_complete = is_tetris
                                     && std::env::var("CLICKY_EAPP_ASYNC3_COMPLETE")
                                         .map(|v| v == "1" || v == "true")
                                         .unwrap_or(false);
+                                let texas_complete = is_texas
+                                    && std::env::var("EAPP_TEXAS_ASYNC3_COMPLETE")
+                                        .map(|v| v == "1" || v == "true")
+                                        .unwrap_or(false);
+                                let complete = tetris_complete || texas_complete;
                                 if complete {
-                                    self.write_guest_u32(req.wrapping_add(0x20), 1);
+                                    let status = if texas_complete {
+                                        std::env::var("EAPP_TEXAS_ASYNC3_STATUS")
+                                            .ok()
+                                            .and_then(|v| v.parse::<u32>().ok())
+                                            .unwrap_or(0)
+                                    } else {
+                                        1
+                                    };
+                                    self.write_guest_u32(req.wrapping_add(0x20), status);
                                     self.write_guest_u32(req.wrapping_add(0x24), n as u32);
                                 }
                                 info!(
@@ -8436,7 +8623,30 @@ fn vma_to_offset(addr: u32) -> Result<u32, EappBuildError> {
 
 #[cfg(test)]
 mod tests {
-    use super::Eapp;
+    use super::{decode_palette8_rgba8, Eapp};
+
+    #[test]
+    fn palette8_rgba8_decodes_palette_then_indices() {
+        let mut raw = vec![0; 1024 + 3];
+        raw[0..4].copy_from_slice(&[1, 2, 3, 4]);
+        raw[4..8].copy_from_slice(&[10, 20, 30, 40]);
+        raw[8..12].copy_from_slice(&[50, 60, 70, 80]);
+        raw[1024..].copy_from_slice(&[0, 1, 2]);
+
+        assert_eq!(
+            decode_palette8_rgba8(&raw, 3, 1),
+            Some(vec![
+                super::Rgba8::rgba(1, 2, 3, 4),
+                super::Rgba8::rgba(10, 20, 30, 40),
+                super::Rgba8::rgba(50, 60, 70, 80),
+            ])
+        );
+    }
+
+    #[test]
+    fn palette8_rgba8_rejects_short_data() {
+        assert_eq!(decode_palette8_rgba8(&[0; 1024], 1, 1), None);
+    }
 
     #[test]
     fn wheel_packet_uses_absolute_96_detent_position() {

@@ -74,6 +74,25 @@ manifest. They measure visual activity, not correctness.
 No row is marked fully playable. The only title with content-level control
 evidence is Tetris, and even that remains incomplete under the project goal.
 
+## Scoped Hold'em progress (excluded from the default matrix)
+
+The default `33333` row intentionally remains loading-only. A separate,
+title-scoped experiment now completes the Hold'em resource callback sequence,
+decodes the title's `GL_PALETTE8_RGBA8_OES` indexed artwork, and uses the
+name-entry wheel/action path to reach the first post-name scene. The sweep
+reaches 113 draws at guest frame 553; the detailed rerun reaches a 107-draw
+scene at guest frame 607 before later blank/partial transitions. The scene is
+not yet coherent or playable, and these overrides are not part of the
+corpus-wide contract:
+
+```text
+EAPP_TEXAS_ASYNC0_COMPLETE=1 EAPP_TEXAS_ASYNC0_STATUS=1
+EAPP_TEXAS_ASYNC2_COMPLETE=1 EAPP_TEXAS_ASYNC1_COMPLETE=1
+```
+
+Evidence is retained at `/tmp/fliwheel_holdem_ok_sweep_20260826/` and
+`/tmp/fliwheel_holdem_table_20260826/`.
+
 ## Shared changes made after this run
 
 - The NDC detector now includes the empirically matching Sims Bowling/Pool
