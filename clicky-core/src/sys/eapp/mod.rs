@@ -6848,6 +6848,13 @@ impl Eapp {
     }
 
     fn observe_audio_guest_pc(&mut self, pc: u32) {
+        // The current resource-indexed wrapper contract is proven only for
+        // Tetris (66666). Other games place unrelated code at these same
+        // virtual addresses and would otherwise produce fabricated audio
+        // events with pointer values interpreted as resource IDs.
+        if self.metadata.title != "66666" {
+            return;
+        }
         match pc {
             0x1800_5498 => {
                 // The registration wrapper has the actual resource type and
@@ -6906,6 +6913,11 @@ impl Eapp {
     }
 
     fn note_audio_asset_path(&mut self, host_path: &Path) {
+        // Keep the provisional Tetris-only resource catalog honest until the
+        // other title families have their own Audio ABI derived.
+        if self.metadata.title != "66666" {
+            return;
+        }
         let is_audio = host_path
             .extension()
             .and_then(|ext| ext.to_str())

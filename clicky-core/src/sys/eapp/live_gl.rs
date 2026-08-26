@@ -346,12 +346,12 @@ impl LiveGlState {
     }
 
     fn uses_ndc_coordinates(&self, positions: &[(f32, f32)]) -> bool {
-        // The Sudoku/Solitaire engine is the only known family that submits
-        // normalized 0..1 vertex coordinates.  Pixel-space titles can still
-        // legitimately submit tiny or partially off-screen quads (Tetris'
-        // board/mino path does both), so a coordinate-only max<2 heuristic
-        // misclassifies those quads and stretches them to the full viewport.
-        matches!(self.game_id.as_str(), "50513" | "50514")
+        // Sudoku/Solitaire and the Sims Bowling/Pool pair submit normalized
+        // 0..1 vertex coordinates. Pixel-space titles can still legitimately
+        // submit tiny or partially off-screen quads (Tetris' board/mino path
+        // does both), so a coordinate-only max<2 heuristic misclassifies
+        // those quads and stretches them to the full viewport.
+        matches!(self.game_id.as_str(), "1500C" | "1500E" | "50513" | "50514")
             && positions
                 .iter()
                 .all(|(x, y)| *x >= 0.0 && *y >= 0.0 && *x < 2.0 && *y < 2.0)
@@ -1634,6 +1634,12 @@ mod tests {
 
         let sudoku = LiveGlState::new(true, false, false, "50513".to_string());
         assert!(sudoku.uses_ndc_coordinates(&ndc_positions));
+
+        let bowling = LiveGlState::new(true, false, false, "1500C".to_string());
+        assert!(bowling.uses_ndc_coordinates(&ndc_positions));
+
+        let pool = LiveGlState::new(true, false, false, "1500E".to_string());
+        assert!(pool.uses_ndc_coordinates(&ndc_positions));
 
         let tetris = LiveGlState::new(true, false, false, "66666".to_string());
         assert!(!tetris.uses_ndc_coordinates(&tetris_offscreen_positions));
