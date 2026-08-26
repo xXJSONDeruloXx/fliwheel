@@ -1,5 +1,9 @@
 # iPod Game Compatibility Report - Clicky Emulator
 
+> Historical no-input smoke report. These `WORKS` labels are superseded by
+> the [2026-08-26 interactive matrix](20260826_interactive_matrix.md), which
+> is the current authority for decrypted-game playability.
+
 **Date:** 2026-06-25  
 **Test:** Headless 8-second runs with experimental GL HLE enabled
 

@@ -1,5 +1,10 @@
 # iPod Game Debug Analysis - Executive Summary
 
+> Historical executive summary. It predates the corpus-wide interactive pass
+> and is retained for provenance only. See the
+> [current interactive matrix](20260826_interactive_matrix.md) for rendering,
+> input, fault, and playability status.
+
 **Date:** 2026-06-25  
 **Scope:** 16 games tested, 7 working, 9 failing  
 **Method:** Debug log analysis of experimental GL HLE renderer

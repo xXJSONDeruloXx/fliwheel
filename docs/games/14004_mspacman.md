@@ -1,6 +1,6 @@
 # Ms. Pac-Man (Bundle 14004)
 
-**Status:** ✅ WORKS | **Draws:** 26,405 (10s) | **Engine:** Tetris Runtime
+**Status:** ⚠️ LOADING SCREEN ONLY | **Evidence:** scripted probe reaches Namco loading art with texture/text artifacts | **Engine:** Tetris Runtime
 
 ## Quick Start
 ```bash

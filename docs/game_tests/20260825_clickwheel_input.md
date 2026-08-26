@@ -70,8 +70,11 @@ the wheel event through its own state machine.
 - The host-to-guest wheel ABI is now measured and shared across the family.
 - Tetris still selects its first-run/name-entry scene; ordinary wheel and
   action edges do not yet select the constructed main-menu graph.
-- Audio remains a separate gap. Boot-time WAV headers and payload reads are
-  staged, but `Audio` has not yet been connected to a host playback sink.
+- Audio is now a separate, partially instrumented path. Tetris resource-indexed
+  events resolve to `Menu.wav`, `Move.wav`, and `Drop.wav`, and the headed
+  frontend has a `rodio` sink. Physical output, overlap/mixing, and the Audio
+  ABI for the other title families remain unverified; see
+  [`20260825_audio_abi.md`](20260825_audio_abi.md).
 
 For external visual/input references, see the [clickwheel games overview](https://ipodwiki.com/wiki/Clickwheel_games),
 the [Tetris-on-iPod reference photograph](https://commons.wikimedia.org/wiki/File:Tetris_on_an_iPod.jpg),

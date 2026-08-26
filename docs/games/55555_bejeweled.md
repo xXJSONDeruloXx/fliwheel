@@ -1,6 +1,6 @@
 # Bejeweled (Bundle 55555)
 
-**Status:** ⚠️ DMA WAIT | **Draws:** 180 (then hangs) | **Engine:** PopCap Engine
+**Status:** ⚠️ POPCAP PARTIAL | **Evidence:** scripted probe shows title/jewel fragments but no coherent board | **Engine:** PopCap Engine
 
 ## Quick Start
 ```bash

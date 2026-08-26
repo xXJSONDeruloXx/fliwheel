@@ -1,6 +1,6 @@
 # Sims Bowling (Bundle 1500C)
 
-**Status:** ✅ WORKS | **Draws:** 3,296 (10s) | **Engine:** Sims Engine
+**Status:** ❌ RENDERER/ASSET DECODE BLOCKED | **Evidence:** normalized-geometry rerun remains black with zero useful coverage | **Engine:** Sims Engine
 
 ## Quick Start
 ```bash

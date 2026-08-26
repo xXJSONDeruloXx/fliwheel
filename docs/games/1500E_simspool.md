@@ -1,6 +1,6 @@
 # Sims Pool (Bundle 1500E)
 
-**Status:** ✅ WORKS | **Draws:** 3,397 (10s) | **Engine:** Sims Engine
+**Status:** ❌ RENDERER/ASSET DECODE BLOCKED | **Evidence:** normalized-geometry rerun remains black with zero useful coverage | **Engine:** Sims Engine
 
 ## Quick Start
 ```bash

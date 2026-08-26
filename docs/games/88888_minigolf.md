@@ -1,6 +1,6 @@
 # Mini Golf (Bundle 88888)
 
-**Status:** ✅ WORKS | **Draws:** 11,166 (10s) | **Engine:** Tetris Runtime
+**Status:** ⚠️ LOADING SCREEN ONLY | **Evidence:** scripted probe reaches a progress outline but no course/menu scene | **Engine:** Tetris Runtime
 
 ## Quick Start
 ```bash

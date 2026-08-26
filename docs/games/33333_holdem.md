@@ -1,6 +1,6 @@
 # Texas Hold'em (Bundle 33333)
 
-**Status:** ✅ WORKS | **Draws:** 34,088 (10s) | **Engine:** Hold'em Runtime
+**Status:** ❌ REPRODUCIBLE GUEST FAULT | **Evidence:** scripted input faults at PC `0x18012738` after 8 frames | **Engine:** Hold'em Runtime
 
 ## Quick Start
 ```bash

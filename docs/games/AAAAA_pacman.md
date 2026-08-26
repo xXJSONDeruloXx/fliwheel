@@ -1,6 +1,6 @@
 # Pac-Man (Bundle AAAAA)
 
-**Status:** ✅ WORKS | **Draws:** 24,511 (10s) | **Engine:** Tetris Runtime
+**Status:** ⚠️ LOADING SCREEN ONLY | **Evidence:** scripted probe reaches Namco loading art but not the maze | **Engine:** Tetris Runtime
 
 ## Quick Start
 ```bash

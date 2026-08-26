@@ -1,6 +1,6 @@
 # Mahjong (Bundle 77777)
 
-**Status:** ✅ WORKS | **Draws:** 21,235 (10s) | **Engine:** Tetris Runtime
+**Status:** ⚠️ TEXTURE/UV PARTIAL | **Evidence:** scripted probe shows dotted/garbled title output, no board | **Engine:** Tetris Runtime
 
 ## Quick Start
 ```bash

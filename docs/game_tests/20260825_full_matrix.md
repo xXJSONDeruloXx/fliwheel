@@ -1,5 +1,9 @@
 # Full decrypted-game matrix
 
+> Historical no-input smoke baseline. For current scripted interaction,
+> rendering, and fault evidence, see the
+> [2026-08-26 interactive matrix](20260826_interactive_matrix.md).
+
 Date: 2026-08-25
 
 This is the post-change 20-bundle smoke run for the decrypted corpus. It is a

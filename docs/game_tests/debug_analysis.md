@@ -1,5 +1,10 @@
 # iPod Game Debug Analysis - Clicky Emulator
 
+> Historical snapshot. The old compatibility labels below describe an earlier
+> no-input smoke run and are not current playability claims. Use the
+> [2026-08-26 interactive matrix](20260826_interactive_matrix.md) as the
+> current authority for all 20 decrypted bundles.
+
 **Date:** 2026-06-25  
 **Updated:** With crash analysis and revised root causes  
 **Scope:** 16 games tested with experimental GL HLE
