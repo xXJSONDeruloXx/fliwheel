@@ -1,6 +1,12 @@
 # Tetris Save File Format Analysis
 
-**Source:** Real iPod save files extracted from `/Volumes/KURT'S IPOD/iPod_Control/GameData_RW/66686/`
+> Historical and currently unverified. The source volume
+> `/Volumes/KURT'S IPOD/iPod_Control/GameData_RW/66686/` is not present in the
+> current workspace, and the local `66666` bundle contains zero-byte save
+> placeholders. The sizes, byte fields, and interpretations below are retained
+> as a reverse-engineering lead only; they are not a current emulator fixture.
+
+**Historical source:** Real iPod save files extracted from `/Volumes/KURT'S IPOD/iPod_Control/GameData_RW/66686/`
 
 ## Save Files
 

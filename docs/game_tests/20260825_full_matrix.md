@@ -11,32 +11,32 @@ Runner: `/Users/danhimebauch/Developer/fliwheel/target/release/eapp`
 
 Mode: headless experimental GL HLE, 8-second watchdog per bundle, no input
 
-Raw report: `/tmp/fliwheel_regression_20260825/20260825_190150_decrypted_games.md`
+Raw report: `/tmp/fliwheel_regression_20260825_atlasfix/20260825_203326_decrypted_games.md`
 
-Per-game logs: `/tmp/fliwheel_regression_20260825/20260825_190150_logs`
+Per-game logs: `/tmp/fliwheel_regression_20260825_atlasfix/20260825_203326_logs`
 
 | Bundle | Exit | Last frame | Last draws | Rasterized draws | Skipped draws |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 11002 | 124 | 5606 | 1 | 0 | 5608 |
+| 11002 | 124 | 5843 | 1 | 0 | 5845 |
 | 11050 | 124 | 3 | 2 | 7 | 0 |
 | 11051 | 124 | 3 | 2 | 7 | 0 |
 | 11052 | 124 | 3 | 2 | 7 | 0 |
-| 12345 | 124 | 4799 | 2 | 10124 | 0 |
-| 14004 | 124 | 1874 | 12 | 18740 | 1 |
-| 1500C | 124 | 1766 | 1 | 1732 | 0 |
-| 1500E | 124 | 2376 | 1 | 2376 | 0 |
-| 1B200 | 124 | 5052 | 0 | 0 | 0 |
+| 12345 | 124 | 4847 | 2 | 10227 | 0 |
+| 14004 | 124 | 1898 | 12 | 18980 | 1 |
+| 1500C | 124 | 1776 | 1 | 1742 | 0 |
+| 1500E | 124 | 2363 | 1 | 2363 | 0 |
+| 1B200 | 124 | 5074 | 0 | 0 | 0 |
 | 1C300 | 124 | 0 | 1 | 1 | 0 |
-| 33333 | 124 | 673 | 34 | 22551 | 0 |
+| 33333 | 124 | 678 | 34 | 22721 | 0 |
 | 44444 | 124 | 6 | 8 | 35 | 1 |
-| 50513 | 124 | 3349 | 0 | 1 | 0 |
-| 50514 | 124 | 1136 | 0 | 233 | 3 |
+| 50513 | 124 | 3383 | 0 | 1 | 0 |
+| 50514 | 124 | 1115 | 0 | 233 | 3 |
 | 55555 | 124 | 5 | 37 | 144 | 1 |
-| 66666 | 124 | 1061 | 29 | 7387 | 0 |
-| 77777 | 124 | 2007 | 9 | 14926 | 1 |
-| 88888 | 124 | 2707 | 5 | 8121 | 2 |
-| 99999 | 124 | 634 | 49 | 28086 | 0 |
-| AAAAA | 124 | 1365 | 14 | 18189 | 3 |
+| 66666 | 124 | 1071 | 29 | 7339 | 0 |
+| 77777 | 124 | 2028 | 9 | 15094 | 1 |
+| 88888 | 124 | 2759 | 5 | 8274 | 2 |
+| 99999 | 124 | 652 | 49 | 28949 | 0 |
+| AAAAA | 124 | 1420 | 14 | 18849 | 3 |
 
 All 20 exits were the expected watchdog `124`. A scan of the per-game logs
 found no fatal memory fault, panic, or emulator crash. The draw totals vary

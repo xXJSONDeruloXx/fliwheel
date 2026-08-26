@@ -24,19 +24,20 @@
 - **Audio:** 11 `.wav` files are staged during parsed boot; host playback is not implemented yet.
 
 ## Save Files
-Loaded from `.clicky-saves/` in the bundle directory:
-- `game.sav` (3,561 bytes) — MGCT header: score, level, lines, board state
-- `prefs.sav` (127 bytes) — RPCT header: settings/preferences
-
-Save files from physical iPod are stored in `data/tetris_saves/`.
+The current local `66666` bundle contains zero-byte `.clicky-saves/game.sav`
+and `.clicky-saves/prefs.sav` placeholders. The 3,561-byte `MGCT` and
+127-byte `RPCT` files described in [`TETRIS_SAVE_FORMAT.md`](../TETRIS_SAVE_FORMAT.md)
+come from an older physical-iPod extraction that is not present in the current
+workspace; that document is retained as an unverified reverse-engineering lead,
+not as a current emulator fixture.
 
 ## Current evidence
 
 The live renderer now produces readable credits and the real first-run
 `PLAYER NAME / ENTER YOUR NAME` screen. Positive wheel input moves the selected
-character and Select commits it to the name field. The next boundary is the
-guest's first-run profile/menu transition: it reaches `frame_state` 5 then 6
-and stops issuing normal GL frames before Play/gameplay can be selected.
+character and Select commits it to the name field. A no-input control reaches
+the same first-run profile/menu transition, with `frame_state` 5 then 6, and
+stops issuing normal GL frames before Play/gameplay can be selected.
 
 See [`20260825_tetris_text_and_name_entry.md`](../game_tests/20260825_tetris_text_and_name_entry.md)
 for the exact commands and capture artifacts.

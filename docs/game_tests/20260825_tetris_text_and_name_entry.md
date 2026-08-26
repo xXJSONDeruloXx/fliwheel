@@ -1,6 +1,6 @@
 # Tetris text rendering and first-run name entry
 
-Date: 2026-08-25
+Date: 2026-08-26
 
 This is the current focused checkpoint for bundle `66666`. It supersedes the
 older exploratory notes in [`tetris-text-rendering.md`](../tetris-text-rendering.md)
@@ -27,6 +27,7 @@ Evidence artifacts:
 - Name-entry frame: `/tmp/fliwheel_tetris_atlasfix_20260825/startup_g000014_host*.ppm`
 - Input sequence log: `/tmp/fliwheel_tetris_name_sequence_20260825.log`
 - Post-name frame: `/tmp/fliwheel_tetris_name_sequence_20260825/startup_g000050_host*.ppm`
+- No-input control log: `/tmp/fliwheel_tetris_no_input_control_20260826.log`
 
 ## Reproduce
 
@@ -55,13 +56,19 @@ CLICKY_EAPP_INPUT_SCRIPT='wheel=1:15-25,action:30-35'
 
 ## Current boundary
 
-This is not yet a gameplay-ready Tetris result. After the first character is
-committed, the guest transitions through its menu/exit state (`frame_state` 5
-then 6) and stops issuing normal GL draw frames. The normal main-menu labels
-are known to be constructed by the guest, but the active first-run scene root
-still points at the name-entry graph. A valid profile/save transition or the
-remaining scene-state contract is needed before Play can be selected and the
-Tetris board can be tested.
+This is not yet a gameplay-ready Tetris result. A no-input control reproduces
+the same transition: the guest remains in `frame_state` 1 through frame 50,
+then reaches state 5 and state 6 and stops issuing normal GL draw frames. The
+first character commit is therefore not the cause of the transition. The
+normal main-menu labels are known to be constructed by the guest, but the
+active first-run scene root still points at the name-entry graph. A valid
+profile/save transition or the remaining scene-state contract is needed before
+Play can be selected and the Tetris board can be tested.
+
+The selector query at `0x18018cb8` was also probed with guest results `0`, `2`,
+and `8`. All three variants still construct the name-entry scene and follow
+the same state-5/state-6 path, so this query is a keyboard/profile-layout
+selector rather than the missing main-menu switch.
 
 The WAV resources are staged during boot, but the host audio sink and the
 gameplay audio ABI are still unimplemented. No sound-correctness claim is
