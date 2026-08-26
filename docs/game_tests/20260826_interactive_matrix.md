@@ -63,7 +63,7 @@ manifest. They measure visual activity, not correctness.
 | `33333` | Texas Hold'em | Corrected run completes 30,000,000 cycles / 700 captured frames with 3 visual hashes, 34 draws per steady-state frame, and no fatal; the stabilized capture is the `LOADING` screen | Loading screen only; playable state not reached | Reverse the title-specific resource completion/transition path, then verify poker-table controls and sound |
 | `44444` | Zuma | 7 frames, 2 hashes, up to eight draws; only a tiny top-of-screen fragment is visible | Texture/transform partial | Verify atlas/RO resource upload and PopCap board composition |
 | `50513` | Sudoku | Recognizable title screen; reversed-register event heads now drain cleanly, and Menu enters the save/settings teardown loop. An opt-in full RLB completion runs its callback chain but adds no board draws | Input lifecycle and Menu/exit path verified; board not reached | Derive the puzzle-start/select contract and render the puzzle grid |
-| `50514` | Royal Solitaire | 700 frames, 26 hashes and 62 changes; recognizable character art, but large UV/quad corruption and 635 zero-draw frames | Partial splash/menu; not playable | Fix the shared UV/atlas selection and validate card interaction |
+| `50514` | Royal Solitaire | 700 frames, 26 hashes and 59 changes; the character splash is now spatially coherent after the shared NDC projection fix, with 638 zero-draw frames | Coherent splash and input lifecycle; board not reached | Advance the title state and validate card/selection interaction |
 | `55555` | Bejeweled | 6 frames, 3 hashes and 3 changes, up to 37 draws; title/jewel fragments but no coherent board | PopCap partial | Repair DMA/texture composition and then test wheel selection/moves |
 | `66666` | Tetris | Corrected run reaches frame 501 with 20 hashes and up to 382 draws; the separate targeted schedule reaches the board, pause/resume, left/right, hard drop, and indexed `Menu.wav`/`Move.wav`/`Drop.wav` events | Best current target; interactive partial, not complete | Finish wheel displacement, line clears, persistence, long-run visual parity, and sound mixing |
 | `77777` | Mahjong | 700 frames, 71 hashes, up to eight draws; mostly dotted/garbled title output | Texture/UV partial | Decode the `main.rlb` resource path and tile atlas |
@@ -112,6 +112,10 @@ Evidence is retained at `/tmp/fliwheel_holdem_ok_sweep_20260826/` and
   clean for `1500C`, `1500E`, `50514`, and `66666`. Sudoku's title-scoped RLB
   completion probe is retained as negative evidence rather than enabled by
   default.
+- The normalized-coordinate renderer now applies the shared 1.2x0.9 projection
+  globally. Royal Solitaire's small character/UI quads no longer get stretched
+  to the full viewport; the change was regression-tested against Sudoku, both
+  Sims titles, and Tetris.
 - The desktop host sink remains headless-unverified. Tetris has a persistent
   `rodio` sink and a guest-indexed event queue, but physical output, overlap,
   timing, and mixer parity still need a headed test and waveform regression.

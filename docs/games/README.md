@@ -19,7 +19,7 @@ claims.
 | The Sims Bowling | 1500C | ❌ Renderer/asset decode blocked | [→](1500C_simsbowling.md) |
 | The Sims Pool | 1500E | ❌ Renderer/asset decode blocked | [→](1500E_simspool.md) |
 | Sudoku | 50513 | 🟡 Input lifecycle + menu/exit path verified; board not reached | [→](50513_sudoku.md) |
-| Royal Solitaire | 50514 | 🟡 UV/quad corruption | [matrix](../game_tests/20260826_interactive_matrix.md#current-matrix) |
+| Royal Solitaire | 50514 | 🟡 Coherent splash; board not reached | [matrix](../game_tests/20260826_interactive_matrix.md#current-matrix) |
 | Bejeweled | 55555 | 🟡 PopCap partial | [→](55555_bejeweled.md) |
 | Zuma | 44444 | 🟡 PopCap partial | [→](44444_zuma.md) |
 | Vortex | 12345 | 🟡 Animated splash/VBO open | [matrix](../game_tests/20260826_interactive_matrix.md#current-matrix) |
@@ -145,10 +145,11 @@ For a portable corpus-wide probe, pass the root explicitly:
 - Frame loop: clear → bind → present (0 draws)
 - Need: shader binary parser + compiler/interpreter for rserver.bin format
 
-### Solitaire — UV/quad corruption
-- The title advances beyond its splash, but current captures have large
-  corrupted quads and long zero-draw periods.
-- Need an atlas/material regression before calling the board correct.
+### Solitaire — coherent splash, board open
+- The shared NDC projection now preserves the character/UI quad positions and
+  removes the previous full-screen slab corruption.
+- The title still needs a state transition and card/selection interaction
+  regression before calling the board correct.
 
 ### Vortex — VBO indirection / splash only
 - ordinal-175/125 VBO setup corrupts vertex array definitions
@@ -189,6 +190,7 @@ For a portable corpus-wide probe, pass the root explicitly:
 - [2026-08-26 interactive decrypted matrix](../game_tests/20260826_interactive_matrix.md)
 - [2026-08-25 Sudoku input regression](../game_tests/20260825_sudoku_input.md)
 - [2026-08-26 Sudoku event lifecycle](../game_tests/20260826_sudoku_event_lifecycle.md)
+- [2026-08-26 normalized-coordinate projection](../game_tests/20260826_ndc_projection.md)
 - [Compatibility Report](../game_tests/20260625_compatibility_report.md) — full metrics
 - [Debug Analysis](../game_tests/debug_analysis.md) — root cause analysis
 - [EAPP Format Specification](../EAPP_FORMAT_SPECIFICATION.md)

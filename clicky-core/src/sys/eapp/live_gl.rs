@@ -24,6 +24,19 @@ pub const FB_WIDTH: usize = 320;
 pub const FB_HEIGHT: usize = 240;
 pub const FB_PIXELS: usize = FB_WIDTH * FB_HEIGHT;
 
+/// The normalized-coordinate engine family submits the 320x240 surface in a
+/// 1.2x0.9 coordinate space. Keep this transform global to the frame: scaling
+/// each individual quad's extents makes every small sprite fill the screen.
+const NDC_VIEW_MAX_X: f32 = 1.2;
+const NDC_VIEW_MAX_Y: f32 = 0.9;
+
+fn ndc_to_pixel_position((x, y): (f32, f32)) -> (f32, f32) {
+    (
+        x / NDC_VIEW_MAX_X * FB_WIDTH as f32,
+        y / NDC_VIEW_MAX_Y * FB_HEIGHT as f32,
+    )
+}
+
 /// GL_FIXED (0x140c) enumerant confirmed by disassembly for the position/UV
 /// arrays. Any other array format is preserved but not interpreted.
 pub const GL_FIXED: u32 = 0x140c;
@@ -961,20 +974,12 @@ impl LiveGlState {
             skipped_reason: None,
         };
 
-        // NDC-to-pixel scaling for the known Sudoku/Solitaire engine family.
-        // Rather than multiplying by screen dims (which clips the observed
-        // 1.2x0.9 splash quad), scale the submitted extents to the viewport.
+        // NDC-to-pixel scaling for the normalized-coordinate engine family.
+        // The projection range is shared by every quad in the frame; using a
+        // draw-local min/max would stretch small sprites to the full viewport.
         let pixel_positions = if self.uses_ndc_coordinates(&positions) {
             self.ndc_frame = true;
-            let (min_x, min_y, max_x, max_y) = bounds;
-            // Shift and scale so (min_x, min_y)–(max_x, max_y) maps to
-            // (0, 0)–(FB_WIDTH, FB_HEIGHT).
-            let range_x = (max_x - min_x).max(0.001);
-            let range_y = (max_y - min_y).max(0.001);
-            positions.map(|(x, y)| {
-                ((x - min_x) / range_x * FB_WIDTH as f32,
-                 (y - min_y) / range_y * FB_HEIGHT as f32)
-            })
+            positions.map(ndc_to_pixel_position)
         } else {
             positions
         };
@@ -1086,21 +1091,13 @@ impl LiveGlState {
             return record;
         };
 
-        // NDC-to-pixel scaling for the known Sudoku/Solitaire engine family.
+        // NDC-to-pixel scaling for the normalized-coordinate engine family.
         let pixel_positions: Vec<(f32, f32)> = if self.uses_ndc_coordinates(positions) {
             self.ndc_frame = true;
-            let min_x = positions.iter().map(|p| p.0).fold(f32::INFINITY, f32::min);
-            let min_y = positions.iter().map(|p| p.1).fold(f32::INFINITY, f32::min);
-            let max_x = positions.iter().map(|p| p.0).fold(f32::NEG_INFINITY, f32::max);
-            let max_y = positions.iter().map(|p| p.1).fold(f32::NEG_INFINITY, f32::max);
-            let range_x = (max_x - min_x).max(0.001);
-            let range_y = (max_y - min_y).max(0.001);
             positions
                 .iter()
-                .map(|(x, y)| (
-                    (x - min_x) / range_x * FB_WIDTH as f32,
-                    (y - min_y) / range_y * FB_HEIGHT as f32,
-                ))
+                .copied()
+                .map(ndc_to_pixel_position)
                 .collect()
         } else {
             positions.to_vec()
@@ -1641,9 +1638,21 @@ mod tests {
         let pool = LiveGlState::new(true, false, false, "1500E".to_string());
         assert!(pool.uses_ndc_coordinates(&ndc_positions));
 
+        let solitaire = LiveGlState::new(true, false, false, "50514".to_string());
+        assert!(solitaire.uses_ndc_coordinates(&ndc_positions));
+
         let tetris = LiveGlState::new(true, false, false, "66666".to_string());
         assert!(!tetris.uses_ndc_coordinates(&tetris_offscreen_positions));
         assert!(!tetris.uses_ndc_coordinates(&ndc_positions));
+    }
+
+    #[test]
+    fn ndc_projection_preserves_global_sprite_positions() {
+        assert_eq!(ndc_to_pixel_position((0.0, 0.0)), (0.0, 0.0));
+        assert_eq!(ndc_to_pixel_position((1.2, 0.9)), (320.0, 240.0));
+        let (x, y) = ndc_to_pixel_position((1.1, 0.7));
+        assert!((x - 293.33334).abs() < 0.01);
+        assert!((y - 186.66667).abs() < 0.01);
     }
 
     #[test]
