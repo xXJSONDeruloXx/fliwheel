@@ -14,11 +14,9 @@ docs/sc_info/SC Info.sidd
 docs/sc_info/accounts/*/SC Info.sidd
 docs/game_tests/debug_logs/
 
-# Temp/test files from Research
+# Local scratch files
 .DS_Store
 log.txt
-test_init.exe
-test_simple.exe
 .ralph/
 
 # Local-only game, firmware, identity, and emulator-run artifacts.

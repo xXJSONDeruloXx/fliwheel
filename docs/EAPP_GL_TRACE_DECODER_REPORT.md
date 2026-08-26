@@ -1,7 +1,7 @@
 # Tetris OpenGLES Trace Decoder Report
 
 Fixture:
-- `clicky-core/tests/fixtures/eapp/tetris_gl_trace.json`
+- `core/tests/fixtures/eapp/tetris_gl_trace.json`
 - standalone renderer uses generated textures for replay tests
 
 This report reflects the deeper capture pass that follows pointer-like stack words and records bounded snapshots, mapped regions, truncation status, and AsyncFileIO-backed file relationships.
@@ -325,7 +325,7 @@ draw4_opaque_hash = 0x24cda718d8961325
 
 Optional inspection artifact:
 - set `CLICKY_WRITE_TETRIS_FRAME4_PPM=1`
-- run `cargo test -p clicky-core --test eapp_gl_decode replay_frame4_produces_complete_artifact_and_hash -- --nocapture`
+- run `cargo test -p fliwheel-core --test eapp_gl_decode replay_frame4_produces_complete_artifact_and_hash -- --nocapture`
 - it writes `/tmp/tetris_frame4_replay.ppm`
 
 ### Orientation investigation (local real assets)

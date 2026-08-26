@@ -1,0 +1,18 @@
+[package]
+name = "fliwheel-desktop"
+version = "0.1.0"
+authors = ["Daniel Prilik <danielprilik@gmail.com>"]
+edition = "2018"
+
+[features]
+default = ["minifb"]
+
+[dependencies]
+fliwheel-core = { path = "../core/" }
+
+log = "0.4"
+pretty_env_logger = "0.3"
+structopt = "0.3"
+
+minifb = { version =  "0.23", optional = true }
+rodio = "0.17"

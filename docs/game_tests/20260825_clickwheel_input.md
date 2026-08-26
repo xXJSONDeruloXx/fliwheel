@@ -32,7 +32,7 @@ CLICKY_EAPP_INPUT_SCRIPT='wheel=-2:300-305'
 Unit coverage verifies the absolute position and wrap behavior:
 
 ```text
-cargo test -p clicky-core wheel_packet -- --nocapture
+cargo test -p fliwheel-core wheel_packet -- --nocapture
 2 passed
 ```
 

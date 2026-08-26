@@ -46,7 +46,7 @@ Evidence artifacts:
 ## Reproduce
 
 ```bash
-cargo build -p clicky-desktop --bin eapp
+cargo build -p fliwheel-desktop --bin eapp
 
 CLICKY_EXPERIMENTAL_GL_HLE=1 \
 CLICKY_GL_GATE_B=1 \
@@ -101,7 +101,7 @@ made by this checkpoint.
 ## Regression gates
 
 ```bash
-cargo test -p clicky-core --lib eapp
-cargo build -p clicky-desktop --bin eapp
+cargo test -p fliwheel-core --lib eapp
+cargo build -p fliwheel-desktop --bin eapp
 git diff --check
 ```

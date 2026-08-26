@@ -17,12 +17,12 @@ experimental EAPP HLE. It is not yet a full RetailOS boot path and it does not
 load encrypted `.ipg` packages.
 
 The current compatibility assessment is recorded in
-[`docs/game_tests/20260825_hle_baseline.md`](docs/game_tests/20260825_hle_baseline.md).
+[`docs/game_tests/20260826_interactive_matrix.md`](docs/game_tests/20260826_interactive_matrix.md).
 
 ## Quick start
 
 ```sh
-cargo build --release -p clicky-desktop --bin eapp
+cargo build --release -p fliwheel-desktop --bin eapp
 TIMEOUT_SECONDS=8 ./scripts/test_decrypted_games.sh /path/to/Games_RO
 ```
 
@@ -43,8 +43,13 @@ CLICKY_GL_PRESENT_VFLIP=1 \
   copied into this checkout.
 - Every rendering or behavior change should have a reproducible run, a small
   hypothesis, and a note in `docs/` or the relevant game report.
-- `clicky` crate names are retained in the first baseline to preserve parity;
-  renaming is deferred until it can be done without obscuring regressions.
+- The workspace is intentionally limited to the decrypted EAPP core and native
+  desktop runner. Historical firmware, web, and decryption material is under
+  [`docs/archive/`](docs/archive/).
+
+The `CLICKY_*` environment variables remain as compatibility names for the
+existing runner and scripts; they do not indicate an additional workspace
+crate or runtime.
 
 ## Reference work
 
@@ -54,4 +59,3 @@ listed in [`docs/FLIWHEEL_BASELINE.md`](docs/FLIWHEEL_BASELINE.md). The
 firmware/ARM/RetailOS path. The `ipod-games` and DRM repositories provide
 format, ABI, and authorization context; they are references, not vendored
 dependencies.
-

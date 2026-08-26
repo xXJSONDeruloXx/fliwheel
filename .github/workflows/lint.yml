@@ -2,21 +2,16 @@ name: Lint
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
-    branches: [master]
+    branches: [main]
 
 jobs:
-  clippy_check:
-    strategy:
-      matrix:
-        crate:
-          - clicky-core
+  clippy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
-      - run: rustup component add clippy
-      - uses: actions-rs/clippy-check@v1
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --all-features --package ${{ matrix.crate }}
+          components: clippy
+      - run: cargo clippy --workspace --all-targets --all-features

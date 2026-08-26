@@ -23,6 +23,11 @@ Those directories contain build output, saves/sidecars, FairPlay material, or
 identity-bearing files. Decrypted games, firmware images, and run captures are
 also local inputs rather than repository contents.
 
+The active Cargo workspace now contains only `core` (`fliwheel-core`) and
+`desktop` (`fliwheel-desktop`). The inherited full-device, web, bootloader, and
+FairPlay implementation material is archived for provenance and is not part of
+the decrypted-game build.
+
 ## Sibling references reviewed
 
 | Repository | Local checkout | Starting commit | Relevance |
@@ -60,4 +65,3 @@ packages require FairPlay authorization and are not a first milestone here.
 4. Re-run the full decrypted corpus after each change and record regressions.
 5. Use the firmware emulator and firmware images as behavioral references where
    the HLE lacks an answer, without mixing full-firmware and direct-EAPP results.
-

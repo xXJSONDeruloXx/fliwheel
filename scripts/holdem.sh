@@ -53,7 +53,7 @@ if [[ ! -d "$BUNDLE" ]]; then
 fi
 
 if [[ "$DO_BUILD" -eq 1 ]]; then
-    cargo build -p clicky-desktop --bin eapp 2>&1 | tail -3
+    cargo build -p fliwheel-desktop --bin eapp 2>&1 | tail -3
 fi
 
 EAPP_BIN="$(cargo metadata --format-version=1 --no-deps 2>/dev/null \

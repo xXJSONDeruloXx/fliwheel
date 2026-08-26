@@ -1,0 +1,15 @@
+[package]
+name = "fliwheel-core"
+version = "0.1.0"
+authors = ["Daniel Prilik <danielprilik@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+byteorder = "1.3"
+chrono = "0.4"
+log = "0.4"
+thiserror = "1.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+armv4t_emu = { git = "https://github.com/daniel5151/armv4t_emu.git" }

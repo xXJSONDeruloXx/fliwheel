@@ -64,7 +64,7 @@ events, not proof of host speaker output or mixer parity.
 ## Reproduce
 
 ```bash
-cargo build --release -p clicky-desktop --bin eapp
+cargo build --release -p fliwheel-desktop --bin eapp
 
 CLICKY_EXPERIMENTAL_GL_HLE=1 \
 CLICKY_GL_GATE_B=1 \

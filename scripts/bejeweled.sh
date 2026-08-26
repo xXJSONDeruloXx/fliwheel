@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 #
-# scripts/tetris.sh — launch the Bejeweled iPod game in headed mode with all the
+# scripts/bejeweled.sh — launch the Bejeweled iPod game in headed mode with all the
 # experimental live GL HLE diagnostics enabled.
 #
 # Usage:
-#   ./scripts/tetris.sh                 # default: build + headed run, log to /tmp
-#   ./scripts/tetris.sh --timeout 15    # auto-terminate after 15 seconds
-#   ./scripts/tetris.sh --no-capture    # skip PPM frame captures
-#   ./scripts/tetris.sh --no-build      # skip the cargo build step
-#   ./scripts/tetris.sh --headless      # no window (for CI / quick checks)
-#   ./scripts/tetris.sh --verbose       # debug-level logging
-#   ./scripts/tetris.sh --dump 30       # dump first 30 presented frames as PPM
-#   ./scripts/tetris.sh -- /path/to/bundle   # override bundle dir (must be last)
+#   ./scripts/bejeweled.sh                 # default: build + headed run, log to /tmp
+#   ./scripts/bejeweled.sh --timeout 15    # auto-terminate after 15 seconds
+#   ./scripts/bejeweled.sh --no-capture    # skip PPM frame captures
+#   ./scripts/bejeweled.sh --no-build      # skip the cargo build step
+#   ./scripts/bejeweled.sh --headless      # no window (for CI / quick checks)
+#   ./scripts/bejeweled.sh --verbose       # debug-level logging
+#   ./scripts/bejeweled.sh --dump 30       # dump first 30 presented frames as PPM
+#   ./scripts/bejeweled.sh -- /path/to/bundle   # override bundle dir (must be last)
 #
-# Logs are written to: /tmp/tetris_run_YYYYMMDD_HHMMSS.log
-# Captures (if enabled): /tmp/tetris_capture_YYYYMMDD_HHMMSS/
+# Logs are written to: /tmp/bejeweled_run_YYYYMMDD_HHMMSS.log
+# Captures (if enabled): /tmp/bejeweled_capture_YYYYMMDD_HHMMSS/
 #
 # All CLICKY_* env vars below can be overridden from your shell.
 
@@ -24,13 +24,13 @@ set -euo pipefail
 # Defaults — tweak these or override via env / flags
 # ---------------------------------------------------------------------------
 
-# Path to the Bejeweled bundle (Games_RO/55555). Override with $TETRIS_BUNDLE.
-DEFAULT_BUNDLE="${TETRIS_BUNDLE:-$HOME/Downloads/16-ipod-games/Games_RO/55555}"
+# Path to the Bejeweled bundle (Games_RO/55555). Override with $BEJEWELED_BUNDLE.
+DEFAULT_BUNDLE="${BEJEWELED_BUNDLE:-$HOME/Downloads/16-ipod-games/Games_RO/55555}"
 BUNDLE="$DEFAULT_BUNDLE"
 
 # Where to put logs and captures.
-LOG_DIR="${TETRIS_LOG_DIR:-/tmp}"
-CAPTURE_ROOT="${TETRIS_CAPTURE_ROOT:-/tmp}"
+LOG_DIR="${BEJEWELED_LOG_DIR:-/tmp}"
+CAPTURE_ROOT="${BEJEWELED_CAPTURE_ROOT:-/tmp}"
 
 # Live GL HLE flags (the core experimental renderer).
 DO_BUILD=1
@@ -73,7 +73,7 @@ while [[ $# -gt 0 ]]; do
             echo "unknown flag: $1" >&2; exit 2 ;;
         *)
             # First positional = bundle dir; rest passed through.
-            if [[ "$BUNDLE" == "$DEFAULT_BUNDLE" && -z "${TETRIS_BUNDLE:-}" ]]; then
+            if [[ "$BUNDLE" == "$DEFAULT_BUNDLE" && -z "${BEJEWELED_BUNDLE:-}" ]]; then
                 BUNDLE="$1"; shift
             else
                 EXTRA_ARGS+=("$1"); shift
@@ -88,7 +88,7 @@ done
 
 if [[ ! -d "$BUNDLE" ]]; then
     echo "✗ bundle dir not found: $BUNDLE" >&2
-    echo "  set TETRIS_BUNDLE or pass a path: ./scripts/tetris.sh /path/to/55555" >&2
+    echo "  set BEJEWELED_BUNDLE or pass a path: ./scripts/bejeweled.sh /path/to/55555" >&2
     exit 1
 fi
 
@@ -114,18 +114,18 @@ fi
 # ---------------------------------------------------------------------------
 
 STAMP="$(date +%Y%m%d_%H%M%S)"
-LOG_FILE="$LOG_DIR/tetris_run_${STAMP}.log"
-CAPTURE_DIR="$CAPTURE_ROOT/tetris_capture_${STAMP}"
+LOG_FILE="$LOG_DIR/bejeweled_run_${STAMP}.log"
+CAPTURE_DIR="$CAPTURE_ROOT/bejeweled_capture_${STAMP}"
 
 # ---------------------------------------------------------------------------
 # Build
 # ---------------------------------------------------------------------------
 
 if [[ "$DO_BUILD" -eq 1 ]]; then
-    echo "▸ building clicky-desktop (eapp)..."
+    echo "▸ building fliwheel-desktop (eapp)..."
     # Capture build output; only show on failure (keeps the launch output clean).
-    BUILD_LOG="$(mktemp -t tetris_build.XXXXXX)"
-    if ! cargo build -p clicky-desktop --bin eapp >"$BUILD_LOG" 2>&1; then
+    BUILD_LOG="$(mktemp -t bejeweled_build.XXXXXX)"
+    if ! cargo build -p fliwheel-desktop --bin eapp >"$BUILD_LOG" 2>&1; then
         echo "✗ build failed:" >&2
         cat "$BUILD_LOG" >&2
         rm -f "$BUILD_LOG"

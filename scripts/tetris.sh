@@ -122,10 +122,10 @@ CAPTURE_DIR="$CAPTURE_ROOT/tetris_capture_${STAMP}"
 # ---------------------------------------------------------------------------
 
 if [[ "$DO_BUILD" -eq 1 ]]; then
-    echo "▸ building clicky-desktop (eapp)..."
+    echo "▸ building fliwheel-desktop (eapp)..."
     # Capture build output; only show on failure (keeps the launch output clean).
     BUILD_LOG="$(mktemp -t tetris_build.XXXXXX)"
-    if ! cargo build -p clicky-desktop --bin eapp >"$BUILD_LOG" 2>&1; then
+    if ! cargo build -p fliwheel-desktop --bin eapp >"$BUILD_LOG" 2>&1; then
         echo "✗ build failed:" >&2
         cat "$BUILD_LOG" >&2
         rm -f "$BUILD_LOG"

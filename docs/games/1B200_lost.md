@@ -260,7 +260,7 @@ Key findings in the 59 non-zero words:
 **Conclusion:** The rserver data region IS partially initialized by the game (59 words). The CAFEBABE markers indicate structured shader/render state objects. But the critical dispatch table (function pointers for rendering) is missing — it would be populated by the iPod's GL driver during shader compilation (ordinal 164).
 
 ### Experiment 15: USSE Parser Scaffold
-**Implementation:** Added `clicky-core/src/sys/eapp/usse.rs` and wired OpenGLES:164 to parse/cache the loaded `rserver.bin`.
+**Implementation:** Added `core/src/sys/eapp/usse.rs` and wired OpenGLES:164 to parse/cache the loaded `rserver.bin`.
 
 Runtime result:
 

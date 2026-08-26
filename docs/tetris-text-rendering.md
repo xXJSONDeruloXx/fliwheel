@@ -427,8 +427,8 @@ What iteration 4 found/fixed:
    the guest is not issuing expected menu-label draws in this state/path.
 
 Verification:
-- `cargo test -p clicky-core --lib live_gl::tests` → 14 passed
-- `cargo test -p clicky-core --lib eapp` → 16 passed
+- `cargo test -p fliwheel-core --lib live_gl::tests` → 14 passed
+- `cargo test -p fliwheel-core --lib eapp` → 16 passed
 - headed run `/tmp/tet_texselect_fix_headed.log`: 0 skipped, 3834 rasterized,
   selected assets match the corrected list above.
 
@@ -496,7 +496,7 @@ Verification this iteration:
 - default headed runs `/tmp/tet_iter5_default_headed.log` and
   `/tmp/tet_iter5_default_headed2.log`: stable again, 0 fatal, 0 skipped, still
   old clock string `':.0AM` because localtime is gated
-- `cargo test -p clicky-core --lib eapp` → 16 passed
+- `cargo test -p fliwheel-core --lib eapp` → 16 passed
 
 Next:
 - RE the newly exposed null-object path around `0x1801b8b4..0x1801bfb0`,
@@ -563,7 +563,7 @@ Iteration 6 implementation details:
   - headed proof `/tmp/tet_iter6_default_localtime_headed.log`: 0 fatal,
     0 skipped, `time_val_i32=483`, scalar text `8:03AM`.
   - exported frame: `/tmp/tetris_iter6_clock_fixed_latest.png`.
-  - tests: `cargo test -p clicky-core --lib eapp` → 16 passed.
+  - tests: `cargo test -p fliwheel-core --lib eapp` → 16 passed.
 
 - Re-ran string scan after the clock fix:
   `/tmp/tet_iter6_string_scan_after_clock.log`. Expected labels are still only
@@ -620,7 +620,7 @@ Additional observation for next iteration:
 
 Verification:
 
-- `cargo test -p clicky-core --lib eapp` → 16 passed.
+- `cargo test -p fliwheel-core --lib eapp` → 16 passed.
 - String scan / long no-input runs: 0 fatal, 0 skipped.
 - Input experiments: some scripted event paths still fatal at `0x180206fc`; left
   unresolved for next iteration.
@@ -679,7 +679,7 @@ Work completed this iteration:
 
 Verification:
 
-- `cargo test -p clicky-core --lib eapp` → 16 passed.
+- `cargo test -p fliwheel-core --lib eapp` → 16 passed.
 - Scripted input replay after the fix:
   `/tmp/tet_iter8_input_menu_placeholder_fix.log`
   - 0 fatal lines, 0 skipped lines.
@@ -753,8 +753,8 @@ Work completed this iteration:
 
 Verification:
 
-- `cargo test -p clicky-core --lib eapp` → 16 passed.
-- `cargo fmt --check -p clicky-core` still reports broader pre-existing repo
+- `cargo test -p fliwheel-core --lib eapp` → 16 passed.
+- `cargo fmt --check -p fliwheel-core` still reports broader pre-existing repo
   formatting drift, so no cargo-fmt churn was applied.
 - Headed default smoke after the AsyncFileIO fix:
   `/tmp/tet_iter9_headed_direct_async.log`, capture dir
@@ -831,7 +831,7 @@ Work completed this iteration:
 
 Verification:
 
-- `cargo test -p clicky-core --lib eapp` → 16 passed.
+- `cargo test -p fliwheel-core --lib eapp` → 16 passed.
 - Headed smoke after the request-completion fix:
   `/tmp/tet_iter10_headed_async3_completion.log`, capture dir
   `/tmp/tetris_capture_20260621_094751`
@@ -916,7 +916,7 @@ Iteration 11 implementation details:
 
 Verification:
 
-- `cargo test -p clicky-core --lib eapp` → 16 passed.
+- `cargo test -p fliwheel-core --lib eapp` → 16 passed.
 - Headed smoke after revert: `/tmp/tet_iter11_revert_verbose.log`, capture
   `/tmp/tetris_capture_20260621_105859`
   - 0 fatal, 0 skipped, maxframe 268 (was stuck at 18 before revert).
@@ -1035,7 +1035,7 @@ field). The reverted default keeps the recognizable menu-ish state for now.
   owner/ctx and the per-type processor/desc table above.
 
 ### Verification
-- `cargo test -p clicky-core --lib eapp` -> 16 passed.
+- `cargo test -p fliwheel-core --lib eapp` -> 16 passed.
 - default (no env) headed smoke: 0 fatal, 0 skip, maxframe 222 (menu entry
   intact; byte-equivalent to iter-11 revert).
 - RE runs: `/tmp/tet_iter12_owners.log`, `/tmp/tet_iter12_ctx.log`.
@@ -1125,7 +1125,7 @@ unchanged.
     flag that the dispatcher polls and that we never set on entry[0]/[1].
 
 ### Verification
-- `cargo test -p clicky-core --lib eapp` -> 16 passed.
+- `cargo test -p fliwheel-core --lib eapp` -> 16 passed.
 - default (no env) headed smoke: 0 fatal, 0 skip, maxframe 218 (golden).
 - RE runs: `/tmp/tet_iter13_d644.log`, `/tmp/tet_iter13_idx_dist.log`.
 
@@ -1296,7 +1296,7 @@ Empirical results:
   `ldr [entry+0x174]=-1`... actually that doesn't quite fit either.
 
 ### Verification
-- `cargo test -p clicky-core --lib eapp` ⟶ 16 passed.
+- `cargo test -p fliwheel-core --lib eapp` ⟶ 16 passed.
 - default (no env) headed smoke: 0 fatal, 0 skip, maxframe 219 (golden).
 - RE runs: `/tmp/tet_iter14_dispatch_watch.log`, `/tmp/tet_iter14_full.log`,
   `/tmp/tet_iter14_post3.log`.
@@ -1397,7 +1397,7 @@ Static RE candidates to chase next iter:
   / phase machine, not in I/O.
 
 ### Verification
-- `cargo test -p clicky-core --lib eapp` └ 16 passed.
+- `cargo test -p fliwheel-core --lib eapp` └ 16 passed.
 - default (no env) headed smoke: 0 fatal, 0 skip, maxframe 224 (golden).
 - RE runs: `/tmp/tet_iter15_full.log`, `/tmp/tet_iter15_long.log`,
   `/tmp/tet_iter15_splashdrain.log`.
@@ -1517,7 +1517,7 @@ advancement, the legal→menu gate would open.**
 
 ### Verification
 
-- `cargo test -p clicky-core --lib eapp` → 17 passed (16 + lib set).
+- `cargo test -p fliwheel-core --lib eapp` → 17 passed (16 + lib set).
 - Default golden headed: 0 fatal, 0 skip, maxframe 189 (`tet_iter16_final_default.log`).
 - RE runs with periodic drain (every 20 progress frames):
   - `/tmp/tet_iter16_splashdrain_v2.log` (full splash writer map)
@@ -1724,8 +1724,8 @@ out WHO is SUPPOSED to write byte [0x18025674]. Candidate leads:
 
 ### Verification
 
-- `cargo test -p clicky-core --lib eapp` → 16 passed.
-- `cargo test -p clicky-core --lib live_gl::tests` → 14 passed.
+- `cargo test -p fliwheel-core --lib eapp` → 16 passed.
+- `cargo test -p fliwheel-core --lib live_gl::tests` → 14 passed.
 - Default (no env) golden headed: 0 fatal, 0 skip, maxframe 244 — no regression.
 - TEST_READY headed 14s: 0 fatal, 0 skip, maxframe 8580 — state 6 steady.
 - `CLICKY_EAPP_TEST_READY=1` still default-OFF: production Tetris run unchanged.
@@ -1967,7 +1967,7 @@ state machine is gated on byte `[0x18025674]=0` forever.
 
 ### Verification
 
-- `cargo test -p clicky-core --lib eapp` → 16 passed.
+- `cargo test -p fliwheel-core --lib eapp` → 16 passed.
 - Default (no env) golden headed: 0 fatal, 0 skip, maxframe 140 (golden).
 - TEST_READY+ASYNC3_COMPLETE combined: 0 fatal, 0 skip, maxframe ~5550;
   legal text loads (188 glyph draws). No menu labels yet.
@@ -2191,8 +2191,8 @@ fires, so state is gated at 1 forever.
 
 ### Verification
 
-- `cargo test -p clicky-core --lib eapp` → 16 passed
-- `cargo test -p clicky-core --lib live_gl::tests` → 14 passed
+- `cargo test -p fliwheel-core --lib eapp` → 16 passed
+- `cargo test -p fliwheel-core --lib live_gl::tests` → 14 passed
 - Default (no env) golden headed: 0 fatal, 0 skip, maxframe 150 (no regression)
 - Timed byte test (delay=25 + ASYNC3_COMPLETE): state advances at frame 30,
   fb_hash stays at 0x97ce4ebbe87a1ae7 — confirms state=6 case doesn't render
@@ -2309,8 +2309,8 @@ short-circuits without the render work.
 
 ### Verification
 
-- `cargo test -p clicky-core --lib eapp` → 16 passed
-- `cargo test -p clicky-core --lib live_gl::tests` → 14 passed
+- `cargo test -p fliwheel-core --lib eapp` → 16 passed
+- `cargo test -p fliwheel-core --lib live_gl::tests` → 14 passed
 - default (no env) golden headed: 0 fatal, 0 skip, maxframe 135 (no regression)
 - PC-hook test (AUDIO_SLOT_BIT=0x18): state advances cleanly 1→6 at frame ~40,
   stays at state=6 stable, 0 fatal/skip
@@ -2446,8 +2446,8 @@ for iteration 22.
 
 ### Verification
 
-- `cargo test -p clicky-core --lib eapp` → 16 passed
-- `cargo test -p clicky-core --lib live_gl::tests` → 14 passed
+- `cargo test -p fliwheel-core --lib eapp` → 16 passed
+- `cargo test -p fliwheel-core --lib live_gl::tests` → 14 passed
 - Default (no env) golden headed: 0 fatal, 0 skip, maxframe 162 (no regression)
 - PC-hook long-run (90s headless): state advanced 1→6 at frame ~20 (faster
   than iter-20's frame 50); framebuffer evo'd to `9d1cba2d8a96e05d` at frame
@@ -2648,8 +2648,8 @@ patching `0x18025eb0` at `0x1b630`.
 
 ### Verification
 
-- `cargo test -p clicky-core --lib eapp` → 16 passed
-- `cargo test -p clicky-core --lib live_gl::tests` → 14 passed
+- `cargo test -p fliwheel-core --lib eapp` → 16 passed
+- `cargo test -p fliwheel-core --lib live_gl::tests` → 14 passed
 - Default headed smoke (no env): `/tmp/tet_iter22_default_headed.log`
   - 0 fatal
   - 0 skipped
@@ -2857,8 +2857,8 @@ never activates on the path that parses strings.
 
 ### Verification
 
-- `cargo test -p clicky-core --lib eapp` → 16 passed
-- `cargo test -p clicky-core --lib live_gl::tests` → 14 passed
+- `cargo test -p fliwheel-core --lib eapp` → 16 passed
+- `cargo test -p fliwheel-core --lib live_gl::tests` → 14 passed
 - Default headed smoke after input fix + traces: `/tmp/tet_iter23_default_headed.log`
   - 0 fatal
   - 0 skipped
@@ -3005,8 +3005,8 @@ the fallback branch and should not be treated as the missing main-menu renderer.
 
 ### Verification
 
-- `cargo test -p clicky-core --lib eapp` → 16 passed
-- `cargo build -p clicky-desktop --bin eapp` → passed
+- `cargo test -p fliwheel-core --lib eapp` → 16 passed
+- `cargo build -p fliwheel-desktop --bin eapp` → passed
 - Default headed smoke after diagnostic-only code changes:
   `/tmp/tet_iter24_default_headed.log`
   - 0 fatal lines
@@ -3192,8 +3192,8 @@ useful search for the true main-menu constructor should happen after
 
 ### Verification
 
-- `cargo test -p clicky-core --lib eapp` → 16 passed
-- `cargo build -p clicky-desktop --bin eapp` → passed
+- `cargo test -p fliwheel-core --lib eapp` → 16 passed
+- `cargo build -p fliwheel-desktop --bin eapp` → passed
 - Default headed smoke after diagnostic-only changes:
   `/tmp/tet_iter25_default_headed.log`
   - 0 fatal lines
@@ -3310,7 +3310,7 @@ bundle-gated.
 
 ### Verification this iteration
 
-- `cargo build -p clicky-desktop --bin eapp` passes.
+- `cargo build -p fliwheel-desktop --bin eapp` passes.
 - Vortex latest run still fatal, but original fatal is bypassed and draw
   submission is reached.
 - iQuiz/Texas crash signatures captured for separate targeted follow-up.
@@ -3435,8 +3435,8 @@ state-block issue.
 
 ### Verification this iteration
 
-- `cargo build -p clicky-desktop --bin eapp` passed.
-- `cargo test -p clicky-core --lib eapp` passed (16/16).
+- `cargo build -p fliwheel-desktop --bin eapp` passed.
+- `cargo test -p fliwheel-core --lib eapp` passed (16/16).
 - Vortex smoke: `/tmp/vortex_iter29_stateblock2.log`, `fatal=0`.
 - Tetris headed regression: `/tmp/tetris_iter29_regression.log`, `fatal=0`,
   `skipped_nonzero=0`.
@@ -3596,8 +3596,8 @@ All 16 game bundles now smoke without fatal in the 8s window:
 
 Regression checks:
 
-- `cargo build -p clicky-desktop --bin eapp` passed.
-- `cargo test -p clicky-core --lib eapp` passed (16/16).
+- `cargo build -p fliwheel-desktop --bin eapp` passed.
+- `cargo test -p fliwheel-core --lib eapp` passed (16/16).
 - Tetris headed/default regression `/tmp/tetris_iter30_regression.log`:
   `fatal=0`, `skipped_nonzero=0`.
 
@@ -3785,8 +3785,8 @@ owner callback anymore.
 
 ### Verification
 
-- `cargo build -p clicky-desktop --bin eapp` passed.
-- `cargo test -p clicky-core --lib eapp` passed (16/16).
+- `cargo build -p fliwheel-desktop --bin eapp` passed.
+- `cargo test -p fliwheel-core --lib eapp` passed (16/16).
 - Default Tetris regression `/tmp/tetris_iter31_default_regression.log`:
   `fatal=0`, `skipped_nonzero=0`.
 - Parsed-resource RE run `/tmp/tet_iter31_async0_mark.log`: `fatal=0`, owner
@@ -3917,7 +3917,7 @@ has not fired and boot remains at state 4.
 
 ### Verification
 
-- `cargo build -p clicky-desktop --bin eapp` passed after the ordinal-1/2 and
+- `cargo build -p fliwheel-desktop --bin eapp` passed after the ordinal-1/2 and
   diagnostic-overflow fixes.
 - Parsed-resource RE run `/tmp/tet_iter32_async1_async2.log`:
   - timeout exit `124`, `fatal/panic=0`,
@@ -3999,7 +3999,7 @@ left `[request+4]=2` and poisoned the next reuse.
 ### Item 2 — changed env-gated `AsyncFileIO:1` to use control status = 1
 
 Updated the env-gated Tetris ordinal-1 completion in
-`clicky-core/src/sys/eapp/mod.rs`:
+`core/src/sys/eapp/mod.rs`:
 
 - still queues the real owner callback `0x1801fbfc(owner)`,
 - still leaves byte count as 0,
@@ -4062,8 +4062,8 @@ stall.
 
 ### Verification
 
-- `cargo build -p clicky-desktop --bin eapp` passed.
-- `cargo test -p clicky-core --lib eapp` passed (16/16).
+- `cargo build -p fliwheel-desktop --bin eapp` passed.
+- `cargo test -p fliwheel-core --lib eapp` passed (16/16).
 - Default/non-env Tetris regression:
   `/tmp/tetris_iter33_default_regression.log`
   - timeout exit expected,
@@ -4242,7 +4242,7 @@ save/default-state hypothesis in an isolated bundle.
 ### Item 1 — added UTF-16 renderer-entry object tracing
 
 Added two env-gated `EAPP_STRING_TRACE=1` PCs to
-`clicky-core/src/sys/eapp/mod.rs`:
+`core/src/sys/eapp/mod.rs`:
 
 ```text
 0x18009464  UTF-16 text draw helper entry: r0=text/glyph object, r3=string object
@@ -4361,8 +4361,8 @@ first-run/name-entry object graph under the current runtime model.
 
 ### Verification
 
-- `cargo build -p clicky-desktop --bin eapp` passed.
-- `cargo test -p clicky-core --lib eapp` passed.
+- `cargo build -p fliwheel-desktop --bin eapp` passed.
+- `cargo test -p fliwheel-core --lib eapp` passed.
 - Default headed Tetris regression after the diagnostic trace addition:
   `/tmp/tetris_iter35_default_headed.log`
   - timeout exit expected,
@@ -4455,7 +4455,7 @@ Next:
 ### Item 1 — added scene/list draw provenance tracing
 
 Added three more `EAPP_STRING_TRACE=1` diagnostics in
-`clicky-core/src/sys/eapp/mod.rs`:
+`core/src/sys/eapp/mod.rs`:
 
 ```text
 0x1800c938  generic scene/list node draw recursion entry
@@ -4572,8 +4572,8 @@ or a valid non-first-run profile record before constructing the oracle menu.
 
 ### Verification
 
-- `cargo build -p clicky-desktop --bin eapp` passed.
-- `cargo test -p clicky-core --lib eapp` passed.
+- `cargo build -p fliwheel-desktop --bin eapp` passed.
+- `cargo test -p fliwheel-core --lib eapp` passed.
 - Default headed Tetris regression after the new diagnostics:
   `/tmp/tetris_iter36_default_headed.log`
   - timeout exit expected,
@@ -4683,7 +4683,7 @@ selected by the active scene graph.
 ### Item 1 — added constructor/leaf-factory tracing for `0x180237b4` scene nodes
 
 Added more `EAPP_STRING_TRACE=1` diagnostics in
-`clicky-core/src/sys/eapp/mod.rs`:
+`core/src/sys/eapp/mod.rs`:
 
 ```text
 0x1800c7a0  generic scene/list initializer; stores string payload at node+0x10
@@ -4826,8 +4826,8 @@ label graph.”
 
 ### Verification
 
-- `cargo build -p clicky-desktop --bin eapp` passed.
-- `cargo test -p clicky-core --lib eapp` passed.
+- `cargo build -p fliwheel-desktop --bin eapp` passed.
+- `cargo test -p fliwheel-core --lib eapp` passed.
 - Default headed Tetris regression after the new diagnostics:
   `/tmp/tetris_iter37_default_headed.log`
   - `fatal/panic=0`,

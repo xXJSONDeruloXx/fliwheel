@@ -1,9 +1,9 @@
-# iPod Clickwheel Games — Clicky Emulator
+# Decrypted iPod clickwheel games
 
-Game-by-game compatibility and launch documentation. The current authority is
+Game-by-game compatibility and launch documentation for fliwheel. The current
+authority is
 the [2026-08-26 interactive matrix](../game_tests/20260826_interactive_matrix.md);
-older pages retain historical investigation notes and are not completion
-claims.
+older pages retain historical investigation notes and are not completion claims.
 
 ## Quick Reference
 
@@ -194,7 +194,7 @@ For a portable corpus-wide probe, pass the root explicitly:
 - [2026-08-25 Sudoku input regression](../game_tests/20260825_sudoku_input.md)
 - [2026-08-26 Sudoku event lifecycle](../game_tests/20260826_sudoku_event_lifecycle.md)
 - [2026-08-26 normalized-coordinate projection](../game_tests/20260826_ndc_projection.md)
-- [Compatibility Report](../game_tests/20260625_compatibility_report.md) — full metrics
-- [Debug Analysis](../game_tests/debug_analysis.md) — root cause analysis
+- [Compatibility Report](../archive/reports/20260625_compatibility_report.md) — historical metrics
+- [Debug Analysis](../archive/reports/debug_analysis.md) — historical root cause analysis
 - [EAPP Format Specification](../EAPP_FORMAT_SPECIFICATION.md)
-- [Emulator Architecture](../EMULATOR_ARCHITECTURE.md)
+- [Legacy emulator architecture](../archive/firmware/EMULATOR_ARCHITECTURE.md)

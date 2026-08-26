@@ -1,5 +1,5 @@
 [workspace]
-members = ["clicky-core", "clicky-desktop", "clicky-web", "relativity"]
+members = ["core", "desktop"]
 exclude = ["vendor/armv4t_emu"]
 
 [profile.release]

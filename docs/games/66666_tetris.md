@@ -105,7 +105,7 @@ automatic for bundle `66666`; no preservation override is required.
 
 ## Testing Notes
 - Best-tested game in the emulator and current renderer reference
-- GL trace fixture: `clicky-core/tests/fixtures/eapp/tetris_gl_trace.json`
+- GL trace fixture: `core/tests/fixtures/eapp/tetris_gl_trace.json`
 - Tetris-specific code paths in `eapp/mod.rs` gated by bundle ID "66666"
 - Clickwheel ingress evidence: [`20260825_clickwheel_input.md`](../game_tests/20260825_clickwheel_input.md)
 - Text/name-entry evidence: [`20260825_tetris_text_and_name_entry.md`](../game_tests/20260825_tetris_text_and_name_entry.md)

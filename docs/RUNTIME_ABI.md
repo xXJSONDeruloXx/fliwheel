@@ -6,7 +6,7 @@ iPod clickwheel games (`.ipg` packages) contain native ARM executables in Apple'
 
 This document intentionally keeps ordinal names conservative. Unless an item is directly backed by the trace fixture, decoder report, and/or disassembly, treat it as a research note.
 
-See `docs/EAPP_GL_TRACE_DECODER_REPORT.md` and `clicky-core/tests/fixtures/eapp/tetris_gl_trace.json` for the current verified evidence.
+See `docs/EAPP_GL_TRACE_DECODER_REPORT.md` and `core/tests/fixtures/eapp/tetris_gl_trace.json` for the current verified evidence.
 
 ---
 

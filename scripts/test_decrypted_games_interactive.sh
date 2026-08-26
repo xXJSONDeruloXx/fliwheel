@@ -24,7 +24,7 @@ if [[ ! -d "$games_root" ]]; then
 fi
 
 if [[ ! -x "$eapp" ]]; then
-    cargo build --release -p clicky-desktop --bin eapp
+    cargo build --release -p fliwheel-desktop --bin eapp
 fi
 
 mkdir -p "$logs" "$captures"
