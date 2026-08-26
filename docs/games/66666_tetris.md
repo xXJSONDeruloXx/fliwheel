@@ -1,6 +1,6 @@
 # Tetris (Bundle 66666)
 
-**Status:** 🟡 TEXT + BOARD ENTRY VERIFIED | **Gameplay:** rendering improving, behavior not yet verified | **Engine:** Tetris Runtime
+**Status:** 🟡 TEXT + BOARD ENTRY VERIFIED | **Gameplay:** gravity, controls, and hard drop smoke verified; parity open | **Engine:** Tetris Runtime
 
 ## Quick Start
 ```bash
@@ -39,9 +39,10 @@ character and Select commits it to the name field. The scripted path reaches
 `MENU`, `PICK GAME`, `CONTROLS`, and the initial 10×20 board. Tetris now honors
 the guest's explicit color clear, retains the framebuffer during incremental
 board updates, and carries the paired tile transforms for the matrix/mino
-materials. The board remains intact and input changes the dynamic draw stream,
-but gravity, locking, rotation/drop mapping, persistence, and long-run play
-are not yet verified.
+materials. The board remains intact and input changes the dynamic draw stream.
+A focused follow-up now verifies pause/resume, gravity, side-button response,
+and the hard-drop transition. Wheel displacement, lock/line-clear behavior,
+exact physical mapping, persistence, and long-run play are still open.
 
 The old no-input probe used a diagnostic `CLICKY_EAPP_HOST_EVENT_FLAGS=0x10`
 injection and is not evidence that ordinary no-input execution reaches the
@@ -49,6 +50,8 @@ same state transition.
 
 See [`20260825_tetris_text_and_name_entry.md`](../game_tests/20260825_tetris_text_and_name_entry.md)
 for the exact commands and capture artifacts.
+See [`20260826_tetris_gameplay_controls.md`](../game_tests/20260826_tetris_gameplay_controls.md)
+for the gameplay timing and control evidence.
 
 ## Texture Details
 | File | Format | Dimensions | Notes |
@@ -63,17 +66,19 @@ for the exact commands and capture artifacts.
 
 ## Controls and reference behavior
 
-The emulator's scripted harness can inject `wheel`, `left`, `right`, and
-`action` packets at selected guest frames. The exact gameplay mapping is still
-being checked against device behavior. The contemporary [iLounge review](https://www.ilounge.com/index.php/reviews/entry/electronic-arts-tetris)
+The emulator's scripted harness can inject `wheel`, `left`, `right`, `down`,
+and `action` packets at selected guest frames. The current smoke path verifies
+gravity, pause/resume, side-button response, and hard drop; exact gameplay
+mapping is still being checked against device behavior. The contemporary [iLounge review](https://www.ilounge.com/index.php/reviews/entry/electronic-arts-tetris)
 describes wheel sweeps for horizontal movement, clickwheel side buttons for
 rotation, and center/down actions for faster or instant drops.
 
 | Key | Action |
 |-----|--------|
-| Wheel | Navigate menus/name entry; gameplay mapping under verification |
-| Left / Right | Injected gameplay control path; exact device mapping under verification |
-| Enter / Action | Select, commit, or advance the current scene |
+| Wheel | Navigate menus/name entry; gameplay displacement under verification |
+| Left / Right | Responsive gameplay path; exact rotate/move labels under verification |
+| Down | Hard-drop/lock transition observed |
+| Enter / Action | Select, commit, pause, resume, or advance the current scene |
 | M | Menu / Back |
 
 ## Environment
@@ -94,4 +99,5 @@ automatic for bundle `66666`; no preservation override is required.
 - Tetris-specific code paths in `eapp/mod.rs` gated by bundle ID "66666"
 - Clickwheel ingress evidence: [`20260825_clickwheel_input.md`](../game_tests/20260825_clickwheel_input.md)
 - Text/name-entry evidence: [`20260825_tetris_text_and_name_entry.md`](../game_tests/20260825_tetris_text_and_name_entry.md)
+- Gameplay controls evidence: [`20260826_tetris_gameplay_controls.md`](../game_tests/20260826_tetris_gameplay_controls.md)
 - Frame capture produces PPM files visible with `open /tmp/tetris_capture_*.ppm`

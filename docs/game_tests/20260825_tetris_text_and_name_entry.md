@@ -26,6 +26,9 @@ for present status; that file remains as historical RE material.
   falling-piece and projected-piece draws stay inside the well.
 - Left, right, wheel, and action events each change the observed draw/hash
   stream during the board probe.
+- A follow-up gameplay probe verifies center-button pause/resume, gravity,
+  side-button response, and the down-button hard-drop transition. See
+  [`20260826_tetris_gameplay_controls.md`](20260826_tetris_gameplay_controls.md).
 - The bounded input runs complete without a fatal memory error, panic, or
   unsupported-upload fatal.
 
@@ -69,11 +72,13 @@ CLICKY_EAPP_INPUT_SCRIPT='action:15-16,wheel=37:30-31,action:45-46,action:78-79,
 
 ## Current boundary
 
-This is not yet a fully playable Tetris result. The scripted path now reaches
-the board, and the renderer keeps the 10×20 well intact while dynamic tile
-draws change in response to input. The remaining behavioral gates are gravity,
-lock/line-clear, rotation/drop mapping, save persistence, and long-run visual
-comparison against a real-device reference. Public references describe the
+This is not yet a fully parity-verified Tetris result. The scripted path now
+reaches the board, and the renderer keeps the 10×20 well intact while dynamic
+tile draws change in response to input. A follow-up verifies gravity,
+pause/resume, side-button response, and hard drop. The remaining behavioral
+gates are wheel displacement, lock/line-clear, exact rotation/drop mapping,
+save persistence, and long-run visual comparison against a real-device
+reference. Public references describe the
 same 10×20 well and clickwheel-oriented control scheme; see the
 [iLounge review](https://www.ilounge.com/index.php/reviews/entry/electronic-arts-tetris)
 and the [archived iPod gameplay photo](https://commons.wikimedia.org/wiki/File:Tetris_on_an_iPod.jpg).

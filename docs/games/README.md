@@ -6,7 +6,7 @@ Game-by-game compatibility and launch documentation.
 
 | Game | Bundle | Script | Status | Docs |
 |------|---------|--------|--------|------|
-| Tetris | 66666 | `./scripts/tetris.sh` | 🟡 Board entry/rendering | [→](66666_tetris.md) |
+| Tetris | 66666 | `./scripts/tetris.sh` | 🟡 Gameplay smoke / rendering parity open | [→](66666_tetris.md) |
 | Cubis 2 | 99999 | `./scripts/cubis2.sh` | ✅ WORKS | [→](99999_cubis2.md) |
 | Texas Hold'em | 33333 | `./scripts/holdem.sh` | ✅ WORKS | [→](33333_holdem.md) |
 | Ms. Pac-Man | 14004 | `./scripts/mspacman.sh` | ✅ WORKS | [→](14004_mspacman.md) |
@@ -23,7 +23,7 @@ Game-by-game compatibility and launch documentation.
 | TWA/iQuiz | 11002 | — | ❌ Pack load | [→](11002_twa.md) |
 | Lost | 1B200 | — | ❌ Shader | [→](1B200_lost.md) |
 
-**Summary:** The matrix is a rendering/startup smoke baseline, not a playable-game count. The latest 20-bundle run completed all titles with the expected watchdog exit and no fatal/panic/memory-fault signatures. Tetris now has readable text, first-run name entry, menu/controls/board entry, and incremental board rendering; gravity, complete controls, persistence, and host audio remain open. Individual title pages are the authority for current claims.
+**Summary:** The matrix is a rendering/startup smoke baseline, not a playable-game count. The latest 20-bundle run completed all titles with the expected watchdog exit and no fatal/panic/memory-fault signatures. Tetris now has readable text, first-run name entry, menu/controls/board entry, incremental board rendering, gravity, pause/resume, side-button response, and hard-drop smoke; wheel displacement, line clears, persistence, long-run visual parity, and host audio remain open. Individual title pages are the authority for current claims.
 
 Latest corpus report: `/tmp/fliwheel_regression_20260826_auto/20260825_221028_decrypted_games.md`.
 
