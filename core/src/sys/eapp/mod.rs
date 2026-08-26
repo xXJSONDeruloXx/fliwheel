@@ -8347,6 +8347,7 @@ impl Eapp {
             let global = 0x180c_bd80;
             let nav = 0x180c_954c;
             let cursor = 0x180c_0674;
+            let nav_state_4 = self.read_guest_u32(nav + 4).unwrap_or(0) & 0xffff;
             let input = if (WORK_RAM_BASE..WORK_RAM_BASE + WORK_RAM_SIZE as u32)
                 .contains(&regs[4])
             {
@@ -8355,9 +8356,10 @@ impl Eapp {
                 0
             };
             details.push_str(&format!(
-                " bejeweled_global=[{:#04x},{:#04x}] nav_708_70b=[{:#04x},{:#04x},{:#04x},{:#04x}] nav_724_726=[{:#04x},{:#04x},{:#04x}] cursor_674=[{:#010x},{:#010x},{:#010x}] input_obj={:#010x} input_fields=[{:#010x},{:#010x},{:#010x},{:#010x}]",
+                " bejeweled_global=[{:#04x},{:#04x}] nav_4={:#06x} nav_708_70b=[{:#04x},{:#04x},{:#04x},{:#04x}] nav_724_726=[{:#04x},{:#04x},{:#04x}] cursor_674=[{:#010x},{:#010x},{:#010x}] input_obj={:#010x} input_fields=[{:#010x},{:#010x},{:#010x},{:#010x}]",
                 self.read_guest_u8(global + 0x161).unwrap_or(0xff),
                 self.read_guest_u8(global + 0x162).unwrap_or(0xff),
+                nav_state_4,
                 self.read_guest_u8(nav + 0x708).unwrap_or(0xff),
                 self.read_guest_u8(nav + 0x709).unwrap_or(0xff),
                 self.read_guest_u8(nav + 0x70a).unwrap_or(0xff),

@@ -3,8 +3,9 @@
 Date: 2026-08-26
 
 This note records the wheel-scale correction for decrypted Bejeweled
-(`55555`). It is an ABI correction, not a claim that the tutorial or the
-full game is now playable.
+(`55555`). It is an ABI correction that enabled the first deterministic
+live-board match; it is not by itself a claim that headed play, every mode,
+audio, or saves are complete.
 
 ## Why the physical value was wrong
 
@@ -17,7 +18,15 @@ physical value directly:
   passes it through `0x1801237c`/`0x18014244` without a 96-detent conversion;
 - the gameplay handler at `0x180136d0` divides the wheel into four sectors
   using boundaries around `0x21`, `0x61`, `0xa1`, and `0xe1`, over a 256-unit
-  ring.
+  ring. Because the title's first navigation byte is the board-column axis,
+the resulting sectors map to screen directions as follows:
+
+| Guest angle | Guest field change | Screen direction |
+| --- | --- | --- |
+| `0x30` | `nav+0x709` increment | up |
+| `0x70` | `nav+0x708` decrement | left |
+| `0xb0` | `nav+0x709` decrement | down |
+| `0xf0` | `nav+0x708` increment | right |
 
 With a raw `0..95` packet, most of those sectors are unreachable. The direct
 HLE implements the EAPP import boundary and skips the RetailOS layer that
@@ -46,9 +55,27 @@ frame 849  bits=0x40000035  physical position=20
 ```
 
 The guest-side trace also shows the absolute field receiving those normalized
-values and the tutorial cursor changing. The tutorial remains in its
-“Selecting Gems” state (`nav+0x724 == 2`), so the next unresolved contract is
-the target-gem selection/tap gesture rather than packet ingress.
+values and the tutorial cursor changing. A follow-up replay held the tutorial
+completion input, entered the live board, selected `[8,6]`, and sent a
+`0xf0` right-sector tap. The guest then entered the adjacent-swap path:
+
+```text
+frame 1172  pc=0x1801667c  nav+0x4: 2 -> 3
+frame 1172  pc=0x18017e68  pair: [8,7] <-> [8,6]
+frame 1172  pc=0x18013878  nav+0x4: 3 -> 4
+```
+
+The resulting capture shows “EXCELLENT!”, a changed/refilled board, and the
+score-bar overlay. Receipt:
+
+```text
+/tmp/fliwheel_bejeweled_match_candidate_right_20260826.log
+/tmp/fliwheel_bejeweled_match_candidate_right_20260826_capture/
+```
+
+This proves the guest-side target-gem selection, tap direction, swap, and
+match-resolution path for this deterministic case. The remaining work is to
+surface the same gesture through normal headed input and expand coverage.
 
 Receipt:
 
