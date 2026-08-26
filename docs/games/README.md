@@ -19,7 +19,7 @@ claims.
 | The Sims Bowling | 1500C | ❌ Renderer/asset decode blocked | [→](1500C_simsbowling.md) |
 | The Sims Pool | 1500E | ❌ Renderer/asset decode blocked | [→](1500E_simspool.md) |
 | Sudoku | 50513 | 🟡 Input lifecycle + menu/exit path verified; board not reached | [→](50513_sudoku.md) |
-| Royal Solitaire | 50514 | 🟡 Coherent splash; board not reached | [matrix](../game_tests/20260826_interactive_matrix.md#current-matrix) |
+| Royal Solitaire | 50514 | 🟡 Coherent splash; readiness contract unresolved | [→](50514_royal_solitaire.md) |
 | Bejeweled | 55555 | 🟡 PopCap partial | [→](55555_bejeweled.md) |
 | Zuma | 44444 | 🟡 PopCap partial | [→](44444_zuma.md) |
 | Vortex | 12345 | 🟡 Animated splash/VBO open | [matrix](../game_tests/20260826_interactive_matrix.md#current-matrix) |

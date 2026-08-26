@@ -63,7 +63,7 @@ manifest. They measure visual activity, not correctness.
 | `33333` | Texas Hold'em | Corrected run completes 30,000,000 cycles / 700 captured frames with 3 visual hashes, 34 draws per steady-state frame, and no fatal; the stabilized capture is the `LOADING` screen | Loading screen only; playable state not reached | Reverse the title-specific resource completion/transition path, then verify poker-table controls and sound |
 | `44444` | Zuma | 7 frames, 2 hashes, up to eight draws; only a tiny top-of-screen fragment is visible | Texture/transform partial | Verify atlas/RO resource upload and PopCap board composition |
 | `50513` | Sudoku | Recognizable title screen; reversed-register event heads now drain cleanly, and Menu enters the save/settings teardown loop. An opt-in full RLB completion runs its callback chain but adds no board draws | Input lifecycle and Menu/exit path verified; board not reached | Derive the puzzle-start/select contract and render the puzzle grid |
-| `50514` | Royal Solitaire | 700 frames, 26 hashes and 59 changes; the character splash is now spatially coherent after the shared NDC projection fix, with 638 zero-draw frames | Coherent splash and input lifecycle; board not reached | Advance the title state and validate card/selection interaction |
+| `50514` | Royal Solitaire | 700 frames, 26 hashes and 59 changes; the character splash is spatially coherent, scripted event nodes are consumed, and the savefile request completes | Coherent splash; readiness/object contract unresolved and board not reached | Reconstruct the manager readiness callback, then validate card/selection interaction |
 | `55555` | Bejeweled | 6 frames, 3 hashes and 3 changes, up to 37 draws; title/jewel fragments but no coherent board | PopCap partial | Repair DMA/texture composition and then test wheel selection/moves |
 | `66666` | Tetris | Corrected run reaches frame 501 with 20 hashes and up to 382 draws; the separate targeted schedule reaches the board, pause/resume, left/right, hard drop, and indexed `Menu.wav`/`Move.wav`/`Drop.wav` events | Best current target; interactive partial, not complete | Finish wheel displacement, line clears, persistence, long-run visual parity, and sound mixing |
 | `77777` | Mahjong | 700 frames, 71 hashes, up to eight draws; mostly dotted/garbled title output | Texture/UV partial | Decode the `main.rlb` resource path and tile atlas |
@@ -124,6 +124,11 @@ Evidence is retained at `/tmp/fliwheel_holdem_ok_sweep_20260826/` and
   forcing it exposed unresolved init/render-server contracts in `14004`,
   `1500C`, and `1500E`; the default matrix stays on the no-fatal path. See
   [the init-vector probe](20260826_eapp_init_vectors.md).
+- Royal Solitaire's readiness investigation confirmed that its event list is
+  delivered and consumed and that its savefile request completes; the guest
+  manager gate at `0x180cfa5c` remains at `2`. A diagnostic clear only tears
+  down the manager and leaves the splash, so no unconditional gate patch was
+  accepted. See [the readiness-contract probe](20260826_royal_readiness.md).
 
 ## External visual/control references
 

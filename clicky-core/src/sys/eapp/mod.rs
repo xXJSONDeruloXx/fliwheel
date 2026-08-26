@@ -445,6 +445,11 @@ pub struct Eapp {
     dumped_requests: HashSet<u32>,
     /// Per-PC counters for env-gated Tetris localization/string-table tracing.
     string_trace_hits: HashMap<u32, u32>,
+    /// Bounded guest-PC probes used for title-specific runtime reverse
+    /// engineering. Empty unless CLICKY_EAPP_PC_TRACE is set.
+    guest_pc_trace_pcs: HashSet<u32>,
+    guest_pc_trace_hits: HashMap<u32, u32>,
+    guest_pc_trace_limit: u32,
     /// Per-(module, ordinal) call counters, to find render-critical imports.
     import_call_counts: HashMap<(String, u32), u64>,
     /// Per-frame import counters used by the optional startup-progress trace.
@@ -700,6 +705,9 @@ impl Eapp {
             staged_files: HashMap::new(),
             dumped_requests: HashSet::new(),
             string_trace_hits: HashMap::new(),
+            guest_pc_trace_pcs: Self::parse_pc_trace_env(),
+            guest_pc_trace_hits: HashMap::new(),
+            guest_pc_trace_limit: Self::parse_pc_trace_limit_env(),
             import_call_counts: HashMap::new(),
             frame_import_counts: HashMap::new(),
             startup_progress: StartupProgressTrace::from_env(),
@@ -1673,6 +1681,7 @@ impl Eapp {
 
         self.observe_audio_guest_pc(pc);
         self.maybe_trace_string_path(pc);
+        self.maybe_trace_guest_pc(pc);
 
         self.maybe_patch_guest_state(pc);
         if self.handle_guest_svc(pc) {
@@ -1960,6 +1969,29 @@ impl Eapp {
         let addr = parse_num(addr_str)?;
         let len = parse_num(len_str).unwrap_or(0x20);
         Some((addr, addr.wrapping_add(len)))
+    }
+
+    /// Parse a comma-separated list of guest PCs for the bounded diagnostic
+    /// trace. This is intentionally opt-in so normal execution has no extra
+    /// per-instruction parsing or logging overhead.
+    fn parse_pc_trace_env() -> HashSet<u32> {
+        let parse_num = |s: &str| -> Option<u32> {
+            let s = s.trim().trim_start_matches("0x").trim_start_matches("0X");
+            u32::from_str_radix(s, 16).ok().or_else(|| s.parse::<u32>().ok())
+        };
+        std::env::var("CLICKY_EAPP_PC_TRACE")
+            .ok()
+            .into_iter()
+            .flat_map(|raw| raw.split(',').filter_map(parse_num).collect::<Vec<_>>())
+            .collect()
+    }
+
+    fn parse_pc_trace_limit_env() -> u32 {
+        std::env::var("CLICKY_EAPP_PC_TRACE_LIMIT")
+            .ok()
+            .and_then(|value| value.trim().parse::<u32>().ok())
+            .unwrap_or(24)
+            .max(1)
     }
 
     /// Parse `CLICKY_EAPP_HW_TRACE`. `1` enables a bounded trace with the
@@ -7934,6 +7966,87 @@ impl Eapp {
             regs[2],
             regs[3],
             details.join(" ")
+        );
+    }
+
+    /// Bounded guest-PC trace for runtime reverse engineering. The trace is
+    /// deliberately generic at the CPU level but includes the Royal
+    /// Solitaire manager state block when that title is running. It is useful
+    /// for distinguishing a missing host callback from a guest-side object
+    /// contract without changing the default execution path.
+    fn maybe_trace_guest_pc(&mut self, pc: u32) {
+        if !self.guest_pc_trace_pcs.contains(&pc) {
+            return;
+        }
+        let hit = {
+            let count = self.guest_pc_trace_hits.entry(pc).or_insert(0);
+            *count = count.wrapping_add(1);
+            *count
+        };
+        if hit > self.guest_pc_trace_limit {
+            return;
+        }
+
+        let mode = self.cpu.mode();
+        let regs = [
+            self.cpu.reg_get(mode, 0),
+            self.cpu.reg_get(mode, 1),
+            self.cpu.reg_get(mode, 2),
+            self.cpu.reg_get(mode, 3),
+            self.cpu.reg_get(mode, 4),
+            self.cpu.reg_get(mode, 5),
+            self.cpu.reg_get(mode, 6),
+            self.cpu.reg_get(mode, 7),
+        ];
+        let lr = self.cpu.reg_get(mode, reg::LR);
+        let sp = self.cpu.reg_get(mode, reg::SP);
+        let mut details = format!(
+            "r0={:#010x} r1={:#010x} r2={:#010x} r3={:#010x} r4={:#010x} r5={:#010x} r6={:#010x} r7={:#010x} lr={:#010x} sp={:#010x}",
+            regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7], lr, sp
+        );
+
+        if self.metadata.title == "50514" {
+            let global = 0x180c_fa5c;
+            let global_bytes = (0..4u32)
+                .map(|offset| self.read_guest_u8(global + offset).unwrap_or(0xff))
+                .map(|value| format!("{:#04x}", value))
+                .collect::<Vec<_>>()
+                .join(",");
+            let global_words = (0..8u32)
+                .map(|index| {
+                    self.read_guest_u32(global + index * 4)
+                        .unwrap_or(0xdead_beef)
+                })
+                .map(|value| format!("{:#010x}", value))
+                .collect::<Vec<_>>()
+                .join(",");
+            let object = self.read_guest_u32(global + 8).unwrap_or(0);
+            let object_vt = self.read_guest_u32(object).unwrap_or(0);
+            let app = 0x1050_0b00;
+            let frame = 0x1050_2b00;
+            details.push_str(&format!(
+                " global_bytes=[{}] global_words=[{}] object={:#010x} object_vt={:#010x} app_state={:#04x} app_event_head={:#010x} frame_flags=[{:#04x},{:#04x},{:#04x},{:#04x}]",
+                global_bytes,
+                global_words,
+                object,
+                object_vt,
+                self.read_guest_u8(app).unwrap_or(0xff),
+                self.read_guest_u32(app + 0x20).unwrap_or(0),
+                self.read_guest_u8(frame + 5).unwrap_or(0xff),
+                self.read_guest_u8(frame + 6).unwrap_or(0xff),
+                self.read_guest_u8(frame + 7).unwrap_or(0xff),
+                self.read_guest_u8(frame + 8).unwrap_or(0xff),
+            ));
+        }
+
+        info!(
+            target: "EAPP_PC_TRACE",
+            "pc={:#010x} hit={} frame={} title={} {}",
+            pc,
+            hit,
+            self.frame_counter,
+            self.metadata.title,
+            details
         );
     }
 
