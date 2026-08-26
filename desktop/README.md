@@ -18,9 +18,9 @@ repository scripts.
 Pass a `Games_RO/<bundle-id>` directory, not the executable inside it:
 
 ```sh
-CLICKY_EXPERIMENTAL_GL_HLE=1 \
-CLICKY_GL_LIVE_CONTINUOUS=1 \
-CLICKY_GL_PRESENT_VFLIP=1 \
+FLIWHEEL_EXPERIMENTAL_GL_HLE=1 \
+FLIWHEEL_GL_LIVE_CONTINUOUS=1 \
+FLIWHEEL_GL_PRESENT_VFLIP=1 \
 target/release/eapp /path/to/Games_RO/66666
 ```
 

@@ -16,7 +16,7 @@ entering its frame loop.
 fliwheel now has the same lifecycle path available with:
 
 ```text
-CLICKY_EAPP_INIT_VECTORS=1
+FLIWHEEL_EAPP_INIT_VECTORS=1
 ```
 
 When enabled, the HLE supplies two zeroed 0x400-byte work-RAM contexts to the
@@ -28,7 +28,7 @@ default path remains unchanged while the init-time contracts are incomplete.
 The opt-in path completes without a fatal for `1B200` LOST:
 
 ```text
-CLICKY_EAPP_INIT_VECTORS=1 CYCLES=30000000 \
+FLIWHEEL_EAPP_INIT_VECTORS=1 CYCLES=30000000 \
 RUN_ROOT=/tmp/fliwheel_initoptin_1B200_20260826 \
 ./scripts/test_decrypted_games_interactive.sh \
   '/tmp/clicky_hle_eval.1i3DER/archive20/20 iPod games/Games_RO' 1B200

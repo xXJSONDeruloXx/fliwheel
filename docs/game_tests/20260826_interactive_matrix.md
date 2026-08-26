@@ -113,7 +113,7 @@ Evidence is retained at `/tmp/fliwheel_holdem_ok_sweep_20260826/` and
   first corpus run showed that the same virtual addresses are unrelated code
   in other binaries and produced fabricated event IDs; those counts are not
   valid audio evidence and are excluded from this matrix.
-- `CLICKY_EAPP_ASYNC3_COMPLETE=1` is now title-scoped in both the runtime and
+- `FLIWHEEL_EAPP_ASYNC3_COMPLETE=1` is now title-scoped in both the runtime and
   interactive harness. It is a provisional parsed-resource experiment for
   Tetris only; applying its completion fields to Hold'em reaches a different
   resource ABI and produced a misleading null-table fault.
@@ -131,7 +131,7 @@ Evidence is retained at `/tmp/fliwheel_holdem_ok_sweep_20260826/` and
   `rodio` sink and a guest-indexed event queue, but physical output, overlap,
   timing, and mixer parity still need a headed test and waveform regression.
 - The reference eApp lifecycle's one-time init vector is implemented behind
-  `CLICKY_EAPP_INIT_VECTORS=1` with valid scratch contexts. It remains opt-in:
+  `FLIWHEEL_EAPP_INIT_VECTORS=1` with valid scratch contexts. It remains opt-in:
   forcing it exposed unresolved init/render-server contracts in `14004`,
   `1500C`, and `1500E`; the default matrix stays on the no-fatal path. See
   [the init-vector probe](20260826_eapp_init_vectors.md).
@@ -156,7 +156,7 @@ Evidence is retained at `/tmp/fliwheel_holdem_ok_sweep_20260826/` and
   that texture name over the reused material handle when UV ranges overlap. A
   30M-cycle pair regression shows Zuma selecting uploads `7`, `6`, and `5` for
   distinct overlay roles and presenting an upright board. PopCap bundles now
-  default to the guest screen origin, with `CLICKY_GL_PRESENT_VFLIP` retained
+  default to the guest screen origin, with `FLIWHEEL_GL_PRESENT_VFLIP` retained
   for explicit A/B tests. See the [PopCap DMA contract probe](20260826_popcap_dma_contract.md).
 - The legacy `Filesytem` ABI now has independent synthetic handles,
   sequential host-backed reads, and close semantics. Bejeweled reaches its

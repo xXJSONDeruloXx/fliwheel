@@ -44,9 +44,9 @@ splash followed by zero-draw frames. It is not the puzzle-start control.
 The following sequence reaches that path without a fatal or stale event head:
 
 ```bash
-CLICKY_EAPP_INPUT_SCRIPT='menu:450-452,action:550-552' \
-CLICKY_EXPERIMENTAL_GL_HLE=1 CLICKY_GL_GATE_B=1 \
-CLICKY_GL_LIVE_CONTINUOUS=1 CLICKY_GL_PRESENT_VFLIP=1 \
+FLIWHEEL_EAPP_INPUT_SCRIPT='menu:450-452,action:550-552' \
+FLIWHEEL_EXPERIMENTAL_GL_HLE=1 FLIWHEEL_GL_GATE_B=1 \
+FLIWHEEL_GL_LIVE_CONTINUOUS=1 FLIWHEEL_GL_PRESENT_VFLIP=1 \
 ./target/release/eapp /path/to/Games_RO/50513 --headless
 ```
 
@@ -61,9 +61,9 @@ stages the complete file at the guest owner payload and executes the observed
 
 ```bash
 EAPP_SUDOKU_ASYNC0_COMPLETE=1 \
-CLICKY_EAPP_INPUT_SCRIPT='action:450-452' \
-CLICKY_EXPERIMENTAL_GL_HLE=1 CLICKY_GL_GATE_B=1 \
-CLICKY_GL_LIVE_CONTINUOUS=1 CLICKY_GL_PRESENT_VFLIP=1 \
+FLIWHEEL_EAPP_INPUT_SCRIPT='action:450-452' \
+FLIWHEEL_EXPERIMENTAL_GL_HLE=1 FLIWHEEL_GL_GATE_B=1 \
+FLIWHEEL_GL_LIVE_CONTINUOUS=1 FLIWHEEL_GL_PRESENT_VFLIP=1 \
 ./target/release/eapp /path/to/Games_RO/50513 --headless
 ```
 

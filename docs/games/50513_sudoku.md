@@ -8,9 +8,9 @@
 ./target/release/eapp /Users/kurt/Downloads/16-ipod-games/Games_RO/50513
 
 # Exercise the currently verified Menu path in headless mode
-CLICKY_EAPP_INPUT_SCRIPT='menu:30-40' \
-  CLICKY_EXPERIMENTAL_GL_HLE=1 CLICKY_GL_GATE_B=1 \
-  CLICKY_GL_LIVE_CONTINUOUS=1 CLICKY_GL_PRESENT_VFLIP=1 \
+FLIWHEEL_EAPP_INPUT_SCRIPT='menu:30-40' \
+  FLIWHEEL_EXPERIMENTAL_GL_HLE=1 FLIWHEEL_GL_GATE_B=1 \
+  FLIWHEEL_GL_LIVE_CONTINUOUS=1 FLIWHEEL_GL_PRESENT_VFLIP=1 \
   ./target/release/eapp /path/to/Games_RO/50513 --headless
 ```
 
@@ -64,8 +64,8 @@ still need work.
 
 ## Environment
 ```bash
-CLICKY_EXPERIMENTAL_GL_HLE=1
-CLICKY_GL_GATE_B=1
-CLICKY_GL_LIVE_CONTINUOUS=1
-CLICKY_GL_PRESENT_VFLIP=1    # auto-suppressed for NDC frames
+FLIWHEEL_EXPERIMENTAL_GL_HLE=1
+FLIWHEEL_GL_GATE_B=1
+FLIWHEEL_GL_LIVE_CONTINUOUS=1
+FLIWHEEL_GL_PRESENT_VFLIP=1    # auto-suppressed for NDC frames
 ```

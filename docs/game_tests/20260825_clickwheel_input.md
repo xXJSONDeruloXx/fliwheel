@@ -25,8 +25,8 @@ continues to use the existing edge-linked event list and held-state mask.
 Headless scripts support `wheelup`, `wheeldown`, and explicit relative deltas:
 
 ```sh
-CLICKY_EAPP_INPUT_SCRIPT='wheelup:700-710,action:740-745'
-CLICKY_EAPP_INPUT_SCRIPT='wheel=-2:300-305'
+FLIWHEEL_EAPP_INPUT_SCRIPT='wheelup:700-710,action:740-745'
+FLIWHEEL_EAPP_INPUT_SCRIPT='wheel=-2:300-305'
 ```
 
 Unit coverage verifies the absolute position and wrap behavior:

@@ -4,6 +4,11 @@
 
 set -euo pipefail
 
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# Keep environment naming and legacy compatibility in one place for all
+# launchers and matrix harnesses.
+source "$script_dir/lib/runtime_env.sh"
+
 if [[ $# -lt 1 ]]; then
     printf 'usage: %s <game-key> [options] [-- eapp-args...]\n' "$0" >&2
     exit 2
@@ -39,7 +44,7 @@ case "$GAME_KEY" in
         ;;
 esac
 
-repo_dir=$(cd "$(dirname "$0")/.." && pwd)
+repo_dir=$(cd "$script_dir/.." && pwd)
 default_bundle="$HOME/Downloads/16-ipod-games/Games_RO/$BUNDLE_ID"
 BUNDLE="${!BUNDLE_VAR:-$default_bundle}"
 LOG_DIR="${!BUNDLE_LOG_VAR:-/tmp}"
@@ -149,18 +154,18 @@ else
     export RUST_LOG='EAPP_GL=info,EAPP=info,EAPP_PROGRESS=info,EAPP_IMPORT=info'
 fi
 
-export CLICKY_EXPERIMENTAL_GL_HLE="${CLICKY_EXPERIMENTAL_GL_HLE:-1}"
-export CLICKY_GL_GATE_B="${CLICKY_GL_GATE_B:-1}"
-export CLICKY_GL_LIVE_CONTINUOUS="${CLICKY_GL_LIVE_CONTINUOUS:-1}"
+fliwheel_env_default EXPERIMENTAL_GL_HLE 1
+fliwheel_env_default GL_GATE_B 1
+fliwheel_env_default GL_LIVE_CONTINUOUS 1
 if [[ "$DEFAULT_VFLIP" != auto ]]; then
-    export CLICKY_GL_PRESENT_VFLIP="${CLICKY_GL_PRESENT_VFLIP:-$DEFAULT_VFLIP}"
+    fliwheel_env_default GL_PRESENT_VFLIP "$DEFAULT_VFLIP"
 fi
-export CLICKY_STARTUP_PROGRESS_TRACE="${CLICKY_STARTUP_PROGRESS_TRACE:-1}"
-export CLICKY_STARTUP_PROGRESS_FRAMES="${CLICKY_STARTUP_PROGRESS_FRAMES:-300}"
-export CLICKY_STARTUP_PROGRESS_INTERVAL="${CLICKY_STARTUP_PROGRESS_INTERVAL:-60}"
+fliwheel_env_default STARTUP_PROGRESS_TRACE 1
+fliwheel_env_default STARTUP_PROGRESS_FRAMES 300
+fliwheel_env_default STARTUP_PROGRESS_INTERVAL 60
 
 if [[ "$SPECIAL" == lost ]]; then
-    export CLICKY_EAPP_LOST_SPLASH="${CLICKY_EAPP_LOST_SPLASH:-1}"
+    fliwheel_env_default EAPP_LOST_SPLASH 1
 fi
 
 stamp=$(date -u +%Y%m%d_%H%M%S)
@@ -169,14 +174,14 @@ CAPTURE_DIR="$CAPTURE_ROOT/${GAME_KEY}_capture_${stamp}"
 
 if [[ "$DO_CAPTURE" -eq 1 ]]; then
     mkdir -p "$CAPTURE_DIR"
-    export CLICKY_STARTUP_CAPTURE_DIR="${CLICKY_STARTUP_CAPTURE_DIR:-$CAPTURE_DIR}"
-    export CLICKY_STARTUP_CAPTURE_PERIOD="${CLICKY_STARTUP_CAPTURE_PERIOD:-30}"
-    export CLICKY_STARTUP_CAPTURE_MAX_FRAMES="${CLICKY_STARTUP_CAPTURE_MAX_FRAMES:-1500}"
-    export CLICKY_STARTUP_CAPTURE_MAX_DUMPS="${CLICKY_STARTUP_CAPTURE_MAX_DUMPS:-500}"
+    fliwheel_env_default STARTUP_CAPTURE_DIR "$CAPTURE_DIR"
+    fliwheel_env_default STARTUP_CAPTURE_PERIOD 30
+    fliwheel_env_default STARTUP_CAPTURE_MAX_FRAMES 1500
+    fliwheel_env_default STARTUP_CAPTURE_MAX_DUMPS 500
 fi
 
 if [[ "$DUMP_FRAMES" -gt 0 ]]; then
-    export CLICKY_GL_DUMP_FRAMES="$DUMP_FRAMES"
+    export FLIWHEEL_GL_DUMP_FRAMES="$DUMP_FRAMES"
 fi
 
 RUN_ARGS=("$BUNDLE")

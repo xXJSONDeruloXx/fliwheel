@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+source "$script_dir/lib/runtime_env.sh"
+
 if [[ $# -lt 1 ]]; then
     printf 'usage: %s /path/to/Games_RO [bundle-id ...]\n' "$0" >&2
     exit 2
@@ -8,7 +11,7 @@ fi
 
 games_root=$1
 shift
-repo_dir=$(cd "$(dirname "$0")/.." && pwd)
+repo_dir=$(cd "$script_dir/.." && pwd)
 eapp=${EAPP:-"$repo_dir/target/release/eapp"}
 cycles=${CYCLES:-50000000}
 input_script=${INPUT_SCRIPT:-'action:18-20,action:45-47,action:80-82,action:130-132,wheel=3:180-182,left:230-232,right:280-282,up:330-332,down:380-382,action:430-432'}
@@ -71,10 +74,10 @@ selected_bundle() {
     return 1
 }
 
-export CLICKY_EXPERIMENTAL_GL_HLE=1
-export CLICKY_GL_GATE_B=1
-export CLICKY_GL_LIVE_CONTINUOUS=1
-export CLICKY_EAPP_INPUT_SCRIPT="$input_script"
+fliwheel_env_default EXPERIMENTAL_GL_HLE 1
+fliwheel_env_default GL_GATE_B 1
+fliwheel_env_default GL_LIVE_CONTINUOUS 1
+fliwheel_env_default EAPP_INPUT_SCRIPT "$input_script"
 export EAPP_AUDIO_DISABLE=1
 export EAPP_AUDIO_EVENT_TRACE=1
 export RUST_LOG=${RUST_LOG:-'EAPP_GL=info,EAPP=warn,EAPP_IMPORT=info,EAPP_AUDIO=info,EAPP_PROGRESS=info'}
@@ -90,16 +93,16 @@ for bundle in "$games_root"/*; do
     mkdir -p "$capture_dir"
 
     run_env=(
-        "CLICKY_STARTUP_CAPTURE_DIR=$capture_dir"
-        "CLICKY_STARTUP_CAPTURE_PERIOD=1"
-        "CLICKY_STARTUP_CAPTURE_MAX_FRAMES=700"
-        "CLICKY_STARTUP_CAPTURE_MAX_DUMPS=100"
+        "FLIWHEEL_STARTUP_CAPTURE_DIR=$capture_dir"
+        "FLIWHEEL_STARTUP_CAPTURE_PERIOD=1"
+        "FLIWHEEL_STARTUP_CAPTURE_MAX_FRAMES=700"
+        "FLIWHEEL_STARTUP_CAPTURE_MAX_DUMPS=100"
     )
     if [[ "$id" == "66666" ]]; then
         # The parsed-resource completion experiment is currently Tetris-only.
         # Other bundles use different callback/resource contracts; enabling it
         # globally turns valid title-specific behavior into false faults.
-        run_env+=("CLICKY_EAPP_ASYNC3_COMPLETE=1")
+        run_env+=("FLIWHEEL_EAPP_ASYNC3_COMPLETE=1")
     fi
 
     set +e

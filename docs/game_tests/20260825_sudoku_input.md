@@ -16,10 +16,10 @@ machine without changing the default input behavior for the other games.
 ## Reproduction
 
 ```sh
-CLICKY_EAPP_INPUT_SCRIPT='menu:30-40' \
-  CLICKY_EXPERIMENTAL_GL_HLE=1 CLICKY_GL_GATE_B=1 \
-  CLICKY_GL_LIVE_CONTINUOUS=1 CLICKY_GL_PRESENT_VFLIP=1 \
-  CLICKY_STARTUP_PROGRESS_TRACE=1 \
+FLIWHEEL_EAPP_INPUT_SCRIPT='menu:30-40' \
+  FLIWHEEL_EXPERIMENTAL_GL_HLE=1 FLIWHEEL_GL_GATE_B=1 \
+  FLIWHEEL_GL_LIVE_CONTINUOUS=1 FLIWHEEL_GL_PRESENT_VFLIP=1 \
+  FLIWHEEL_STARTUP_PROGRESS_TRACE=1 \
   RUST_LOG='EAPP_INPUT=info,EAPP_PROGRESS=info,EAPP=warn,EAPP_IMPORT=warn' \
   timeout 3s target/release/eapp \
     '/tmp/clicky_hle_eval.1i3DER/archive20/20 iPod games/Games_RO/50513' \

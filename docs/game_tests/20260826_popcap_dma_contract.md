@@ -52,7 +52,7 @@ The runner can now preserve the exact completed DMA payload before the HLE
 composites it into a presented frame:
 
 ```text
-CLICKY_EAPP_DMA_DUMP_DIR=/tmp/fliwheel_popcap_raw \
+FLIWHEEL_EAPP_DMA_DUMP_DIR=/tmp/fliwheel_popcap_raw \
   target/release/eapp '<game-dir>' --headless --cycles 50000000
 ```
 
@@ -76,7 +76,7 @@ For source/destination attribution, add the bounded hardware trace and register
 state:
 
 ```text
-CLICKY_EAPP_HW_TRACE=32780 CLICKY_EAPP_HW_TRACE_REGS=1 \
+FLIWHEEL_EAPP_HW_TRACE=32780 FLIWHEEL_EAPP_HW_TRACE_REGS=1 \
   target/release/eapp '<game-dir>' --headless --cycles 50000000
 ```
 
@@ -89,7 +89,7 @@ investigation focused on the guest-produced buffer and aperture semantics.
 ## Control-read A/B
 
 The synthetic control aperture historically returned `1` for every read. The
-opt-in `CLICKY_EAPP_HW_CONTROL_VALUE=<value>` override makes that value
+opt-in `FLIWHEEL_EAPP_HW_CONTROL_VALUE=<value>` override makes that value
 measurable without changing framebuffer writes. A paired 50,000,000-cycle run
 with the value forced to `0` produced the same result as the default for both
 titles:
@@ -116,7 +116,7 @@ the default remains `1`.
 
 The first aperture store occurs inside the optimized ARM copy after its first
 16-byte load, so `r1 - 16` is the start of the source buffer at that store.
-`CLICKY_EAPP_DMA_SOURCE_DUMP_DIR=<dir>` preserves that work-RAM range before
+`FLIWHEEL_EAPP_DMA_SOURCE_DUMP_DIR=<dir>` preserves that work-RAM range before
 the HLE writes the aperture. The paired source and DMA payloads are identical:
 
 | Title | Source address | Source SHA-256 | DMA SHA-256 |
@@ -144,9 +144,9 @@ watchpoint records the guest registers at the first write into a surface and
 can dump the source range one copy earlier:
 
 ```text
-CLICKY_EAPP_WATCH=0x13d9df70,0x2580 \
-CLICKY_EAPP_WATCH_REGS=1 \
-CLICKY_EAPP_WATCH_SOURCE_DUMP_DIR=/tmp/fliwheel_popcap_watch \
+FLIWHEEL_EAPP_WATCH=0x13d9df70,0x2580 \
+FLIWHEEL_EAPP_WATCH_REGS=1 \
+FLIWHEEL_EAPP_WATCH_SOURCE_DUMP_DIR=/tmp/fliwheel_popcap_watch \
 target/release/eapp '<game-dir>' --headless --cycles 50000000
 ```
 
@@ -294,7 +294,7 @@ overlay material/UV pairs and then drive a board-entry input sequence.
 
 The firmware reference model in `~/Developer/ipod-emulator` documents
 `0x14000000..0x18000000` as an uncached SDRAM alias. An opt-in fliwheel probe
-(`CLICKY_EAPP_UNCACHED_ALIAS=1`) mapped that window onto the eApp work RAM while
+(`FLIWHEEL_EAPP_UNCACHED_ALIAS=1`) mapped that window onto the eApp work RAM while
 mirroring the observed DMA region for capture. Bejeweled produced the same
 final presented hash, then exited with a fatal read at PC `0x00000008` from
 `0x00000004` after the full frame was presented. This is negative A/B evidence:
@@ -341,7 +341,7 @@ track, launcher interaction, and some overlay artwork remain incomplete.
 Bejeweled's focused filesystem regression now reaches its board and built-in
 tutorial; its selector interaction remains incomplete.
 
-The orientation A/B control run with `CLICKY_GL_PRESENT_VFLIP=0` produced the
+The orientation A/B control run with `FLIWHEEL_GL_PRESENT_VFLIP=0` produced the
 same upright Zuma screen. The HLE therefore defaults PopCap bundles `44444`
 and `55555` to the guest screen origin; the environment variable remains
 available for explicit comparisons. Visual references used to sanity-check
@@ -355,7 +355,7 @@ the expected upright device presentation include [a Bejeweled iPod image](https:
 The automatic orientation selector receives the manifest title from the EAPP
 loader, not the numeric bundle directory name. The selector now recognizes
 both forms, so PopCap's guest screen origin is selected when
-`CLICKY_GL_PRESENT_VFLIP` is unset. The post-fix 30,000,000-cycle pair was:
+`FLIWHEEL_GL_PRESENT_VFLIP` is unset. The post-fix 30,000,000-cycle pair was:
 
 ```text
 /tmp/fliwheel_reorg_popcap_20260826/interactive_matrix.md

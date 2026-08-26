@@ -154,28 +154,28 @@ Offset  Value           Interpretation
 **Frame loop:** `13, 12, 159, 157`
 
 ### Experiment 2: miscTBD:6 Return Value
-**Setup:** `CLICKY_MISCTBD6_RET=1` (returns 1 instead of 0)  
+**Setup:** `FLIWHEEL_MISCTBD6_RET=1` (returns 1 instead of 0)
 **Rationale:** miscTBD:6 is called with r1 pointing inside rserver region — might be a render server communication channel whose return value gates drawing  
 **Result:** 0 draws per frame  
 **Frame loop:** `13, 12, 159, 157` (unchanged)
 
 ### Experiment 3: miscTBD:6 Large Return Value
-**Setup:** `CLICKY_MISCTBD6_RET=9999`  
+**Setup:** `FLIWHEEL_MISCTBD6_RET=9999`
 **Rationale:** Return value might be a handle or capability ID  
 **Result:** 0 draws per frame (unchanged)
 
 ### Experiment 4: Rserver Header Fill (incrementing values)
-**Setup:** `CLICKY_EAPP_FILL_RSERVER_HEADER=1` — fills 128 header words with values 1..128  
+**Setup:** `FLIWHEEL_EAPP_FILL_RSERVER_HEADER=1` — fills 128 header words with values 1..128
 **Rationale:** The 0x200-byte header at 0x10001038 is all zeros; filling it would satisfy any null-pointer checks  
 **Result:** 0 draws per frame (unchanged)  
 **Conclusion:** The header values are NOT the sole gating factor
 
 ### Experiment 5: Rserver Header Fill + miscTBD:6
-**Setup:** Both CLICKY_EAPP_FILL_RSERVER_HEADER=1 and CLICKY_MISCTBD6_RET=1  
+**Setup:** Both FLIWHEEL_EAPP_FILL_RSERVER_HEADER=1 and FLIWHEEL_MISCTBD6_RET=1
 **Result:** 0 draws per frame (unchanged)
 
 ### Experiment 6: Thumb Stub Function Pointers
-**Setup:** `CLICKY_EAPP_THUMB_STUBS=1` — allocates two ARM Thumb stubs in work RAM:
+**Setup:** `FLIWHEEL_EAPP_THUMB_STUBS=1` — allocates two ARM Thumb stubs in work RAM:
 - `stub0`: `mov r0, #0; bx lr` (returns 0)
 - `stub1`: `mov r0, #1; bx lr` (returns 1)
 
@@ -191,13 +191,13 @@ Fills all 128 header entries with `stub1 | 1` (Thumb mode bit set).
 **Conclusion:** The shader state flag is necessary but not sufficient
 
 ### Experiment 8: Skip rserver.bin Load
-**Setup:** `CLICKY_EAPP_SKIP_RSERVER=1` — don't load rserver.bin over game binary  
+**Setup:** `FLIWHEEL_EAPP_SKIP_RSERVER=1` — don't load rserver.bin over game binary
 **Rationale:** If the game's original code (before overwrite) has a rendering path that doesn't need rserver  
 **Result:** 0 draws per frame (the original game binary also has zeros at 0x10001038)  
 **Conclusion:** The game was DESIGNED to have rserver.bin overwrite its early code
 
 ### Experiment 10: Mass -1 Patching
-**Setup:** `CLICKY_EAPP_LOST_PATCH_NEG1=1` — patches all `0xFFFFFFFF` values in 4 heap regions to 0 each frame
+**Setup:** `FLIWHEEL_EAPP_LOST_PATCH_NEG1=1` — patches all `0xFFFFFFFF` values in 4 heap regions to 0 each frame
 
 Results:
 - Frame 0: 150 patches (initial clear)
@@ -208,7 +208,7 @@ Results:
 **Conclusion:** The 0xFFFFFFFF markers are not the sole blocking condition. The game re-creates them each frame, and even zeroing them out before the next frame's decision doesn't enable drawing. The blocking condition is elsewhere in the game code's execution path — possibly a variable that's never set by the render server's initialization, or a conditional branch that depends on the render server's USSE code actually executing and producing output.
 
 ### Experiment 11: Splash Screen Injection
-**Setup:** `CLICKY_EAPP_LOST_SPLASH=1` — Loads `lostLaunch.raw.lcd5` (320×216 RGB565, 16-byte header) from the game bundle and writes it into the DMA framebuffer on frame 0
+**Setup:** `FLIWHEEL_EAPP_LOST_SPLASH=1` — Loads `lostLaunch.raw.lcd5` (320×216 RGB565, 16-byte header) from the game bundle and writes it into the DMA framebuffer on frame 0
 
 Results:
 - Splash image data successfully written to DMA framebuffer
@@ -279,7 +279,7 @@ Current limitation:
 - This is a parser/VM scaffold, not full PowerVR MBX USSE semantics yet. It creates the concrete execution object needed for incremental opcode implementation.
 
 ### Experiment 17: Main Loop Render-Call Patch
-**Implementation:** Added env-gated `CLICKY_EAPP_LOST_PATCH_RENDER_CALL=1`.
+**Implementation:** Added env-gated `FLIWHEEL_EAPP_LOST_PATCH_RENDER_CALL=1`.
 
 Patch:
 - At load time, replace instruction at `0x1803B924`
@@ -413,13 +413,13 @@ This is essentially reimplementing Apple's GL driver for the iPod — a massive 
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `CLICKY_MISCTBD6_RET` | Return value for miscTBD:6 | 0 |
-| `CLICKY_EAPP_FILL_RSERVER_HEADER` | Fill header with incrementing values | disabled |
-| `CLICKY_EAPP_THUMB_STUBS` | Fill header with Thumb stub pointers | disabled |
-| `CLICKY_EAPP_LOST_SPLASH` | Inject lostLaunch splash into DMA framebuffer | disabled |
-| `CLICKY_EAPP_LOST_MEMSCAN` | Scan memory regions at frame 10 | disabled |
-| `CLICKY_EAPP_LOST_PATCH_NEG1` | Patch all 0xFFFFFFFF values to 0 each frame | disabled |
-| `CLICKY_EAPP_SKIP_RSERVER` | Skip loading rserver.bin | disabled |
+| `FLIWHEEL_MISCTBD6_RET` | Return value for miscTBD:6 | 0 |
+| `FLIWHEEL_EAPP_FILL_RSERVER_HEADER` | Fill header with incrementing values | disabled |
+| `FLIWHEEL_EAPP_THUMB_STUBS` | Fill header with Thumb stub pointers | disabled |
+| `FLIWHEEL_EAPP_LOST_SPLASH` | Inject lostLaunch splash into DMA framebuffer | disabled |
+| `FLIWHEEL_EAPP_LOST_MEMSCAN` | Scan memory regions at frame 10 | disabled |
+| `FLIWHEEL_EAPP_LOST_PATCH_NEG1` | Patch all 0xFFFFFFFF values to 0 each frame | disabled |
+| `FLIWHEEL_EAPP_SKIP_RSERVER` | Skip loading rserver.bin | disabled |
 
 ---
 

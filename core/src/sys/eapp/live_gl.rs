@@ -1,7 +1,7 @@
 //! Live OpenGLES HLE state for the experimental first-pass renderer.
 //!
 //! This module holds the *data* and *pure* helpers for the opt-in live GL HLE
-//! path (`CLICKY_EXPERIMENTAL_GL_HLE=1`). All guest-memory access is performed
+//! path (`FLIWHEEL_EXPERIMENTAL_GL_HLE=1`). All guest-memory access is performed
 //! in `mod.rs` (where the bus lives); this module only reasons about decoded
 //! state, texture selection, framebuffer presentation, and bounded diagnostics.
 //!
@@ -243,7 +243,7 @@ pub struct LiveGlState {
     pub skipped_draws_this_frame: usize,
     pub frame_anomalies: Vec<String>,
     pub diagnostics_budget: usize,
-    // --- optional continuous frame dumping (CLICKY_GL_DUMP_FRAMES=N) ---
+    // --- optional continuous frame dumping (FLIWHEEL_GL_DUMP_FRAMES=N) ---
     pub dump_remaining: usize,
     pub dump_counter: usize,
     // --- consecutive-frame hash tracking ---

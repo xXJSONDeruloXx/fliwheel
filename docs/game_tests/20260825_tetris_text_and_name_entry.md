@@ -49,16 +49,16 @@ Evidence artifacts:
 ```bash
 cargo build -p fliwheel-desktop --bin eapp
 
-CLICKY_EXPERIMENTAL_GL_HLE=1 \
-CLICKY_GL_GATE_B=1 \
-CLICKY_GL_LIVE_CONTINUOUS=1 \
-CLICKY_GL_PRESENT_VFLIP=1 \
-CLICKY_EAPP_ASYNC3_COMPLETE=1 \
-CLICKY_EAPP_INPUT_SCRIPT='action:15-16,wheel=37:30-31,action:45-46,action:78-79,action:100-101,action:150-151,action:210-211,left:260-261,right:280-281,wheel=1:300-300,action:320-321' \
-CLICKY_STARTUP_CAPTURE_DIR=/tmp/fliwheel_tetris_auto_controls_probe_20260826 \
-CLICKY_STARTUP_CAPTURE_PERIOD=1 \
-CLICKY_STARTUP_CAPTURE_MAX_FRAMES=350 \
-CLICKY_STARTUP_CAPTURE_MAX_DUMPS=350 \
+FLIWHEEL_EXPERIMENTAL_GL_HLE=1 \
+FLIWHEEL_GL_GATE_B=1 \
+FLIWHEEL_GL_LIVE_CONTINUOUS=1 \
+FLIWHEEL_GL_PRESENT_VFLIP=1 \
+FLIWHEEL_EAPP_ASYNC3_COMPLETE=1 \
+FLIWHEEL_EAPP_INPUT_SCRIPT='action:15-16,wheel=37:30-31,action:45-46,action:78-79,action:100-101,action:150-151,action:210-211,left:260-261,right:280-281,wheel=1:300-300,action:320-321' \
+FLIWHEEL_STARTUP_CAPTURE_DIR=/tmp/fliwheel_tetris_auto_controls_probe_20260826 \
+FLIWHEEL_STARTUP_CAPTURE_PERIOD=1 \
+FLIWHEEL_STARTUP_CAPTURE_MAX_FRAMES=350 \
+FLIWHEEL_STARTUP_CAPTURE_MAX_DUMPS=350 \
 RUST_LOG='EAPP_GL=info,EAPP_PROGRESS=info,EAPP_IMPORT=warn,EAPP=warn' \
 target/release/eapp \
   '/tmp/clicky_hle_eval.1i3DER/archive20/20 iPod games/Games_RO/66666' \
@@ -68,7 +68,7 @@ target/release/eapp \
 The input sequence used for the full first-run and board-entry evidence was:
 
 ```bash
-CLICKY_EAPP_INPUT_SCRIPT='action:15-16,wheel=37:30-31,action:45-46,action:78-79,action:100-101,action:150-151,action:210-211,left:260-261,right:280-281,wheel=1:300-300,action:320-321'
+FLIWHEEL_EAPP_INPUT_SCRIPT='action:15-16,wheel=37:30-31,action:45-46,action:78-79,action:100-101,action:150-151,action:210-211,left:260-261,right:280-281,wheel=1:300-300,action:320-321'
 ```
 
 ## Current boundary
@@ -84,7 +84,7 @@ same 10×20 well and clickwheel-oriented control scheme; see the
 [iLounge review](https://www.ilounge.com/index.php/reviews/entry/electronic-arts-tetris)
 and the [archived iPod gameplay photo](https://commons.wikimedia.org/wiki/File:Tetris_on_an_iPod.jpg).
 
-The older no-input run used `CLICKY_EAPP_HOST_EVENT_FLAGS=0x10`, which was a
+The older no-input run used `FLIWHEEL_EAPP_HOST_EVENT_FLAGS=0x10`, which was a
 diagnostic host-event injection and is not a valid no-input control. A clean
 no-host-event run remains in `frame_state` 1 through its sampled startup
 window. The old state-5/state-6 conclusion is retained only in the historical

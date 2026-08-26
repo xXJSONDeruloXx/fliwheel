@@ -102,13 +102,13 @@ Sudoku and Royal Solitaire use normalized coordinates and run directly:
 All games require the experimental GL HLE renderer:
 
 ```bash
-export CLICKY_EXPERIMENTAL_GL_HLE=1
-export CLICKY_GL_GATE_B=1
-export CLICKY_GL_LIVE_CONTINUOUS=1
+export FLIWHEEL_EXPERIMENTAL_GL_HLE=1
+export FLIWHEEL_GL_GATE_B=1
+export FLIWHEEL_GL_LIVE_CONTINUOUS=1
 ```
 
 Presentation orientation is selected by the title-aware default where the
-guest screen origin is known. Set `CLICKY_GL_PRESENT_VFLIP=0|1` explicitly for
+guest screen origin is known. Set `FLIWHEEL_GL_PRESENT_VFLIP=0|1` explicitly for
 an orientation A/B experiment. The normalized-coordinate engines (Sims
 Bowling/Pool, Sudoku, and Solitaire) and PopCap titles have title-specific
 defaults.

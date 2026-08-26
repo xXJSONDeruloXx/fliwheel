@@ -20,11 +20,11 @@ guest address through the request owner, and service subsequent reads while
 preserving the staged-file offset. It is enabled only with:
 
 ```sh
-CLICKY_EAPP_ASYNC3_COMPLETE=1 \
-CLICKY_EAPP_ASYNC0_RESULT=length \
-CLICKY_EAPP_ASYNC2_GENERIC=1 \
-CLICKY_EAPP_ASYNC1_GENERIC=1 \
-CLICKY_EAPP_ASYNC1_STATUS=1
+FLIWHEEL_EAPP_ASYNC3_COMPLETE=1 \
+FLIWHEEL_EAPP_ASYNC0_RESULT=length \
+FLIWHEEL_EAPP_ASYNC2_GENERIC=1 \
+FLIWHEEL_EAPP_ASYNC1_GENERIC=1 \
+FLIWHEEL_EAPP_ASYNC1_STATUS=1
 ```
 
 On Sudoku’s `Sudoku.rlb`, the first staged read consumed 4096 bytes at offset
@@ -36,7 +36,7 @@ compatibility claim.
 
 ## Hardware trace result
 
-`CLICKY_EAPP_HW_TRACE=1` and `CLICKY_EAPP_HW_TRACE_READS=<budget>` now provide
+`FLIWHEEL_EAPP_HW_TRACE=1` and `FLIWHEEL_EAPP_HW_TRACE_READS=<budget>` now provide
 bounded read/write traces for the hardware aperture. A Bejeweled trace showed
 that writes near `0x1402000c` are framebuffer pixel offsets used by the DMA
 overlay path, not a completion/status register. No separate DMA completion

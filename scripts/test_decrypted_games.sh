@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+source "$script_dir/lib/runtime_env.sh"
+
 if [[ $# -ne 1 ]]; then
     printf 'usage: %s /path/to/Games_RO\n' "$0" >&2
     exit 2
 fi
 
 games_root=$1
-repo_dir=$(cd "$(dirname "$0")/.." && pwd)
+repo_dir=$(cd "$script_dir/.." && pwd)
 eapp=${EAPP:-"$repo_dir/target/release/eapp"}
 timeout_seconds=${TIMEOUT_SECONDS:-8}
 report_dir=${REPORT_DIR:-"$repo_dir/docs/game_tests"}
@@ -51,9 +54,9 @@ Input: none
 | --- | ---: | ---: | ---: | ---: | ---: |
 EOF
 
-export CLICKY_EXPERIMENTAL_GL_HLE=1
-export CLICKY_GL_GATE_B=1
-export CLICKY_GL_LIVE_CONTINUOUS=1
+fliwheel_env_default EXPERIMENTAL_GL_HLE 1
+fliwheel_env_default GL_GATE_B 1
+fliwheel_env_default GL_LIVE_CONTINUOUS 1
 export RUST_LOG=${RUST_LOG:-'EAPP_GL=info,EAPP=warn,EAPP_IMPORT=info,EAPP_HW=info'}
 
 for bundle in "$games_root"/*; do

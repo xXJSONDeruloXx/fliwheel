@@ -30,9 +30,9 @@ guessed completion register without new evidence.
 
 ## Environment
 ```bash
-CLICKY_EXPERIMENTAL_GL_HLE=1
-CLICKY_GL_GATE_B=1
-CLICKY_GL_LIVE_CONTINUOUS=1
+FLIWHEEL_EXPERIMENTAL_GL_HLE=1
+FLIWHEEL_GL_GATE_B=1
+FLIWHEEL_GL_LIVE_CONTINUOUS=1
 # PopCap titles default to the guest screen origin; set this explicitly only
 # for orientation A/B experiments.
 ```

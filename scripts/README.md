@@ -35,7 +35,8 @@ All entrypoints use the shared `run_game.sh` implementation and accept:
 --                  pass remaining arguments to eapp
 ```
 
-The historical `CLICKY_*` environment names remain accepted by the runner for
-compatibility with existing experiments. Title-specific defaults, including
-PopCap screen origin and normalized-coordinate presentation, are selected
-centrally in `run_game.sh` and the HLE.
+The `FLIWHEEL_*` namespace is canonical. The emulator still accepts historical
+`CLICKY_*` aliases through its compatibility shim, while current launchers use
+only fliwheel names. Title-specific defaults, including PopCap screen origin
+and normalized-coordinate presentation, are selected centrally in
+`run_game.sh` and the HLE.

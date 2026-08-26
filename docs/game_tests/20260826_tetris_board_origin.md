@@ -66,12 +66,12 @@ events, not proof of host speaker output or mixer parity.
 ```bash
 cargo build --release -p fliwheel-desktop --bin eapp
 
-CLICKY_EXPERIMENTAL_GL_HLE=1 \
-CLICKY_GL_GATE_B=1 \
-CLICKY_GL_LIVE_CONTINUOUS=1 \
-CLICKY_GL_PRESENT_VFLIP=1 \
-CLICKY_EAPP_ASYNC3_COMPLETE=1 \
-CLICKY_EAPP_INPUT_SCRIPT='action:15-16,wheel=37:30-31,action:45-46,action:78-79,action:100-101,action:150-151,action:210-211,action:230-231,action:260-261,left:300-301,right:330-331,wheel=1:360-360,down:400-401,down:470-471,down:540-541,down:610-611,down:680-681,down:750-751,down:820-821,down:890-891,down:960-961' \
+FLIWHEEL_EXPERIMENTAL_GL_HLE=1 \
+FLIWHEEL_GL_GATE_B=1 \
+FLIWHEEL_GL_LIVE_CONTINUOUS=1 \
+FLIWHEEL_GL_PRESENT_VFLIP=1 \
+FLIWHEEL_EAPP_ASYNC3_COMPLETE=1 \
+FLIWHEEL_EAPP_INPUT_SCRIPT='action:15-16,wheel=37:30-31,action:45-46,action:78-79,action:100-101,action:150-151,action:210-211,action:230-231,action:260-261,left:300-301,right:330-331,wheel=1:360-360,down:400-401,down:470-471,down:540-541,down:610-611,down:680-681,down:750-751,down:820-821,down:890-891,down:960-961' \
 EAPP_AUDIO_DISABLE=1 \
 EAPP_AUDIO_EVENT_TRACE=1 \
 target/release/eapp \

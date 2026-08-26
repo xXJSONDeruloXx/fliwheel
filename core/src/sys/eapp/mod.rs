@@ -45,6 +45,30 @@ const RECENT_PC_LIMIT: usize = 64;
 const BOOTSTRAP_RETURN_PC: u32 = 0x1eff_fffc;
 const GUEST_CALLBACK_RETURN_PC: u32 = 0x1eff_fff8;
 const WORK_RAM_BASE: u32 = 0x1000_0000;
+const LEGACY_ENV_PREFIX: &str = "CLICKY_";
+const SAVE_DIR: &str = ".fliwheel-saves";
+const LEGACY_SAVE_DIR: &str = ".clicky-saves";
+
+/// Read a fliwheel runtime option by its suffix. New callers use the
+/// `FLIWHEEL_` namespace; the old `CLICKY_` spelling remains a deliberate,
+/// centralized compatibility alias for existing experiments and scripts.
+fn fliwheel_var_os(suffix: &str) -> Option<std::ffi::OsString> {
+    let current = format!("FLIWHEEL_{}", suffix);
+    let legacy = format!("{}{}", LEGACY_ENV_PREFIX, suffix);
+    std::env::var_os(current).or_else(|| std::env::var_os(legacy))
+}
+
+fn fliwheel_var(suffix: &str) -> Result<String, std::env::VarError> {
+    let current = format!("FLIWHEEL_{}", suffix);
+    match std::env::var(current) {
+        Ok(value) => Ok(value),
+        Err(std::env::VarError::NotPresent) => {
+            std::env::var(format!("{}{}", LEGACY_ENV_PREFIX, suffix))
+        }
+        Err(error) => Err(error),
+    }
+}
+
 // Use a 64 MiB synthetic app RAM window, matching the high-memory 5G-class
 // iPods that many clickwheel games targeted. Smaller scratch windows truncate
 // guest heaps/arenas: PopCap titles were observed copying assets past both
@@ -54,7 +78,7 @@ const WORK_RAM_SIZE: usize = 64 * 1024 * 1024;
 /// Base address of the synthetic aperture used by the original clicky HLE
 /// bring-up (observed in Zuma/Bejeweled at `0x1400000c`). The firmware-side
 /// reference model also documents `0x14000000..0x18000000` as an uncached
-/// SDRAM alias; `CLICKY_EAPP_UNCACHED_ALIAS=1` selects that A/B path.
+/// SDRAM alias; `FLIWHEEL_EAPP_UNCACHED_ALIAS=1` selects that A/B path.
 const HW_STUB_BASE: u32 = 0x1400_0000;
 const HW_STUB_SIZE: usize = 0x400_0000; // 64 MiB - covers entire 0x14000000..0x18000000 gap
 // (DMA channel register banks at 64KB strides: 0x14000000, 0x14010000, 0x14020000, etc.)
@@ -333,13 +357,13 @@ struct StartupProgressTrace {
 
 impl StartupProgressTrace {
     fn from_env() -> StartupProgressTrace {
-        let enabled = std::env::var_os("CLICKY_STARTUP_PROGRESS_TRACE")
+        let enabled = fliwheel_var_os("STARTUP_PROGRESS_TRACE")
             .map(|v| v.to_string_lossy() == "1")
             .unwrap_or(false);
-        let max_logs = std::env::var_os("CLICKY_STARTUP_PROGRESS_FRAMES")
+        let max_logs = fliwheel_var_os("STARTUP_PROGRESS_FRAMES")
             .and_then(|v| v.to_string_lossy().parse::<usize>().ok())
             .unwrap_or(180);
-        let interval = std::env::var_os("CLICKY_STARTUP_PROGRESS_INTERVAL")
+        let interval = fliwheel_var_os("STARTUP_PROGRESS_INTERVAL")
             .and_then(|v| v.to_string_lossy().parse::<u64>().ok())
             .unwrap_or(60);
         StartupProgressTrace {
@@ -368,19 +392,19 @@ struct StartupArtifactCapture {
 
 impl StartupArtifactCapture {
     fn from_env() -> StartupArtifactCapture {
-        let enabled = std::env::var_os("CLICKY_STARTUP_CAPTURE_DIR").is_some();
-        let dir = std::env::var_os("CLICKY_STARTUP_CAPTURE_DIR")
+        let enabled = fliwheel_var_os("STARTUP_CAPTURE_DIR").is_some();
+        let dir = fliwheel_var_os("STARTUP_CAPTURE_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("/tmp/fliwheel_startup_capture"));
         let manifest_path = dir.join("manifest.tsv");
-        let periodic_interval = std::env::var_os("CLICKY_STARTUP_CAPTURE_PERIOD")
+        let periodic_interval = fliwheel_var_os("STARTUP_CAPTURE_PERIOD")
             .and_then(|v| v.to_string_lossy().parse::<u64>().ok())
             .unwrap_or(30)
             .max(1);
-        let max_frames = std::env::var_os("CLICKY_STARTUP_CAPTURE_MAX_FRAMES")
+        let max_frames = fliwheel_var_os("STARTUP_CAPTURE_MAX_FRAMES")
             .and_then(|v| v.to_string_lossy().parse::<u64>().ok())
             .unwrap_or(1200);
-        let max_dumps = std::env::var_os("CLICKY_STARTUP_CAPTURE_MAX_DUMPS")
+        let max_dumps = fliwheel_var_os("STARTUP_CAPTURE_MAX_DUMPS")
             .and_then(|v| v.to_string_lossy().parse::<u64>().ok())
             .unwrap_or(400);
         if enabled {
@@ -447,7 +471,7 @@ pub struct Eapp {
     /// Per-PC counters for env-gated Tetris localization/string-table tracing.
     string_trace_hits: HashMap<u32, u32>,
     /// Bounded guest-PC probes used for title-specific runtime reverse
-    /// engineering. Empty unless CLICKY_EAPP_PC_TRACE is set.
+    /// engineering. Empty unless FLIWHEEL_EAPP_PC_TRACE is set.
     guest_pc_trace_pcs: HashSet<u32>,
     guest_pc_trace_hits: HashMap<u32, u32>,
     guest_pc_trace_limit: u32,
@@ -507,7 +531,7 @@ pub struct Eapp {
     staged_file_generation: u64,
     halted: bool,
     /// Optional live OpenGLES HLE state. Present only when
-    /// `CLICKY_EXPERIMENTAL_GL_HLE=1`; when `None` the legacy fill-color
+    /// `FLIWHEEL_EXPERIMENTAL_GL_HLE=1`; when `None` the legacy fill-color
     /// GL path is used unchanged.
     live_gl: Option<LiveGlState>,
     /// Parsed shader/render-server program from OpenGLES:164 (`rserver.bin`).
@@ -594,7 +618,7 @@ struct EappBus {
     /// Set to true when DMA FB has been written at least once.
     /// Cleared by the Eapp struct after presenting the DMA content.
     hw_dma_dirty: bool,
-    /// Remaining hardware accesses to log when `CLICKY_EAPP_HW_TRACE` is set.
+    /// Remaining hardware accesses to log when `FLIWHEEL_EAPP_HW_TRACE` is set.
     /// This is intentionally bounded because a framebuffer upload can produce
     /// tens of thousands of accesses before the interesting completion poll.
     hw_trace_remaining: usize,
@@ -736,11 +760,11 @@ impl Eapp {
                 image_len: mapped_image_len as u32,
                 work_ram,
                 dma_framebuf: Ram::new(320 * 240 * 2), // RGB565 320×240
-                uncached_sdram_alias: std::env::var_os("CLICKY_EAPP_UNCACHED_ALIAS").is_some(),
+                uncached_sdram_alias: fliwheel_var_os("EAPP_UNCACHED_ALIAS").is_some(),
                 hw_control_value: Self::parse_hw_control_value_env(),
-                dma_source_dump_dir: std::env::var_os("CLICKY_EAPP_DMA_SOURCE_DUMP_DIR")
+                dma_source_dump_dir: fliwheel_var_os("EAPP_DMA_SOURCE_DUMP_DIR")
                     .map(PathBuf::from),
-                watch_source_dump_dir: std::env::var_os("CLICKY_EAPP_WATCH_SOURCE_DUMP_DIR")
+                watch_source_dump_dir: fliwheel_var_os("EAPP_WATCH_SOURCE_DUMP_DIR")
                     .map(PathBuf::from),
                 watch_source_dumped: false,
                 hw_fb_write_count: 0,
@@ -750,9 +774,9 @@ impl Eapp {
                 hw_dma_dirty: false,
                 hw_trace_remaining: Self::parse_hw_trace_env(),
                 hw_trace_read_remaining: Self::parse_hw_trace_reads_env(),
-                hw_trace_regs: std::env::var_os("CLICKY_EAPP_HW_TRACE_REGS").is_some(),
+                hw_trace_regs: fliwheel_var_os("EAPP_HW_TRACE_REGS").is_some(),
                 watch: None,
-                watch_regs: std::env::var_os("CLICKY_EAPP_WATCH_REGS").is_some(),
+                watch_regs: fliwheel_var_os("EAPP_WATCH_REGS").is_some(),
                 watch_read_remaining: Self::parse_watch_reads_env(),
                 memcpy_trace_remaining: Self::parse_memcpy_trace_env(),
                 pending_pc: 0,
@@ -824,7 +848,7 @@ impl Eapp {
             usse_vm: UsseVm::default(),
         };
         if eapp.metadata.title == "1B200"
-            && std::env::var_os("CLICKY_EAPP_LOST_PATCH_RENDER_CALL").is_some()
+            && fliwheel_var_os("EAPP_LOST_PATCH_RENDER_CALL").is_some()
         {
             // Experimental Lost patch: main loop BL at 0x1803B924 normally
             // targets 0x18007260 (a trivial branch to OpenGLES:13). The full
@@ -879,7 +903,7 @@ impl Eapp {
     }
 
     /// Drain and log the accumulated write-watchpoint hits, if any. The watch
-    /// range is set via `CLICKY_EAPP_WATCH=addr,len`. Unlike the fatal-path
+    /// range is set via `FLIWHEEL_EAPP_WATCH=addr,len`. Unlike the fatal-path
     /// dump, this is safe to call on graceful shutdown / after a bounded run,
     /// which makes the RE tool usable for titles that never fault (e.g.
     /// Tetris). Each hit is tagged with the guest PC that performed the write
@@ -976,7 +1000,7 @@ impl Eapp {
 
         // Present (separate borrow from live_gl)
         if let Some(completed) = completed {
-            if let Some(dir) = std::env::var_os("CLICKY_EAPP_DMA_DUMP_DIR") {
+            if let Some(dir) = fliwheel_var_os("EAPP_DMA_DUMP_DIR") {
                 let dir = PathBuf::from(dir);
                 let _ = fs::create_dir_all(&dir);
                 let path = dir.join(format!("dma_frame_{:06}.rgb565", completed.index));
@@ -1295,11 +1319,13 @@ impl Eapp {
     }
 
     fn describe_host_path(&self, host_path: &Path) -> String {
+        for save_dir in [SAVE_DIR, LEGACY_SAVE_DIR] {
+            if let Ok(rel) = host_path.strip_prefix(self.metadata.bundle_dir.join(save_dir)) {
+                return format!("{}/{}", save_dir, rel.display());
+            }
+        }
         if let Ok(rel) = host_path.strip_prefix(&self.metadata.bundle_dir) {
             return rel.display().to_string();
-        }
-        if let Ok(rel) = host_path.strip_prefix(self.metadata.bundle_dir.join(".clicky-saves")) {
-            return format!(".clicky-saves/{}", rel.display());
         }
         host_path
             .file_name()
@@ -1592,7 +1618,7 @@ impl Eapp {
         // queued owner callback (`0x1801fbfc`) still performs the real callback
         // cascade and byte-count forwarding once control returns.
         if pc == 0x1801_fd50u32
-            && std::env::var("CLICKY_EAPP_ASYNC3_COMPLETE")
+            && fliwheel_var("EAPP_ASYNC3_COMPLETE")
                 .map(|v| v == "1" || v == "true")
                 .unwrap_or(false)
             && self.metadata.bundle_dir.to_str().map_or(false, |p| p.contains("66666"))
@@ -1756,7 +1782,7 @@ impl Eapp {
         // mailbox rather than patching the downstream slot immediately before
         // `0x1b630` reads it.
         if pc == 0x1802_22a4u32 {
-            if let Ok(raw) = std::env::var("CLICKY_EAPP_HOST_EVENT_FLAGS") {
+            if let Ok(raw) = fliwheel_var("EAPP_HOST_EVENT_FLAGS") {
                 let parse_u32 = |s: &str| -> Option<u32> {
                     let trimmed = s.trim();
                     if let Some(hex) = trimmed
@@ -1768,7 +1794,7 @@ impl Eapp {
                         trimmed.parse::<u32>().ok()
                     }
                 };
-                let delay = std::env::var("CLICKY_EAPP_HOST_EVENT_DELAY")
+                let delay = fliwheel_var("EAPP_HOST_EVENT_DELAY")
                     .ok()
                     .and_then(|s| s.parse::<u64>().ok())
                     .unwrap_or(0);
@@ -1783,12 +1809,12 @@ impl Eapp {
         }
 
         // Older RE (iter 20): downstream PC-hook injection retained for direct
-        // comparison. Prefer `CLICKY_EAPP_HOST_EVENT_FLAGS=0x18` now because it
+        // comparison. Prefer `FLIWHEEL_EAPP_HOST_EVENT_FLAGS=0x18` now because it
         // uses the guest's real `0x50b0 -> 0x5aa4` event-copy path.
-        if std::env::var_os("CLICKY_EAPP_AUDIO_SLOT_BIT").is_some()
+        if fliwheel_var_os("EAPP_AUDIO_SLOT_BIT").is_some()
             && pc == 0x1801_b630u32
         {
-            let bit: u32 = std::env::var("CLICKY_EAPP_AUDIO_SLOT_BIT_VAL")
+            let bit: u32 = fliwheel_var("EAPP_AUDIO_SLOT_BIT_VAL")
                 .ok()
                 .and_then(|s| u32::from_str_radix(s.trim_start_matches("0x"), 16).ok())
                 .unwrap_or(0x10);
@@ -1910,7 +1936,7 @@ impl Eapp {
             }
             // Dump the write-watchpoint log (if any) so the constructor / writer
             // of the faulting object's fields can be identified by PC. This
-            // is the payoff of the `CLICKY_EAPP_WATCH` RE hook: every write
+            // is the payoff of the `FLIWHEEL_EAPP_WATCH` RE hook: every write
             // to the watched range is shown with its guest PC, making it
             // possible to ask "who set word 1 (refcount) but never word 0
             // (vtable)?"
@@ -2018,7 +2044,7 @@ impl Eapp {
             self.capture_open_gl_import(import.ordinal, pc, lr, args, ret);
         }
 
-        if import.module == "Audio" && std::env::var_os("CLICKY_AUDIO_TRACE").is_some() {
+        if import.module == "Audio" && fliwheel_var_os("AUDIO_TRACE").is_some() {
             info!(
                 target: "EAPP_AUDIO",
                 "AudioRet:{} frame={} lr={:#010x} ret={:#010x}",
@@ -2029,13 +2055,13 @@ impl Eapp {
             );
         }
 
-        // Env-gated (`CLICKY_ALLOC_TRACE=1`) allocator-return log. `miscTBD:0`
+        // Env-gated (`FLIWHEEL_ALLOC_TRACE=1`) allocator-return log. `miscTBD:0`
         // is the runtime allocator and the only path that returns freshly-
         // zeroed guest memory; logging its (caller_lr, returned_addr, len)
         // lets any faulting work-RAM object be attributed to the guest call
         // site that created it. Useful for null-vtable / null-deref teardown
         // investigations.
-        if import.module == "miscTBD" && import.ordinal == 0 && std::env::var_os("CLICKY_ALLOC_TRACE").is_some() {
+        if import.module == "miscTBD" && import.ordinal == 0 && fliwheel_var_os("ALLOC_TRACE").is_some() {
             info!(
                 target: "EAPP_ALLOC",
                 "miscTBD:0 alloc lr={:#010x} ret={:#010x} len={} r1={:#010x}",
@@ -2085,12 +2111,12 @@ impl Eapp {
         self.live_gl.is_some()
     }
 
-    /// Parse `CLICKY_EAPP_WATCH=0xADDR,0xLEN` into a work-RAM write-
+    /// Parse `FLIWHEEL_EAPP_WATCH=0xADDR,0xLEN` into a work-RAM write-
     /// watchpoint range `(start, end)`. Used by the in-bus watch hook to
     /// attribute field writes to the guest instruction that performed them.
     /// Returns `None` when unset, so default behavior is unchanged.
     fn parse_watch_env() -> Option<(u32, u32)> {
-        let raw = std::env::var("CLICKY_EAPP_WATCH").ok()?;
+        let raw = fliwheel_var("EAPP_WATCH").ok()?;
         let mut parts = raw.split(',');
         let addr_str = parts.next()?.trim();
         let len_str = parts.next().map(|s| s.trim()).unwrap_or("0x20");
@@ -2111,7 +2137,7 @@ impl Eapp {
             let s = s.trim().trim_start_matches("0x").trim_start_matches("0X");
             u32::from_str_radix(s, 16).ok().or_else(|| s.parse::<u32>().ok())
         };
-        std::env::var("CLICKY_EAPP_PC_TRACE")
+        fliwheel_var("EAPP_PC_TRACE")
             .ok()
             .into_iter()
             .flat_map(|raw| raw.split(',').filter_map(parse_num).collect::<Vec<_>>())
@@ -2119,17 +2145,17 @@ impl Eapp {
     }
 
     fn parse_pc_trace_limit_env() -> u32 {
-        std::env::var("CLICKY_EAPP_PC_TRACE_LIMIT")
+        fliwheel_var("EAPP_PC_TRACE_LIMIT")
             .ok()
             .and_then(|value| value.trim().parse::<u32>().ok())
             .unwrap_or(24)
             .max(1)
     }
 
-    /// Parse `CLICKY_EAPP_HW_TRACE`. `1` enables a bounded trace with the
+    /// Parse `FLIWHEEL_EAPP_HW_TRACE`. `1` enables a bounded trace with the
     /// default limit; a decimal value selects an explicit access limit.
     fn parse_hw_trace_env() -> usize {
-        match std::env::var("CLICKY_EAPP_HW_TRACE") {
+        match fliwheel_var("EAPP_HW_TRACE") {
             Ok(value) if value.trim() == "1" => 256,
             Ok(value) => value.trim().parse::<usize>().unwrap_or(0),
             Err(_) => 0,
@@ -2137,14 +2163,14 @@ impl Eapp {
     }
 
     fn parse_hw_trace_reads_env() -> usize {
-        std::env::var("CLICKY_EAPP_HW_TRACE_READS")
+        fliwheel_var("EAPP_HW_TRACE_READS")
             .ok()
             .and_then(|value| value.trim().parse::<usize>().ok())
             .unwrap_or(0)
     }
 
     fn parse_hw_control_value_env() -> u32 {
-        std::env::var("CLICKY_EAPP_HW_CONTROL_VALUE")
+        fliwheel_var("EAPP_HW_CONTROL_VALUE")
             .ok()
             .and_then(|value| {
                 let value = value.trim();
@@ -2158,7 +2184,7 @@ impl Eapp {
     }
 
     fn parse_memcpy_trace_env() -> usize {
-        match std::env::var("CLICKY_EAPP_MEMCPY_TRACE") {
+        match fliwheel_var("EAPP_MEMCPY_TRACE") {
             Ok(value) if value.trim() == "1" => 256,
             Ok(value) => value.trim().parse::<usize>().unwrap_or(0),
             Err(_) => 0,
@@ -2166,7 +2192,7 @@ impl Eapp {
     }
 
     fn parse_watch_reads_env() -> usize {
-        match std::env::var("CLICKY_EAPP_WATCH_READS") {
+        match fliwheel_var("EAPP_WATCH_READS") {
             Ok(value) if value.trim() == "1" => 256,
             Ok(value) => value.trim().parse::<usize>().unwrap_or(0),
             Err(_) => 0,
@@ -2174,26 +2200,26 @@ impl Eapp {
     }
 
     /// Read the experimental GL HLE env flags and construct live state only
-    /// when `CLICKY_EXPERIMENTAL_GL_HLE=1`. Returns `None` (legacy path) when
+    /// when `FLIWHEEL_EXPERIMENTAL_GL_HLE=1`. Returns `None` (legacy path) when
     /// the flag is absent or not enabled, so default behavior is unchanged.
     fn maybe_init_live_gl(game_id: String) -> Option<LiveGlState> {
-        let enabled = std::env::var_os("CLICKY_EXPERIMENTAL_GL_HLE")
+        let enabled = fliwheel_var_os("EXPERIMENTAL_GL_HLE")
             .map(|v| v.to_string_lossy() == "1")
             .unwrap_or(false);
         if !enabled {
             return None;
         }
-        let present_vflip = std::env::var_os("CLICKY_GL_PRESENT_VFLIP")
+        let present_vflip = fliwheel_var_os("GL_PRESENT_VFLIP")
             .and_then(|v| v.to_string_lossy().parse::<u32>().ok())
             .map(|n| n != 0)
             .unwrap_or_else(|| live_gl_default_present_vflip(&game_id));
-        let gate_b = std::env::var_os("CLICKY_GL_GATE_B")
+        let gate_b = fliwheel_var_os("GL_GATE_B")
             .map(|v| v.to_string_lossy() == "1")
             .unwrap_or(false);
-        let continuous = std::env::var_os("CLICKY_GL_LIVE_CONTINUOUS")
+        let continuous = fliwheel_var_os("GL_LIVE_CONTINUOUS")
             .map(|v| v.to_string_lossy() == "1")
             .unwrap_or(false);
-        let dump_frames = std::env::var_os("CLICKY_GL_DUMP_FRAMES")
+        let dump_frames = fliwheel_var_os("GL_DUMP_FRAMES")
             .and_then(|v| v.to_string_lossy().parse::<usize>().ok())
             .unwrap_or(0);
         info!(
@@ -2308,8 +2334,8 @@ impl Eapp {
                     // finds null function entries and skips rendering entirely.
                     // We create Thumb stubs (mov r0,#1; bx lr) in work RAM and
                     // fill the header with pointers (bit 0 set for Thumb mode).
-                    // Behind CLICKY_EAPP_THUMB_STUBS=1 env var.
-                    if std::env::var_os("CLICKY_EAPP_THUMB_STUBS").is_some() {
+                    // Behind FLIWHEEL_EAPP_THUMB_STUBS=1 env var.
+                    if fliwheel_var_os("EAPP_THUMB_STUBS").is_some() {
                         // Allocate 16 bytes for Thumb stubs (2 instructions each = 4 bytes per stub)
                         let stub_base = self.alloc_zeroed(16);
                         // Thumb LE packed as 32-bit words:
@@ -2327,8 +2353,8 @@ impl Eapp {
                     }
                     // Nuclear option: fill the rserver header with incrementing values
                     // to see if the game's rendering engine uses any of them.
-                    // Behind CLICKY_EAPP_FILL_RSERVER_HEADER=1 env var.
-                    if std::env::var_os("CLICKY_EAPP_FILL_RSERVER_HEADER").is_some() {
+                    // Behind FLIWHEEL_EAPP_FILL_RSERVER_HEADER=1 env var.
+                    if fliwheel_var_os("EAPP_FILL_RSERVER_HEADER").is_some() {
                         for i in 0..0x80 {
                             let val = (i + 1) as u32; // 1, 2, 3, ...
                             self.write_guest_u32(header_start.wrapping_add(i * 4), val);
@@ -2474,7 +2500,7 @@ impl Eapp {
         }
         // One-time work RAM scan for Lost: scan the large allocation
         // buffer and rserver region for non-zero data written during init.
-        if self.frame_counter == 10 && std::env::var_os("CLICKY_EAPP_LOST_MEMSCAN").is_some() {
+        if self.frame_counter == 10 && fliwheel_var_os("EAPP_LOST_MEMSCAN").is_some() {
             let alloc_base = 0x10502B00;
             let scan_ranges: [(u32, &str); 5] = [
                 (alloc_base, "large_alloc"),
@@ -2524,7 +2550,7 @@ impl Eapp {
         }
         // Patch 0xFFFFFFFF values in game heap for Lost. The game heap
         // has many -1 values that represent uninitialized render state.
-        if std::env::var_os("CLICKY_EAPP_LOST_PATCH_NEG1").is_some() {
+        if fliwheel_var_os("EAPP_LOST_PATCH_NEG1").is_some() {
             // Scan multiple heap regions for -1 markers
             let patch_ranges: [(u32, u32); 4] = [
                 (0x18040000, 0x20000), // game data 0x1804
@@ -2569,7 +2595,7 @@ impl Eapp {
         // Lost splash screen injection: if no DMA data and the env var is set,
         // load the lostLaunch.raw.lcd5 from the bundle and write it to the
         // DMA framebuffer so the overlay system displays it.
-        if !has_dma && std::env::var_os("CLICKY_EAPP_LOST_SPLASH").is_some() && self.frame_counter <= 1 {
+        if !has_dma && fliwheel_var_os("EAPP_LOST_SPLASH").is_some() && self.frame_counter <= 1 {
             let splash_path = self.metadata.bundle_dir.join("lostLaunch.raw.lcd5");
             if let Ok(data) = std::fs::read(&splash_path) {
                 // 16-byte header: width(4) + height(4) + stride(4) + '565L'(4)
@@ -4849,7 +4875,7 @@ impl Eapp {
 
     /// Gate A: write internal + presented PPMs, print hashes, and run the
     /// structural comparison against the offline replay. Gate B: copy the
-    /// presented buffer to the desktop render state when `CLICKY_GL_GATE_B=1`.
+    /// presented buffer to the desktop render state when `FLIWHEEL_GL_GATE_B=1`.
     fn live_capture_frame(&mut self) {
         let gate_b;
         {
@@ -5033,7 +5059,7 @@ impl Eapp {
         }
     }
 
-    /// Optional startup capture (`CLICKY_STARTUP_CAPTURE_DIR=/tmp/...`). Writes
+    /// Optional startup capture (`FLIWHEEL_STARTUP_CAPTURE_DIR=/tmp/...`). Writes
     /// a chronological TSV manifest for completed frames, and dumps PPMs for
     /// every presented framebuffer hash change plus periodic samples.
     fn capture_startup_completed_frame(&mut self, frame: &live_gl::CompletedFrame) {
@@ -5103,7 +5129,7 @@ impl Eapp {
         self.startup_capture.last_hash = Some(frame.presented_hash);
     }
 
-    /// Optional continuous frame dumping (`CLICKY_GL_DUMP_FRAMES=N`). Writes
+    /// Optional continuous frame dumping (`FLIWHEEL_GL_DUMP_FRAMES=N`). Writes
     /// only the first N completed presented frames.
     fn live_dump_completed_frame(&mut self) {
         let (path, fb) = {
@@ -5302,7 +5328,7 @@ impl Eapp {
                 // rserver+0x11000), r2/r3=string pointers.
                 // Could be a render-server communication channel.
                 // Return value might affect game's draw decision.
-                let ret = std::env::var("CLICKY_MISCTBD6_RET")
+                let ret = fliwheel_var("MISCTBD6_RET")
                     .ok()
                     .and_then(|v| v.parse::<u32>().ok())
                     .unwrap_or(0);
@@ -5477,7 +5503,7 @@ impl Eapp {
     }
 
     /// Headless input smoke-test helper. Format:
-    /// `CLICKY_EAPP_INPUT_SCRIPT="menu:190-200,menu:230-240,action:260-270"`.
+    /// `FLIWHEEL_EAPP_INPUT_SCRIPT="menu:190-200,menu:230-240,action:260-270"`.
     /// Wheel detents can be scripted with `wheelup`, `wheeldown`, or an
     /// explicit relative delta such as `wheel=-2:300-305`.
     /// Raw masks can also be injected for ABI discovery, e.g.
@@ -5485,7 +5511,7 @@ impl Eapp {
     /// input and is ignored when unset, so normal headed input remains
     /// controlled by minifb callbacks.
     fn apply_env_input_script(&self, state: &mut EappInputState) {
-        let Ok(script) = std::env::var("CLICKY_EAPP_INPUT_SCRIPT") else {
+        let Ok(script) = fliwheel_var("EAPP_INPUT_SCRIPT") else {
             return;
         };
         for entry in script.split(',').map(str::trim).filter(|s| !s.is_empty()) {
@@ -5614,7 +5640,7 @@ impl Eapp {
     }
 
     fn active_env_input_script_entries(&self) -> Vec<(String, String)> {
-        let Ok(script) = std::env::var("CLICKY_EAPP_INPUT_SCRIPT") else {
+        let Ok(script) = fliwheel_var("EAPP_INPUT_SCRIPT") else {
             return Vec::new();
         };
         let mut active = Vec::new();
@@ -5653,7 +5679,7 @@ impl Eapp {
                     // Guest language enum (not yet proven to be the same as
                     // Strings.dta column order). Default to 0, but allow quick
                     // RE/brute-force from the environment.
-                    "Language" => std::env::var("CLICKY_EAPP_LANGUAGE")
+                    "Language" => fliwheel_var("EAPP_LANGUAGE")
                         .ok()
                         .and_then(|v| v.parse::<u32>().ok())
                         .unwrap_or(0),
@@ -5730,7 +5756,7 @@ impl Eapp {
                     table_base: args[2],
                 };
                 self.audio_handles.insert(handle, source);
-                if std::env::var_os("CLICKY_AUDIO_TRACE").is_some() {
+                if fliwheel_var_os("AUDIO_TRACE").is_some() {
                     info!(
                         target: "EAPP_AUDIO",
                         "AudioAlloc:0 handle={:#010x} slot={} table={:#010x}",
@@ -5743,7 +5769,7 @@ impl Eapp {
             }
             1 | 23 => {
                 let removed = self.audio_handles.remove(&args[0]);
-                if std::env::var_os("CLICKY_AUDIO_TRACE").is_some() {
+                if fliwheel_var_os("AUDIO_TRACE").is_some() {
                     info!(
                         target: "EAPP_AUDIO",
                         "AudioRelease:{} handle={:#010x} known={}",
@@ -5758,7 +5784,7 @@ impl Eapp {
         }
     }
 
-    /// Env-gated (`CLICKY_AUDIO_TRACE=1`) diagnostic that dumps, for each
+    /// Env-gated (`FLIWHEEL_AUDIO_TRACE=1`) diagnostic that dumps, for each
     /// `Audio:*` import call, the register args plus a short byte preview of
     /// any arg that looks like a guest pointer (work-RAM or file VMA). When
     /// the pointed region begins with a RIFF/WAVE header, the parsed format
@@ -5773,7 +5799,7 @@ impl Eapp {
         lr: u32,
         args: [u32; 4],
     ) {
-        if std::env::var_os("CLICKY_AUDIO_TRACE").is_none() {
+        if fliwheel_var_os("AUDIO_TRACE").is_none() {
             return;
         }
         let work_end = WORK_RAM_BASE.saturating_add(WORK_RAM_SIZE as u32);
@@ -5959,7 +5985,7 @@ impl Eapp {
             // the same owner-completion shape as ordinal 0: the import receives
             // the transient owner in r0, and firmware later calls 0x1801fbfc,
             // which forwards [owner+0x20/0x24] to the linked request callback.
-            let complete = std::env::var("CLICKY_EAPP_ASYNC3_COMPLETE")
+            let complete = fliwheel_var("EAPP_ASYNC3_COMPLETE")
                 .map(|v| v == "1" || v == "true")
                 .unwrap_or(false);
             let is_tetris = self
@@ -6080,7 +6106,7 @@ impl Eapp {
             // Firmware completion helper 0x18020070 clears the in-flight byte
             // and tail-calls that callback as (owner, context). Queue the same
             // callback only for the env-gated parsed-resource RE path.
-            let complete = std::env::var("CLICKY_EAPP_ASYNC3_COMPLETE")
+            let complete = fliwheel_var("EAPP_ASYNC3_COMPLETE")
                 .map(|v| v == "1" || v == "true")
                 .unwrap_or(false);
             let is_tetris = self
@@ -6266,7 +6292,7 @@ impl Eapp {
                     .to_str()
                     .map_or(false, |p| p.contains("50513"));
                 let tetris_complete = is_tetris
-                    && std::env::var("CLICKY_EAPP_ASYNC3_COMPLETE")
+                    && fliwheel_var("EAPP_ASYNC3_COMPLETE")
                         .map(|v| v == "1" || v == "true")
                         .unwrap_or(false);
                 let texas_complete = is_texas
@@ -6349,7 +6375,7 @@ impl Eapp {
                                 host_path.display()
                             );
                         }
-                        if let Some(result_spec) = std::env::var_os("CLICKY_EAPP_ASYNC0_RESULT") {
+                        if let Some(result_spec) = fliwheel_var_os("EAPP_ASYNC0_RESULT") {
                             let result_spec = result_spec.to_string_lossy();
                             let result = if result_spec == "length" {
                                 Some(n)
@@ -6379,7 +6405,9 @@ impl Eapp {
                         // look missing and leaves its object tables uninitialized.
                         let texas_missing_save = host_path
                             .to_str()
-                            .map_or(false, |p| p.contains(".clicky-saves"));
+                            .map_or(false, |p| {
+                                p.contains(SAVE_DIR) || p.contains(LEGACY_SAVE_DIR)
+                            });
                         let status = if texas_complete && texas_missing_save {
                             std::env::var("EAPP_TEXAS_ASYNC0_STATUS")
                                 .ok()
@@ -6463,7 +6491,7 @@ impl Eapp {
                             // requests large font buffers whose capacity overlaps the following
                             // heap request object; memset-style short-read filling wipes [req+8]
                             // and the callback PC before the completion trampoline runs.
-                            let should_deliver = if std::env::var_os("CLICKY_EAPP_SKIP_RSERVER").is_some() {
+                            let should_deliver = if fliwheel_var_os("EAPP_SKIP_RSERVER").is_some() {
                                 // When set, skip loading rserver.bin so the game keeps its
                                 // original code at 0x10001038 (used by Lost to test if the
                                 // built-in fixed-function engine renders).
@@ -6493,7 +6521,7 @@ impl Eapp {
                                 // regression, reverted in iteration 11). The
                                 // full owner-callback ABI is still being
                                 // reversed; default stays at 0 (golden). Set
-                                // CLICKY_EAPP_ASYNC3_COMPLETE=1 to re-enable
+                                // FLIWHEEL_EAPP_ASYNC3_COMPLETE=1 to re-enable
                                 // the iteration-10 behavior for RE.
                                 let is_tetris = self
                                     .metadata
@@ -6511,7 +6539,7 @@ impl Eapp {
                                     .to_str()
                                     .map_or(false, |p| p.contains("44444") || p.contains("55555"));
                                 let tetris_complete = is_tetris
-                                    && std::env::var("CLICKY_EAPP_ASYNC3_COMPLETE")
+                                    && fliwheel_var("EAPP_ASYNC3_COMPLETE")
                                         .map(|v| v == "1" || v == "true")
                                         .unwrap_or(false);
                                 let texas_complete = is_texas
@@ -6833,7 +6861,7 @@ impl Eapp {
             .unwrap_or(false);
         self.misc9_last_pointed_value = Some(after);
         let ret = args[0];
-        let log_limit = std::env::var_os("CLICKY_EAPP_TIME_DIAG_LIMIT")
+        let log_limit = fliwheel_var_os("EAPP_TIME_DIAG_LIMIT")
             .and_then(|v| v.to_string_lossy().parse::<u64>().ok())
             .unwrap_or(80);
         if self.startup_progress.enabled && self.misc9_time_diag_count <= log_limit {
@@ -6971,15 +6999,15 @@ impl Eapp {
         // interval to prove the gate theory. No guest writer is observed in
         // the binary for this byte, so the value is normally static 0.
         //
-        // `CLICKY_EAPP_TEST_READY_DELAY=N` defers the byte write until frame
+        // `FLIWHEEL_EAPP_TEST_READY_DELAY=N` defers the byte write until frame
         // N (so the legal screen can dwell before the legal→menu advance).
         // Default delay is 0 (write on the first emission, matching iter 17).
-        let test_ready = std::env::var("CLICKY_EAPP_TEST_READY")
+        let test_ready = fliwheel_var("EAPP_TEST_READY")
             .ok()
             .as_deref()
             .map(|s| s == "1")
             .unwrap_or(false);
-        let test_ready_delay: u64 = std::env::var("CLICKY_EAPP_TEST_READY_DELAY")
+        let test_ready_delay: u64 = fliwheel_var("EAPP_TEST_READY_DELAY")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(0);
@@ -6993,12 +7021,12 @@ impl Eapp {
         // natural audio-completion path. Env-gated injection used for RE
         // only; observe whether state advances past 1 when both slots get
         // a bit set. The literal value can be overridden via
-        // `CLICKY_EAPP_AUDIO_SLOT_BIT_VAL=0xNN` (default 0x10).
-        let slot_bit: u32 = std::env::var("CLICKY_EAPP_AUDIO_SLOT_BIT_VAL")
+        // `FLIWHEEL_EAPP_AUDIO_SLOT_BIT_VAL=0xNN` (default 0x10).
+        let slot_bit: u32 = fliwheel_var("EAPP_AUDIO_SLOT_BIT_VAL")
             .ok()
             .and_then(|s| u32::from_str_radix(s.trim_start_matches("0x"), 16).ok())
             .unwrap_or(0x10);
-        if std::env::var_os("CLICKY_EAPP_AUDIO_SLOT_BIT").is_some() {
+        if fliwheel_var_os("EAPP_AUDIO_SLOT_BIT").is_some() {
             // clock_obj=0x1005f710. slot 0 == clock_obj+0x8c, slot 1 == clock_obj+0x9c.
             // Inject only the low byte (0x10) by writing a u32 (0x10) at the
             // target address; upper 3 bytes are 0 (matches the static value).
@@ -7172,7 +7200,7 @@ impl Eapp {
                     self.frame_context,
                     self.header.aux_addr
                 );
-                let run_init_vectors = std::env::var_os("CLICKY_EAPP_INIT_VECTORS").is_some();
+                let run_init_vectors = fliwheel_var_os("EAPP_INIT_VECTORS").is_some();
                 if self.header.init_addr != 0 && run_init_vectors {
                     // RetailOS supplies valid context pointers for each lifecycle vector.  The
                     // entry vector's return registers are not the init vector's arguments.
@@ -7194,7 +7222,7 @@ impl Eapp {
                 if self.header.init_addr != 0 {
                     info!(
                         target: "EAPP",
-                        "bootstrap init vector skipped; set CLICKY_EAPP_INIT_VECTORS=1 to enable"
+                        "bootstrap init vector skipped; set FLIWHEEL_EAPP_INIT_VECTORS=1 to enable"
                     );
                 }
                 self.finish_bootstrap_entry();
@@ -8436,6 +8464,12 @@ impl Eapp {
                 return Some(resources);
             }
         }
+        for save_dir in [SAVE_DIR, LEGACY_SAVE_DIR] {
+            let saved = self.metadata.bundle_dir.join(save_dir).join(normalized);
+            if saved.exists() {
+                return Some(saved);
+            }
+        }
         None
     }
 
@@ -8452,7 +8486,7 @@ impl Eapp {
         let writable = self
             .metadata
             .bundle_dir
-            .join(".clicky-saves")
+            .join(SAVE_DIR)
             .join(normalized);
         if let Some(parent) = writable.parent() {
             fs::create_dir_all(parent).ok()?;
@@ -8504,7 +8538,7 @@ impl Eapp {
 }
 
 fn texgen_verbose_enabled() -> bool {
-    std::env::var_os("CLICKY_GL_TEXGEN_VERBOSE")
+    fliwheel_var_os("GL_TEXGEN_VERBOSE")
         .map(|v| v.to_string_lossy() == "1")
         .unwrap_or(false)
 }
@@ -9277,7 +9311,7 @@ fn find_game_executable(bundle_dir: &Path) -> Result<PathBuf, EappBuildError> {
 /// PopCap pair submits screen-space geometry in top-to-bottom order, while
 /// the Tetris-style runtime presents its framebuffer bottom-to-top. Keep the
 /// established Tetris default, but make the evidence-backed PopCap choice
-/// automatic; `CLICKY_GL_PRESENT_VFLIP` remains an explicit override.
+/// automatic; `FLIWHEEL_GL_PRESENT_VFLIP` remains an explicit override.
 fn live_gl_default_present_vflip(game_id: &str) -> bool {
     !matches!(game_id, "44444" | "55555" | "zuma" | "bejeweled")
 }

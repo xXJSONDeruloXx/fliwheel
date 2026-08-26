@@ -87,7 +87,7 @@ This is a hack and not recommended.
 ## Validation Plan
 
 ### Phase 1: Confirm the Hypothesis
-1. Add `CLICKY_EAPP_TRACE=OpenGLES:165` logging to capture all calls
+1. Add `FLIWHEEL_EAPP_TRACE=OpenGLES:165` logging to capture all calls
 2. Run Vortex headed for ~1 second to see if `OpenGLES:165` fires before the crash
 3. Check register args to confirm the expected pattern (`r0=ctx, r1=ptr, r2=vtx_buf_ptr`)
 

@@ -627,7 +627,7 @@ fn replay_frame4_produces_complete_artifact_and_hash() {
         bytes.extend_from_slice(&[px.r, px.g, px.b, px.a]);
     }
     let hash = framebuffer_hash(&fb);
-    if std::env::var_os("CLICKY_WRITE_TETRIS_FRAME4_PPM").is_some() {
+    if std::env::var_os("FLIWHEEL_WRITE_TETRIS_FRAME4_PPM").is_some() {
         framebuffer_to_ppm(
             std::path::Path::new("/tmp/tetris_frame4_replay.ppm"),
             &fb,
@@ -635,7 +635,7 @@ fn replay_frame4_produces_complete_artifact_and_hash() {
             240,
         );
     }
-    if std::env::var_os("CLICKY_PRINT_FRAME4_SUMMARY").is_some() {
+    if std::env::var_os("FLIWHEEL_PRINT_FRAME4_SUMMARY").is_some() {
         for (idx, draw) in draws.iter().enumerate() {
             println!(
                 "draw{} handle={} cov={} bounds=({:.1},{:.1})-({:.1},{:.1}) tex={} kind={} format={:?}",
@@ -654,7 +654,7 @@ fn replay_frame4_produces_complete_artifact_and_hash() {
         println!("frame4_hash={:016x}", hash);
     }
 
-    if std::env::var_os("CLICKY_WRITE_TETRIS_FRAME4_PPM").is_some() {
+    if std::env::var_os("FLIWHEEL_WRITE_TETRIS_FRAME4_PPM").is_some() {
         let (_, base_draws) = replay_frame4();
         let draws_1_to_3_fb = render_draws(&base_draws, false);
         let all_draws_fb = render_draws(&base_draws, true);
@@ -768,7 +768,7 @@ fn diff_pixels(a: &[Rgba8], b: &[Rgba8]) -> usize {
 }
 
 fn write_frame4_ppm_if_requested(path: &str, fb: &[Rgba8]) {
-    if std::env::var_os("CLICKY_WRITE_TETRIS_FRAME4_PPM").is_some() {
+    if std::env::var_os("FLIWHEEL_WRITE_TETRIS_FRAME4_PPM").is_some() {
         framebuffer_to_ppm(std::path::Path::new(path), fb, 320, 240);
         println!("ppm_path={path} hash={:016x}", framebuffer_hash(fb));
     }
@@ -826,7 +826,7 @@ fn frame4_artifact_comparison_and_handle_mapping() {
     let draw4_opaque_fb = render_draws(&draw4_opaque[3..4], true);
     let draw4_only = render_draws(&base_draws[3..4], true);
 
-    if std::env::var_os("CLICKY_PRINT_FRAME4_ARTIFACTS").is_some() {
+    if std::env::var_os("FLIWHEEL_PRINT_FRAME4_ARTIFACTS").is_some() {
         print_draw_summary("draws_1_to_3_only", &draws_1_to_3, &base_draws, false, 0);
         print_draw_summary(
             "all_draws_draw4_disabled",
@@ -906,7 +906,7 @@ fn frame4_artifact_comparison_and_handle_mapping() {
         ),
     ];
 
-    if std::env::var_os("CLICKY_PRINT_FRAME4_MAPPING").is_some() {
+    if std::env::var_os("FLIWHEEL_PRINT_FRAME4_MAPPING").is_some() {
         println!("mapping_table");
         for row in &mapping_rows {
             println!(
@@ -1125,13 +1125,13 @@ fn render_real_variant_and_write_ppm(
 }
 
 /// Opt-in local-asset frame-4 replay. Skipped entirely when
-/// `CLICKY_TETRIS_ASSET_DIR` is absent so the generated-texture deterministic
+/// `FLIWHEEL_TETRIS_ASSET_DIR` is absent so the generated-texture deterministic
 /// tests remain the default path. Draw 4 (handle 3) is deliberately kept as an
 /// experimental translucent overlay probe; it is NOT confirmed as a final
 /// visual interpretation.
 #[test]
 fn replay_frame4_with_local_assets_when_requested() {
-    let asset_dir = match std::env::var_os("CLICKY_TETRIS_ASSET_DIR") {
+    let asset_dir = match std::env::var_os("FLIWHEEL_TETRIS_ASSET_DIR") {
         Some(value) => std::path::PathBuf::from(value),
         None => return, // opt-in only
     };
@@ -1637,7 +1637,7 @@ fn screen_space_origin_and_serialization_flips_are_separate_from_texture_orienta
 
 #[test]
 fn replay_frame4_real_asset_orientation_when_requested() {
-    let asset_dir = match std::env::var_os("CLICKY_TETRIS_ASSET_DIR") {
+    let asset_dir = match std::env::var_os("FLIWHEEL_TETRIS_ASSET_DIR") {
         Some(value) => std::path::PathBuf::from(value),
         None => return,
     };
@@ -1662,7 +1662,7 @@ fn replay_frame4_real_asset_orientation_when_requested() {
     let (_, mut current_draws) = replay_frame4();
     apply_local_assets(&mut current_draws, &assets, &textures);
 
-    if std::env::var_os("CLICKY_PRINT_FRAME4_ORIENTATION_GEOMETRY").is_some() {
+    if std::env::var_os("FLIWHEEL_PRINT_FRAME4_ORIENTATION_GEOMETRY").is_some() {
         println!("orientation_geometry screen_height=240 note=origin-convention-is-still-under-investigation");
         for (idx, draw) in current_draws.iter().enumerate() {
             let per_vertex_positions =

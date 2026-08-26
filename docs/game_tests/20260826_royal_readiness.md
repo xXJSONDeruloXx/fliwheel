@@ -23,8 +23,8 @@ execution of that path in the normal run.
 The bounded PC trace is opt-in and has no effect on normal execution:
 
 ```text
-CLICKY_EAPP_PC_TRACE='0x1802bd68,0x1802bd74,0x1800389c,0x180037fc,0x180039f4,0x1800cdf0,0x1800ce0c,0x1800c960,0x18025394,0x1801f650,0x1801f6dc,0x1801f708,0x18005a24,0x180035c4,0x1800e39c,0x1800e418,0x180058ac' \
-CLICKY_EAPP_PC_TRACE_LIMIT=12 \
+FLIWHEEL_EAPP_PC_TRACE='0x1802bd68,0x1802bd74,0x1800389c,0x180037fc,0x180039f4,0x1800cdf0,0x1800ce0c,0x1800c960,0x18025394,0x1801f650,0x1801f6dc,0x1801f708,0x18005a24,0x180035c4,0x1800e39c,0x1800e418,0x180058ac' \
+FLIWHEEL_EAPP_PC_TRACE_LIMIT=12 \
 INPUT_SCRIPT='action:18-20,action:45-47,action:80-82,wheel=3:130-132,left:180-182,right:230-232' \
 RUST_LOG='EAPP_PC_TRACE=info,EAPP=info,EAPP_IMPORT=warn' \
 ./scripts/test_decrypted_games_interactive.sh \

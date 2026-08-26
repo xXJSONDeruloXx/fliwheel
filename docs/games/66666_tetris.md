@@ -27,8 +27,10 @@
   mixing parity remain unverified.
 
 ## Save Files
-The current local `66666` bundle contains zero-byte `.clicky-saves/game.sav`
-and `.clicky-saves/prefs.sav` placeholders. The 3,561-byte `MGCT` and
+The current local `66666` bundle contains zero-byte legacy
+`.clicky-saves/game.sav` and `.clicky-saves/prefs.sav` placeholders. New
+fliwheel runs use `.fliwheel-saves`; the runtime still reads the legacy files.
+The 3,561-byte `MGCT` and
 127-byte `RPCT` files described in [`TETRIS_SAVE_FORMAT.md`](../TETRIS_SAVE_FORMAT.md)
 come from an older physical-iPod extraction that is not present in the current
 workspace; that document is retained as an unverified reverse-engineering lead,
@@ -52,7 +54,7 @@ reaches `Drop.wav`, `Lock.wav`, and `GameOver.wav` resource events. Wheel
 displacement, later piece/line-clear transforms, exact physical mapping,
 persistence, host audio output, and full long-run parity are still open.
 
-The old no-input probe used a diagnostic `CLICKY_EAPP_HOST_EVENT_FLAGS=0x10`
+The old no-input probe used a diagnostic `FLIWHEEL_EAPP_HOST_EVENT_FLAGS=0x10`
 injection and is not evidence that ordinary no-input execution reaches the
 same state transition.
 
@@ -93,11 +95,11 @@ rotation, and center/down actions for faster or instant drops.
 
 ## Environment
 ```bash
-CLICKY_EXPERIMENTAL_GL_HLE=1
-CLICKY_GL_GATE_B=1
-CLICKY_GL_LIVE_CONTINUOUS=1
-CLICKY_GL_PRESENT_VFLIP=1
-CLICKY_STARTUP_PROGRESS_TRACE=1
+FLIWHEEL_EXPERIMENTAL_GL_HLE=1
+FLIWHEEL_GL_GATE_B=1
+FLIWHEEL_GL_LIVE_CONTINUOUS=1
+FLIWHEEL_GL_PRESENT_VFLIP=1
+FLIWHEEL_STARTUP_PROGRESS_TRACE=1
 ```
 
 Tetris framebuffer retention and incremental tile-transform handling are now

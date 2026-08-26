@@ -324,7 +324,7 @@ draw4_opaque_hash = 0x24cda718d8961325
 ```
 
 Optional inspection artifact:
-- set `CLICKY_WRITE_TETRIS_FRAME4_PPM=1`
+- set `FLIWHEEL_WRITE_TETRIS_FRAME4_PPM=1`
 - run `cargo test -p fliwheel-core --test eapp_gl_decode replay_frame4_produces_complete_artifact_and_hash -- --nocapture`
 - it writes `/tmp/tetris_frame4_replay.ppm`
 
@@ -366,14 +366,14 @@ reuses the standalone rasterizer, texture decoders, framebuffer hashing, and
 PPM writer (no second live-only renderer) and is staged in two gates.
 
 Flags:
-- `CLICKY_EXPERIMENTAL_GL_HLE=1` — enable the live path. When unset, the
+- `FLIWHEEL_EXPERIMENTAL_GL_HLE=1` — enable the live path. When unset, the
   legacy fill-color diagnostic path is used unchanged.
-- `CLICKY_GL_PRESENT_VFLIP=0|1` — configurable vertical presentation flip
+- `FLIWHEEL_GL_PRESENT_VFLIP=0|1` — configurable vertical presentation flip
   (default 1). Applied only when serializing/presenting, never baked into
   texture decode, UV decode, vertex transforms, or rasterizer storage.
-- `CLICKY_GL_GATE_B=1` — copy the presented framebuffer to the eapp window.
+- `FLIWHEEL_GL_GATE_B=1` — copy the presented framebuffer to the eapp window.
   Off by default; intended to be enabled only after Gate A is coherent.
-- `CLICKY_GL_LIVE_CONTINUOUS=1` — capture every 4-draw frame instead of the
+- `FLIWHEEL_GL_LIVE_CONTINUOUS=1` — capture every 4-draw frame instead of the
   first steady-state frame.
 
 Scope preserved:
@@ -412,9 +412,9 @@ both the live and offline analysis. It therefore also matches
 `/tmp/tetris_frame4_orientation_screen_origin_best.ppm` structurally (same four
 draws, same bounds/formats/handles), differing only by that overlay tint.
 
-Gate B (`CLICKY_GL_GATE_B=1`) copies the presented buffer to the eapp render
+Gate B (`FLIWHEEL_GL_GATE_B=1`) copies the presented buffer to the eapp render
 state; confirmed firing under its flag. Window presentation orientation is left
-configurable via `CLICKY_GL_PRESENT_VFLIP` pending visual confirmation.
+configurable via `FLIWHEEL_GL_PRESENT_VFLIP` pending visual confirmation.
 
 Continuous rendering lifecycle evidence (live, first steady frames):
 ```text
@@ -426,7 +426,7 @@ Observed ordering supports neutral lifecycle labels:
 - `165`: surface/setup state (immediately after 158, before draws)
 - `157`: candidate frame present/end (always last surface ordinal, after all steady-state draws)
 
-Continuous mode (`CLICKY_GL_LIVE_CONTINUOUS=1`) now avoids the one-shot repeated-signature heuristic. It assembles frames from the observed 158→157 lifecycle, keeps an active internal buffer separate from completed/presented buffers, and publishes only completed non-empty frames. Gate B copies the completed presented buffer under the render-state mutex, so the eapp window does not read a partially rendered frame. The earlier four-draw-only presentation gate was a temporary splash-validation guard; once guest time advanced, it hid legitimate 3-draw loading/splash frames and later 29-draw menu/loading frames by pinning the window to the last 4-draw splash frame.
+Continuous mode (`FLIWHEEL_GL_LIVE_CONTINUOUS=1`) now avoids the one-shot repeated-signature heuristic. It assembles frames from the observed 158→157 lifecycle, keeps an active internal buffer separate from completed/presented buffers, and publishes only completed non-empty frames. Gate B copies the completed presented buffer under the render-state mutex, so the eapp window does not read a partially rendered frame. The earlier four-draw-only presentation gate was a temporary splash-validation guard; once guest time advanced, it hid legitimate 3-draw loading/splash frames and later 29-draw menu/loading frames by pinning the window to the last 4-draw splash frame.
 
 Headless continuous validation with Gate B enabled:
 ```text
@@ -442,7 +442,7 @@ Detected transitional anomalies are bounded and reported:
 
 Runtime progression root cause (Tetris splash hang): `miscTBD:9` is confirmed, for Tetris, to write an advancing monotonic time value through the pointer in `r0`. A universal semantic name for the ordinal is still unproven, so keep the label conservative: "pointer-writing monotonic-time API" rather than a global ABI name. The aux frame callback calls it with `r0=app_object+4` and `r0=app_object+8`, then computes `delta = [app+8] - [app+4]`. With the old handler (`return args[0]`, no write), `[app+4]`, `[app+8]`, and the splash timeout timestamps stayed zero indefinitely while guest frames and async callbacks continued. Guest constants at `0x180256c0/0x180256c4` are `4_000_000` and `2_000_000`; observed behavior matches microsecond units.
 
-`miscTBD:9` now writes host monotonic microseconds through `r0`. This is a runtime-behavior recovery, not an arbitrary delay or state-forcing shortcut. With `CLICKY_STARTUP_PROGRESS_TRACE=1`, bounded diagnostics include module/ordinal, args, return value, host monotonic time, pointed value before/after, and whether guest time advanced. The same trace records per-frame framebuffer hash, candidate time values, pending async request count, callback count, and first hash-change frame.
+`miscTBD:9` now writes host monotonic microseconds through `r0`. This is a runtime-behavior recovery, not an arbitrary delay or state-forcing shortcut. With `FLIWHEEL_STARTUP_PROGRESS_TRACE=1`, bounded diagnostics include module/ordinal, args, return value, host monotonic time, pointed value before/after, and whether guest time advanced. The same trace records per-frame framebuffer hash, candidate time values, pending async request count, callback count, and first hash-change frame.
 
 Post-fix evidence with live rendering enabled:
 ```text
@@ -462,7 +462,7 @@ External behavioral reference (direct Nano 3G hardware observation, not an emula
 5. in the main-menu composition, the Tetris logo is at the upper-left/top area;
 6. the current EA-logo placement and some other emulator-rendered elements are not yet confirmed accurate.
 
-Startup visual-accuracy capture/classification after the time fix and live-renderer extensions (`CLICKY_STARTUP_CAPTURE_DIR=/tmp/tetris_startup_capture_verified`, `CLICKY_GL_LIVE_CONTINUOUS=1`, `CLICKY_GL_GATE_B=1`, `CLICKY_GL_PRESENT_VFLIP=1`):
+Startup visual-accuracy capture/classification after the time fix and live-renderer extensions (`FLIWHEEL_STARTUP_CAPTURE_DIR=/tmp/tetris_startup_capture_verified`, `FLIWHEEL_GL_LIVE_CONTINUOUS=1`, `FLIWHEEL_GL_GATE_B=1`, `FLIWHEEL_GL_PRESENT_VFLIP=1`):
 
 ```text
 guest frame 2:     10 draws, transitional double-composition, presented hash 0x46bffc2ca3d18ba0
@@ -478,7 +478,7 @@ Evidence-backed live-renderer fixes from that capture:
 - Array definitions carry a material epoch. UV/color decoding only uses arrays from the current ordinal-159 material epoch, preventing stale slot-1 arrays from being interpreted as texcoords or colors after a later bind only redefines array 0.
 - Handle `0x3` 4-component `GL_FIXED` slot-1 arrays are rendered as conservative solid-color quads. This recovers the observed startup fade/light overlay and several solid menu-transition fills without treating unrelated pointer-like handles as solid colors.
 
-Optional dumping: `CLICKY_GL_DUMP_FRAMES=N` writes the first N completed presented frames to `/tmp/tetris_live_frame_XXXX.ppm`.
+Optional dumping: `FLIWHEEL_GL_DUMP_FRAMES=N` writes the first N completed presented frames to `/tmp/tetris_live_frame_XXXX.ppm`.
 
 Handle→upload association is still *inferred* by live upload dimensions/format
 (logged as inferred), not a proven handle-creation path; the exact ordinal-159

@@ -28,7 +28,7 @@
 - Second-highest draw count — full poker table rendering
 - The current default path is safe but not yet playable: the common scripted
   input schedule leaves the title on its loading screen. The experimental
-  `CLICKY_EAPP_ASYNC3_COMPLETE=1` completion fields are Tetris-only and must
+  `FLIWHEEL_EAPP_ASYNC3_COMPLETE=1` completion fields are Tetris-only and must
   not be used as Hold'em evidence; they exercise a different resource ABI.
 
 ## Scoped experimental progress (2026-08-26)
@@ -64,8 +64,8 @@ Evidence:
 
 ## Environment
 ```bash
-CLICKY_EXPERIMENTAL_GL_HLE=1
-CLICKY_GL_GATE_B=1
-CLICKY_GL_LIVE_CONTINUOUS=1
-CLICKY_GL_PRESENT_VFLIP=1
+FLIWHEEL_EXPERIMENTAL_GL_HLE=1
+FLIWHEEL_GL_GATE_B=1
+FLIWHEEL_GL_LIVE_CONTINUOUS=1
+FLIWHEEL_GL_PRESENT_VFLIP=1
 ```

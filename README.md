@@ -29,10 +29,10 @@ TIMEOUT_SECONDS=8 ./scripts/test_decrypted_games.sh /path/to/Games_RO
 Run one bundle directly:
 
 ```sh
-CLICKY_EXPERIMENTAL_GL_HLE=1 \
-CLICKY_GL_GATE_B=1 \
-CLICKY_GL_LIVE_CONTINUOUS=1 \
-CLICKY_GL_PRESENT_VFLIP=1 \
+FLIWHEEL_EXPERIMENTAL_GL_HLE=1 \
+FLIWHEEL_GL_GATE_B=1 \
+FLIWHEEL_GL_LIVE_CONTINUOUS=1 \
+FLIWHEEL_GL_PRESENT_VFLIP=1 \
 ./target/release/eapp /path/to/Games_RO/66666 --headless
 ```
 
@@ -47,9 +47,9 @@ CLICKY_GL_PRESENT_VFLIP=1 \
   desktop runner. Historical firmware, web, and decryption material is under
   [`docs/archive/`](docs/archive/).
 
-The `CLICKY_*` environment variables remain as compatibility names for the
-existing runner and scripts; they do not indicate an additional workspace
-crate or runtime.
+The `FLIWHEEL_*` namespace is canonical for runtime options and scripts. The
+runtime still accepts historical `CLICKY_*` aliases through one compatibility
+shim; current documentation and launchers use only the fliwheel names.
 
 ## Reference work
 
