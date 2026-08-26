@@ -2,12 +2,15 @@
 extern crate log;
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::fs::File;
+use std::io::BufReader;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc as chan;
 
 use clicky_core::gui::{ButtonCallback, RenderCallback, ScrollCallback, TakeControls};
-use clicky_core::sys::eapp::{Eapp, EappBinds, EappKey};
+use clicky_core::sys::eapp::{Eapp, EappAudioEventQueue, EappBinds, EappKey};
 use minifb::{Key, ScaleMode, Window, WindowOptions};
+use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
 use structopt::StructOpt;
 
 pub type DynResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -58,13 +61,116 @@ impl From<EappBinds> for MinifbControls {
     }
 }
 
+struct DesktopAudio {
+    _stream: OutputStream,
+    handle: OutputStreamHandle,
+}
+
+impl DesktopAudio {
+    fn new() -> Option<Self> {
+        if std::env::var_os("EAPP_AUDIO_DISABLE").is_some() {
+            info!(target: "EAPP_AUDIO", "desktop audio disabled by EAPP_AUDIO_DISABLE");
+            return None;
+        }
+        match OutputStream::try_default() {
+            Ok((_stream, handle)) => Some(Self { _stream, handle }),
+            Err(err) => {
+                warn!(target: "EAPP_AUDIO", "no desktop audio output: {}", err);
+                None
+            }
+        }
+    }
+
+    fn pump(&self, events: &EappAudioEventQueue) {
+        let pending = match events.lock() {
+            Ok(mut queue) => queue.drain(..).collect::<Vec<_>>(),
+            Err(_) => return,
+        };
+        for event in pending {
+            let Some(path) = event.host_path else {
+                warn!(
+                    target: "EAPP_AUDIO",
+                    "unmapped sound event frame={} type={} index={}",
+                    event.frame,
+                    event.resource_type,
+                    event.resource_index
+                );
+                continue;
+            };
+            if !is_supported_sound_path(&path) {
+                warn!(
+                    target: "EAPP_AUDIO",
+                    "unsupported sound asset frame={} type={} index={} path={}",
+                    event.frame,
+                    event.resource_type,
+                    event.resource_index,
+                    path.display()
+                );
+                continue;
+            }
+            let file = match File::open(&path) {
+                Ok(file) => file,
+                Err(err) => {
+                    warn!(
+                        target: "EAPP_AUDIO",
+                        "could not open sound frame={} path={}: {}",
+                        event.frame,
+                        path.display(),
+                        err
+                    );
+                    continue;
+                }
+            };
+            let source = match Decoder::new(BufReader::new(file)) {
+                Ok(source) => source,
+                Err(err) => {
+                    warn!(
+                        target: "EAPP_AUDIO",
+                        "could not decode sound frame={} path={}: {}",
+                        event.frame,
+                        path.display(),
+                        err
+                    );
+                    continue;
+                }
+            };
+            let sink = match Sink::try_new(&self.handle) {
+                Ok(sink) => sink,
+                Err(err) => {
+                    warn!(target: "EAPP_AUDIO", "could not create sound sink: {}", err);
+                    continue;
+                }
+            };
+            sink.append(source);
+            sink.detach();
+            info!(
+                target: "EAPP_AUDIO",
+                "played sound frame={} type={} index={} path={}",
+                event.frame,
+                event.resource_type,
+                event.resource_index,
+                path.display()
+            );
+        }
+    }
+}
+
+fn is_supported_sound_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "wav" | "mp3" | "flac" | "ogg"))
+        .unwrap_or(false)
+}
+
 fn run_minifb_ui(
     title: String,
     mut update_fb: RenderCallback,
     controls: impl Into<MinifbControls>,
+    audio_events: EappAudioEventQueue,
     kill_rx: chan::Receiver<()>,
 ) {
     let mut controls = controls.into();
+    let audio = DesktopAudio::new();
 
     let mut window = Window::new(
         &title,
@@ -85,6 +191,10 @@ fn run_minifb_ui(
     let mut emu_buffer = Vec::new();
 
     'ui: while window.is_open() && kill_rx.try_recv().is_err() {
+        if let Some(audio) = audio.as_ref() {
+            audio.pump(&audio_events);
+        }
+
         for key in window.get_keys_pressed(minifb::KeyRepeat::Yes) {
             if key == Key::Escape {
                 break 'ui;
@@ -192,6 +302,7 @@ fn main() -> DynResult<()> {
     }
 
     let update_fb = system.render_callback();
+    let audio_events = system.audio_event_queue();
     let controls = system
         .take_controls()
         .ok_or_else(|| "could not take eapp controls".to_string())?;
@@ -210,7 +321,7 @@ fn main() -> DynResult<()> {
         let _ = kill_tx.send(());
     });
 
-    run_minifb_ui(title, update_fb, controls, kill_rx);
+    run_minifb_ui(title, update_fb, controls, audio_events, kill_rx);
 
     Ok(())
 }

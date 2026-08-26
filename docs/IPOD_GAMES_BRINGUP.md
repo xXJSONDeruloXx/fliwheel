@@ -1336,6 +1336,21 @@ Tetris-specific guesswork, contradicting the "generic and accurate" goal. The
 tracer + this ABI table are the reusable deliverables; the null-object-provider
 fix is the unblocker.
 
+### Current fliwheel status (2026-08-26)
+
+The preceding section records the older clicky baseline. In fliwheel, the
+null-object path has been crossed far enough for Tetris to reach the
+resource-indexed consumer wrapper. The headless artifact
+`/tmp/fliwheel_tetris_audio_events_20260826.log` resolves indices 9, 1, and 0
+to `Menu.wav`, `Move.wav`, and `Drop.wav` during scripted gameplay. The desktop
+frontend now drains those one-per-wrapper events into a `rodio` sink when an
+output device is available.
+
+This is an event-routing milestone, not a claim of byte-accurate mixing. The
+remaining audio work is to verify the `Audio:40`/`Audio:56` buffer/source ABI,
+capture host output, and extend the resource-index mapping to titles whose
+audio consumer path has not yet been reached.
+
 ## Null-vtable teardown crash: investigation (2026-06-20)
 
 Motivation: the null-object-provider fatal is the single highest-leverage

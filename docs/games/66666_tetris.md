@@ -21,7 +21,10 @@
 - **Logo:** `tetrisLogoT_4444.pix` (250×162, RGBA4444), `eaLogo_5551.pix` (50×50, RGBA5551)
 - **Fonts:** `f8x10`, `f10x12`, `f13x13menu`, `f16x16menu`, `f17x16game`, `f23x22game` (all A8 alpha atlases)
 - **UI:** `arrows_a8.pix`, `battery_5551.pix`, `battery_8888.pix`
-- **Audio:** 11 `.wav` files are staged during parsed boot; host playback is not implemented yet.
+- **Audio:** 11 `.wav` files are staged during parsed boot; gameplay resource
+  events resolve to `Menu.wav`, `Move.wav`, and `Drop.wav`, and the headed EAPP
+  frontend now routes supported assets to its host sink. Physical-output and
+  mixing parity remain unverified.
 
 ## Save Files
 The current local `66666` bundle contains zero-byte `.clicky-saves/game.sav`

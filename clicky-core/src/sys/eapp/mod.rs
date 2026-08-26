@@ -246,6 +246,20 @@ pub struct EappInputState {
     pub wheel_delta: f32,
 }
 
+/// A guest-side sound trigger resolved to the resource index used by the
+/// shared audio wrapper. The path is populated from the preceding WAV/M4A
+/// resource read when the bundle exposes one; a missing path is retained as
+/// evidence that the title uses an audio ABI shape we have not mapped yet.
+#[derive(Debug, Clone)]
+pub struct EappAudioEvent {
+    pub frame: u64,
+    pub resource_type: u32,
+    pub resource_index: u32,
+    pub host_path: Option<PathBuf>,
+}
+
+pub type EappAudioEventQueue = Arc<Mutex<VecDeque<EappAudioEvent>>>;
+
 #[derive(Debug, Clone)]
 pub struct EappMetadata {
     pub title: String,
@@ -441,6 +455,12 @@ pub struct Eapp {
     /// host PCM sink is wired so the ABI does not collapse every source to 0.
     audio_handles: HashMap<u32, AudioHandle>,
     next_audio_handle: u32,
+    /// Resource-indexed audio assets retained after the guest releases its
+    /// startup table handles. Gameplay uses the resource index again later,
+    /// so this shadow catalog is what lets the host sink resolve a sound.
+    audio_resource_paths: HashMap<(u32, u32), PathBuf>,
+    audio_last_registration: Option<(u32, u32)>,
+    audio_events: EappAudioEventQueue,
     /// Directory entries from most recent AsyncFileIO:7 directory enumeration.
     /// Stored so the game can query pack names via subsequent calls.
     async_dir_entries: Vec<String>,
@@ -673,6 +693,9 @@ impl Eapp {
             next_async_file_handle: 1,
             audio_handles: HashMap::new(),
             next_audio_handle: 1,
+            audio_resource_paths: HashMap::new(),
+            audio_last_registration: None,
+            audio_events: Arc::new(Mutex::new(VecDeque::new())),
             async_dir_entries: Vec::new(),
             gl_trace_frames: None,
             gl_capture: None,
@@ -702,6 +725,13 @@ impl Eapp {
 
     pub fn metadata(&self) -> &EappMetadata {
         &self.metadata
+    }
+
+    /// Return the shared host-side sound-event queue. The emulator thread
+    /// owns the guest and appends events; a desktop frontend can drain this
+    /// queue without taking ownership of the EAPP runner.
+    pub fn audio_event_queue(&self) -> EappAudioEventQueue {
+        Arc::clone(&self.audio_events)
     }
 
     pub fn render_callback(&self) -> RenderCallback {
@@ -1614,6 +1644,7 @@ impl Eapp {
             );
         }
 
+        self.observe_audio_guest_pc(pc);
         self.maybe_trace_string_path(pc);
 
         self.maybe_patch_guest_state(pc);
@@ -5828,6 +5859,7 @@ impl Eapp {
                     .unwrap_or(false);
                 let callback_pc = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
                 if let Some(host_path) = self.resolve_or_create_host_path(&path) {
+                    self.note_audio_asset_path(&host_path);
                     let bytes = fs::read(&host_path).unwrap_or_else(|e| {
                         warn!(target: "EAPP_IMPORT", "AsyncFileIO:0 read error for {}: {}", host_path.display(), e);
                         Vec::new()
@@ -5958,6 +5990,7 @@ impl Eapp {
                 }
                 self.dump_request_object(req);
                 if let Some(host_path) = self.resolve_or_create_host_path(&path) {
+                    self.note_audio_asset_path(&host_path);
                     // Request-object protocol (observed):
                     //   [req+0x14] = guest-provided destination buffer
                     //   [req+0x18] = expected byte count
@@ -6812,6 +6845,94 @@ impl Eapp {
             }
         }
         true
+    }
+
+    fn observe_audio_guest_pc(&mut self, pc: u32) {
+        match pc {
+            0x1800_5498 => {
+                // The registration wrapper has the actual resource type and
+                // index before it loads the active channel byte for Audio:0.
+                // Keep this outside the diagnostic string trace so event
+                // routing works in normal desktop runs too.
+                let mode = self.cpu.mode();
+                self.audio_last_registration = Some((
+                    self.cpu.reg_get(mode, 0),
+                    self.cpu.reg_get(mode, 1),
+                ));
+            }
+            0x1800_3eb8 => {
+                // This wrapper is the guest's resource-indexed consumer. It
+                // invokes Audio:13/14/15/2 as one logical sound trigger; queue
+                // one host event here instead of four duplicate imports.
+                let mode = self.cpu.mode();
+                let resource_type = self.cpu.reg_get(mode, 0);
+                let resource_index = self.cpu.reg_get(mode, 1);
+                let host_path = self
+                    .audio_resource_paths
+                    .get(&(resource_type, resource_index))
+                    .cloned();
+                let event = EappAudioEvent {
+                    frame: self.frame_counter,
+                    resource_type,
+                    resource_index,
+                    host_path: host_path.clone(),
+                };
+                if let Ok(mut queue) = self.audio_events.lock() {
+                    // A headless run may never drain the frontend queue. Keep
+                    // the latest bounded window rather than allowing a long
+                    // attract-mode run to grow without limit.
+                    const AUDIO_EVENT_QUEUE_LIMIT: usize = 1024;
+                    if queue.len() >= AUDIO_EVENT_QUEUE_LIMIT {
+                        queue.pop_front();
+                    }
+                    queue.push_back(event);
+                }
+                if std::env::var_os("EAPP_AUDIO_EVENT_TRACE").is_some() {
+                    info!(
+                        target: "EAPP_AUDIO",
+                        "AudioEvent frame={} type={} index={} path={}",
+                        self.frame_counter,
+                        resource_type,
+                        resource_index,
+                        host_path
+                            .as_deref()
+                            .map(|path| path.display().to_string())
+                            .unwrap_or_else(|| "<unmapped>".to_string())
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn note_audio_asset_path(&mut self, host_path: &Path) {
+        let is_audio = host_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "wav" | "m4a" | "aac"))
+            .unwrap_or(false);
+        if !is_audio {
+            return;
+        }
+        let Some(resource) = self.audio_last_registration else {
+            return;
+        };
+        if self
+            .audio_resource_paths
+            .entry(resource)
+            .or_insert_with(|| host_path.to_path_buf())
+            .as_path()
+            == host_path
+            && std::env::var_os("EAPP_AUDIO_EVENT_TRACE").is_some()
+        {
+            info!(
+                target: "EAPP_AUDIO",
+                "AudioResourceMap type={} index={} path={}",
+                resource.0,
+                resource.1,
+                host_path.display()
+            );
+        }
     }
 
     /// Env-gated Tetris localization/string-table PC trace. Logs only the
