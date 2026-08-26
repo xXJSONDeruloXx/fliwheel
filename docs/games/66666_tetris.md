@@ -1,6 +1,6 @@
 # Tetris (Bundle 66666)
 
-**Status:** 🟡 TEXT + NAME ENTRY VERIFIED | **Gameplay:** not yet verified | **Engine:** Tetris Runtime
+**Status:** 🟡 TEXT + BOARD ENTRY VERIFIED | **Gameplay:** rendering improving, behavior not yet verified | **Engine:** Tetris Runtime
 
 ## Quick Start
 ```bash
@@ -35,9 +35,17 @@ not as a current emulator fixture.
 
 The live renderer now produces readable credits and the real first-run
 `PLAYER NAME / ENTER YOUR NAME` screen. Positive wheel input moves the selected
-character and Select commits it to the name field. A no-input control reaches
-the same first-run profile/menu transition, with `frame_state` 5 then 6, and
-stops issuing normal GL frames before Play/gameplay can be selected.
+character and Select commits it to the name field. The scripted path reaches
+`MENU`, `PICK GAME`, `CONTROLS`, and the initial 10×20 board. Tetris now honors
+the guest's explicit color clear, retains the framebuffer during incremental
+board updates, and carries the paired tile transforms for the matrix/mino
+materials. The board remains intact and input changes the dynamic draw stream,
+but gravity, locking, rotation/drop mapping, persistence, and long-run play
+are not yet verified.
+
+The old no-input probe used a diagnostic `CLICKY_EAPP_HOST_EVENT_FLAGS=0x10`
+injection and is not evidence that ordinary no-input execution reaches the
+same state transition.
 
 See [`20260825_tetris_text_and_name_entry.md`](../game_tests/20260825_tetris_text_and_name_entry.md)
 for the exact commands and capture artifacts.
@@ -53,14 +61,19 @@ for the exact commands and capture artifacts.
 | f16x16menu{1-3}_a8.pix | A8 | varies | 16×16 menu font (3 layers) |
 | arrows_a8.pix | A8 | varies | Scroll arrows |
 
-## Controls
+## Controls and reference behavior
+
+The emulator's scripted harness can inject `wheel`, `left`, `right`, and
+`action` packets at selected guest frames. The exact gameplay mapping is still
+being checked against device behavior. The contemporary [iLounge review](https://www.ilounge.com/index.php/reviews/entry/electronic-arts-tetris)
+describes wheel sweeps for horizontal movement, clickwheel side buttons for
+rotation, and center/down actions for faster or instant drops.
+
 | Key | Action |
 |-----|--------|
-| ↑ | Move piece up / navigate |
-| ↓ | Move piece down |
-| ← | Move piece left |
-| → | Move piece right |
-| Enter | Action / Select |
+| Wheel | Navigate menus/name entry; gameplay mapping under verification |
+| Left / Right | Injected gameplay control path; exact device mapping under verification |
+| Enter / Action | Select, commit, or advance the current scene |
 | M | Menu / Back |
 
 ## Environment
@@ -72,8 +85,11 @@ CLICKY_GL_PRESENT_VFLIP=1
 CLICKY_STARTUP_PROGRESS_TRACE=1
 ```
 
+Tetris framebuffer retention and incremental tile-transform handling are now
+automatic for bundle `66666`; no preservation override is required.
+
 ## Testing Notes
-- Best-tested game in the emulator (reference implementation)
+- Best-tested game in the emulator and current renderer reference
 - GL trace fixture: `clicky-core/tests/fixtures/eapp/tetris_gl_trace.json`
 - Tetris-specific code paths in `eapp/mod.rs` gated by bundle ID "66666"
 - Clickwheel ingress evidence: [`20260825_clickwheel_input.md`](../game_tests/20260825_clickwheel_input.md)

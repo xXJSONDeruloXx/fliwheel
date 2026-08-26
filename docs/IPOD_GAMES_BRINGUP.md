@@ -1,17 +1,25 @@
 # iPod Games bring-up plan
 
 > Current status (2026-08-25): this is a historical bring-up and ABI research
-> log. Use [`20260825_full_matrix.md`](game_tests/20260825_full_matrix.md)
-> for the current decrypted-corpus smoke result and the per-game pages for
-> current claims. Tetris now has readable text and verified first-run name
-> entry, but gameplay, profile/menu transition, and host audio remain open.
+> log. The active project is the fresh `fliwheel` repository. Use
+> [`20260825_full_matrix.md`](game_tests/20260825_full_matrix.md) and the
+> per-game pages for current claims. The 20 decrypted bundles now complete the
+> startup/rendering smoke gate without fatal signatures. Tetris reaches its
+> menu, controls, and initial board with incremental rendering; full gameplay
+> behavior and host audio remain open.
 
 This branch is focused on **running clickwheel games on a Mac host** with the
 smallest viable amount of emulated iPod machinery.
 
-## Branch choice
+## Repository provenance
 
-This work starts from `ipodlinux-bringup`, not `master`.
+`fliwheel` is a fresh repository initialized from the local clicky HLE fork.
+The local `ipod-emulator` checkout is retained as a reference for firmware,
+OpenGLES ordinal, and 320×240 coordinate research. The older branch-selection
+notes below describe the source project that supplied the initial emulator
+machinery, not the current fliwheel branch strategy.
+
+The original bring-up started from `ipodlinux-bringup`, not `master`.
 
 Why:
 
@@ -80,9 +88,10 @@ The firmware strings include:
 
 That confirms RetailOS knows about the clickwheel game install/runtime model.
 
-## What `clicky` has today
+## What the inherited HLE has today
 
-Current repo state is still centered on the **iPod 4G grayscale** target:
+The inherited low-level emulator is still centered on the **iPod 4G grayscale**
+target:
 
 - only `sys/ipod4g` exists
 - the only LCD device in-tree is the 4G grayscale controller

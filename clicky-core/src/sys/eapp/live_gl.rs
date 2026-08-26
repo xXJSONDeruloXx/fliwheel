@@ -39,6 +39,10 @@ pub const DRAW_MODE: u32 = 7;
 /// `OpenGLES:37 mode=5 count=11`.
 pub const DRAW_MODE_TRIANGLE_STRIP: u32 = 5;
 
+/// GL_COLOR_BUFFER_BIT, the only clear mask observed in the clickwheel game
+/// streams so far.
+pub const GL_COLOR_BUFFER_BIT: u32 = 0x4000;
+
 /// The observed `mode=7` stream behaves like batched quads: count is always a
 /// positive multiple of 4, and the existing Tetris path is the 1-quad case.
 pub fn quad_group_count(mode: u32, first: usize, count: usize) -> Option<usize> {
@@ -144,6 +148,17 @@ pub struct LiveGlState {
     pub current_state_ptr: u32,
     pub current_material_epoch: u64,
     pub translation: (f32, f32),
+    /// Transform model for the Tetris material groups. The guest establishes
+    /// a frame-level base before the first material bind, then wraps each
+    /// material's tile draws in paired translations.
+    pub frame_base_translation: (f32, f32),
+    pub frame_material_bound: bool,
+    /// Draw count of the preceding frame. Tetris changes from full board
+    /// composition to low-draw incremental updates at this boundary.
+    pub previous_frame_draw_count: usize,
+    pub use_incremental_translation: bool,
+    /// State set by OpenGLES:13 and consumed by OpenGLES:12.
+    pub clear_color: Rgba8,
     /// Pointer-backed text materials issue one full base translation for the
     /// first glyph, then only per-glyph deltas before subsequent DrawArrays
     /// calls. Keep that accumulated text cursor separately so the generic
@@ -242,6 +257,11 @@ impl LiveGlState {
             current_state_ptr: 0,
             current_material_epoch: 0,
             translation: (0.0, 0.0),
+            frame_base_translation: (0.0, 0.0),
+            frame_material_bound: false,
+            previous_frame_draw_count: 0,
+            use_incremental_translation: false,
+            clear_color: Rgba8::rgba(0, 0, 0, 255),
             pointer_text_carry_handle: None,
             pointer_text_carry: (0.0, 0.0),
             framebuffer: vec![Rgba8::rgba(0, 0, 0, 0); FB_PIXELS],
@@ -292,9 +312,19 @@ impl LiveGlState {
         self.arrays.clear();
         self.enabled_arrays.clear();
         self.translation = (0.0, 0.0);
+        self.frame_base_translation = (0.0, 0.0);
+        self.frame_material_bound = false;
+        self.use_incremental_translation = self.game_id == "66666"
+            && (1..=16).contains(&self.previous_frame_draw_count);
         self.pointer_text_carry_handle = None;
         self.pointer_text_carry = (0.0, 0.0);
-        self.framebuffer = vec![Rgba8::rgba(0, 0, 0, 0); FB_PIXELS];
+        // Most titles redraw a complete scene every frame. Tetris instead
+        // submits only changed cells after its initial board composition, so
+        // its real GL surface must retain prior pixels until the guest issues
+        // an explicit color clear.
+        if self.game_id != "66666" {
+            self.framebuffer = vec![Rgba8::rgba(0, 0, 0, 0); FB_PIXELS];
+        }
         self.draws.clear();
         self.draw_count_in_frame = 0;
         self.ordinal_trace.clear();
@@ -303,6 +333,28 @@ impl LiveGlState {
         // so drop the prior frame's recorded pushes+consumption.
         self.text_char_seqs.clear();
         self.text_char_consumed.clear();
+    }
+
+    pub fn set_clear_color(&mut self, color: Rgba8) {
+        self.clear_color = color;
+    }
+
+    pub fn clear(&mut self, mask: u32) {
+        if mask & GL_COLOR_BUFFER_BIT != 0 {
+            self.framebuffer.fill(self.clear_color);
+        }
+    }
+
+    fn uses_ndc_coordinates(&self, positions: &[(f32, f32)]) -> bool {
+        // The Sudoku/Solitaire engine is the only known family that submits
+        // normalized 0..1 vertex coordinates.  Pixel-space titles can still
+        // legitimately submit tiny or partially off-screen quads (Tetris'
+        // board/mino path does both), so a coordinate-only max<2 heuristic
+        // misclassifies those quads and stretches them to the full viewport.
+        matches!(self.game_id.as_str(), "50513" | "50514")
+            && positions
+                .iter()
+                .all(|(x, y)| *x >= 0.0 && *y >= 0.0 && *x < 2.0 && *y < 2.0)
     }
 
     /// Record one scalar-formatter char push captured at the guest
@@ -909,14 +961,10 @@ impl LiveGlState {
             skipped_reason: None,
         };
 
-        // NDC-to-pixel scaling for engine families that pass 0–1 positions.
-        // These engines use a projection where the full screen maps to a
-        // (0,0)–(1.something, 0.something) NDC range. Rather than just
-        // multiplying by screen dims (which clips if max > 1.0), we treat
-        // the NDC quad as if it should fill the viewport: find the min/max
-        // extents and scale them to (0, FB_WIDTH) × (0, FB_HEIGHT).
-        let max_coord = positions.iter().map(|p| p.0.max(p.1)).fold(0.0f32, f32::max);
-        let pixel_positions = if max_coord < 2.0 {
+        // NDC-to-pixel scaling for the known Sudoku/Solitaire engine family.
+        // Rather than multiplying by screen dims (which clips the observed
+        // 1.2x0.9 splash quad), scale the submitted extents to the viewport.
+        let pixel_positions = if self.uses_ndc_coordinates(&positions) {
             self.ndc_frame = true;
             let (min_x, min_y, max_x, max_y) = bounds;
             // Shift and scale so (min_x, min_y)–(max_x, max_y) maps to
@@ -1038,9 +1086,8 @@ impl LiveGlState {
             return record;
         };
 
-        // NDC-to-pixel scaling for engine families that pass 0–1 positions.
-        let max_coord = positions.iter().map(|p| p.0.max(p.1)).fold(0.0f32, f32::max);
-        let pixel_positions: Vec<(f32, f32)> = if max_coord < 2.0 {
+        // NDC-to-pixel scaling for the known Sudoku/Solitaire engine family.
+        let pixel_positions: Vec<(f32, f32)> = if self.uses_ndc_coordinates(positions) {
             self.ndc_frame = true;
             let min_x = positions.iter().map(|p| p.0).fold(f32::INFINITY, f32::min);
             let min_y = positions.iter().map(|p| p.1).fold(f32::INFINITY, f32::min);
@@ -1573,6 +1620,39 @@ mod tests {
         let uvs = [(0.5, 0.5), (0.5, -0.5), (50.5, -0.5), (50.5, 49.5)];
         let (w, h) = super::infer_dims_from_uvs(&uvs);
         assert_eq!((w, h), (50, 50));
+    }
+
+    #[test]
+    fn ndc_detection_is_scoped_to_normalized_engine_bundles() {
+        let ndc_positions = [(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)];
+        let tetris_offscreen_positions = [
+            (-11.0, -11.0),
+            (-11.0, 0.0),
+            (0.0, 0.0),
+            (0.0, -11.0),
+        ];
+
+        let sudoku = LiveGlState::new(true, false, false, "50513".to_string());
+        assert!(sudoku.uses_ndc_coordinates(&ndc_positions));
+
+        let tetris = LiveGlState::new(true, false, false, "66666".to_string());
+        assert!(!tetris.uses_ndc_coordinates(&tetris_offscreen_positions));
+        assert!(!tetris.uses_ndc_coordinates(&ndc_positions));
+    }
+
+    #[test]
+    fn clear_uses_guest_color_and_tetris_retains_surface_between_frames() {
+        let mut lg = LiveGlState::new(true, false, false, "66666".to_string());
+        let blue = Rgba8::rgba(10, 20, 30, 255);
+        lg.set_clear_color(blue);
+        lg.clear(GL_COLOR_BUFFER_BIT);
+        assert_eq!(lg.framebuffer[0], blue);
+
+        lg.framebuffer[0] = Rgba8::rgba(40, 50, 60, 255);
+        lg.previous_frame_draw_count = 12;
+        lg.reset_for_frame();
+        assert_eq!(lg.framebuffer[0], Rgba8::rgba(40, 50, 60, 255));
+        assert!(lg.use_incremental_translation);
     }
 
     #[test]

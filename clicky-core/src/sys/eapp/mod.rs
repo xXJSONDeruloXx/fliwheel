@@ -1953,6 +1953,7 @@ impl Eapp {
             if let Some(lg) = self.live_gl.as_mut() {
                 let prev_frame = lg.last_frame_counter;
                 let draws = lg.draw_count_in_frame;
+                lg.previous_frame_draw_count = draws;
                 if let Some(summary) = lg.take_frame_trace_summary(prev_frame, draws) {
                     info!(target: "EAPP_GL", "{}", summary);
                     if lg.lifecycle_reports.len() < lg.lifecycle_report_budget {
@@ -1980,6 +1981,8 @@ impl Eapp {
         }
 
         let ret = match ordinal {
+            13 => { self.live_handle_clear_color(args); 0 }
+            12 => { self.live_handle_clear(args); 0 }
             99 => { self.live_handle_upload(args); 0 }
             137 => { self.live_handle_array_def(args); 0 }
             40 => { self.live_handle_enable_array(args); 0 }
@@ -2733,8 +2736,10 @@ impl Eapp {
         debug!(target: "EAPP_GL", "live_enable_array idx={}", array_index);
     }
 
-    /// Ordinal 169: accumulate translation (r1=tx, r2=ty as floats). Reset to
-    /// zero after each confirmed draw (ordinal 37).
+    /// Ordinal 169: accumulate the guest's two-component draw transform
+    /// (r1=first component, r2=second component as floats). Normal sprite
+    /// groups reset this state after each draw; Tetris' incremental tile
+    /// groups retain it across paired draws.
     fn live_handle_translate(&mut self, args: [u32; 4]) {
         let tx = f32::from_bits(args[1]);
         let ty = f32::from_bits(args[2]);
@@ -2744,12 +2749,59 @@ impl Eapp {
         }
     }
 
+    /// OpenGLES:13, glClearColor(r, g, b, a).
+    fn live_handle_clear_color(&mut self, args: [u32; 4]) {
+        let channels = [
+            f32::from_bits(args[0]),
+            f32::from_bits(args[1]),
+            f32::from_bits(args[2]),
+            f32::from_bits(args[3]),
+        ];
+        let to_u8 = |value: f32| (value.clamp(0.0, 1.0) * 255.0).round() as u8;
+        let color = Rgba8::rgba(
+            to_u8(channels[0]),
+            to_u8(channels[1]),
+            to_u8(channels[2]),
+            to_u8(channels[3]),
+        );
+        if let Some(lg) = self.live_gl.as_mut() {
+            lg.set_clear_color(color);
+        }
+        debug!(
+            target: "EAPP_GL",
+            "live_clear_color rgba=({},{},{},{})",
+            color.r,
+            color.g,
+            color.b,
+            color.a
+        );
+    }
+
+    /// OpenGLES:12, glClear(mask).
+    fn live_handle_clear(&mut self, args: [u32; 4]) {
+        let mask = args[0];
+        if let Some(lg) = self.live_gl.as_mut() {
+            lg.clear(mask);
+        }
+        debug!(target: "EAPP_GL", "live_clear mask={:#x}", mask);
+    }
+
     /// Ordinal 159: record the small selector/handle (r0) and state blob
     /// pointer (r1). The exact handle-creation path remains unsolved.
     fn live_handle_bind_material(&mut self, args: [u32; 4]) {
         let handle = args[0];
         let state_ptr = args[1];
         if let Some(lg) = self.live_gl.as_mut() {
+            if lg.use_incremental_translation
+                && matches!(handle, 0x13 | 0x19)
+            {
+                if !lg.frame_material_bound {
+                    lg.frame_base_translation = lg.translation;
+                } else {
+                    lg.translation = lg.frame_base_translation;
+                }
+                lg.frame_material_bound = true;
+            }
             lg.current_handle = handle;
             lg.current_state_ptr = state_ptr;
             lg.current_material_epoch = lg.current_material_epoch.wrapping_add(1);
@@ -4363,7 +4415,7 @@ impl Eapp {
         }
     }
 
-    /// Reset per-draw translation, increment the draw counter, and capture the
+    /// Reset normal per-draw translation, increment the draw counter, and capture the
     /// first complete candidate frame (after the known steady-state four
     /// ordinal-37 draws) unless continuous capture is enabled.
     fn live_finalize_draw(&mut self, record: Option<live_gl::LiveDrawRecord>) {
@@ -4374,8 +4426,12 @@ impl Eapp {
         let should_capture;
         if let Some(lg) = self.live_gl.as_mut() {
             let increment = records.len().max(1);
+            let preserve_translation = lg.use_incremental_translation
+                && records.iter().all(|record| matches!(record.handle, 0x13 | 0x19));
             lg.draws.extend(records);
-            lg.translation = (0.0, 0.0);
+            if !preserve_translation {
+                lg.translation = (0.0, 0.0);
+            }
             lg.draw_count_in_frame += increment;
             if lg.continuous_capture {
                 return;

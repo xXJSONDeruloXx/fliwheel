@@ -4,6 +4,7 @@ Date: 2026-08-25
 
 This is the post-change 20-bundle smoke run for the decrypted corpus. It is a
 startup/rendering regression, not a claim that every title is fully playable.
+The clear-state and Tetris incremental-rendering changes are included.
 
 Corpus: `/tmp/clicky_hle_eval.1i3DER/archive20/20 iPod games/Games_RO`
 
@@ -11,32 +12,32 @@ Runner: `/Users/danhimebauch/Developer/fliwheel/target/release/eapp`
 
 Mode: headless experimental GL HLE, 8-second watchdog per bundle, no input
 
-Raw report: `/tmp/fliwheel_regression_20260825_atlasfix/20260825_203326_decrypted_games.md`
+Raw report: `/tmp/fliwheel_regression_20260826_auto/20260825_221028_decrypted_games.md`
 
-Per-game logs: `/tmp/fliwheel_regression_20260825_atlasfix/20260825_203326_logs`
+Per-game logs: `/tmp/fliwheel_regression_20260826_auto/20260825_221028_logs`
 
 | Bundle | Exit | Last frame | Last draws | Rasterized draws | Skipped draws |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 11002 | 124 | 5843 | 1 | 0 | 5845 |
+| 11002 | 124 | 5732 | 1 | 0 | 5734 |
 | 11050 | 124 | 3 | 2 | 7 | 0 |
 | 11051 | 124 | 3 | 2 | 7 | 0 |
 | 11052 | 124 | 3 | 2 | 7 | 0 |
-| 12345 | 124 | 4847 | 2 | 10227 | 0 |
-| 14004 | 124 | 1898 | 12 | 18980 | 1 |
-| 1500C | 124 | 1776 | 1 | 1742 | 0 |
-| 1500E | 124 | 2363 | 1 | 2363 | 0 |
-| 1B200 | 124 | 5074 | 0 | 0 | 0 |
+| 12345 | 124 | 4688 | 2 | 9886 | 0 |
+| 14004 | 124 | 1844 | 12 | 18430 | 1 |
+| 1500C | 124 | 2351 | 1 | 2317 | 0 |
+| 1500E | 124 | 2381 | 1 | 2381 | 0 |
+| 1B200 | 124 | 5103 | 0 | 0 | 0 |
 | 1C300 | 124 | 0 | 1 | 1 | 0 |
-| 33333 | 124 | 678 | 34 | 22721 | 0 |
+| 33333 | 124 | 667 | 34 | 22347 | 0 |
 | 44444 | 124 | 6 | 8 | 35 | 1 |
-| 50513 | 124 | 3383 | 0 | 1 | 0 |
-| 50514 | 124 | 1115 | 0 | 233 | 3 |
+| 50513 | 124 | 3402 | 0 | 1 | 0 |
+| 50514 | 124 | 1106 | 0 | 225 | 2 |
 | 55555 | 124 | 5 | 37 | 144 | 1 |
-| 66666 | 124 | 1071 | 29 | 7339 | 0 |
-| 77777 | 124 | 2028 | 9 | 15094 | 1 |
-| 88888 | 124 | 2759 | 5 | 8274 | 2 |
-| 99999 | 124 | 652 | 49 | 28949 | 0 |
-| AAAAA | 124 | 1420 | 14 | 18849 | 3 |
+| 66666 | 124 | 1055 | 30 | 7123 | 0 |
+| 77777 | 124 | 2023 | 9 | 15050 | 1 |
+| 88888 | 124 | 2762 | 5 | 8284 | 2 |
+| 99999 | 124 | 648 | 49 | 28740 | 0 |
+| AAAAA | 124 | 1331 | 15 | 19110 | 3 |
 
 All 20 exits were the expected watchdog `124`. A scan of the per-game logs
 found no fatal memory fault, panic, or emulator crash. The draw totals vary
