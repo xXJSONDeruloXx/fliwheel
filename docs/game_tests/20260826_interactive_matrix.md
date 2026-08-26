@@ -61,10 +61,10 @@ manifest. They measure visual activity, not correctness.
 | `1B200` | LOST | 700 frames, zero GL draws, blank framebuffer; rserver loads but no shader output | Shader/render-server blocked | Parse or emulate the `rserver.bin` programmable path |
 | `1C300` | musika | One captured frame with the Musika logo; no fatal | Splash only | Reverse the animation/packet/sound-bank runtime after the first scene |
 | `33333` | Texas Hold'em | Corrected run completes 30,000,000 cycles / 700 captured frames with 3 visual hashes, 34 draws per steady-state frame, and no fatal; the stabilized capture is the `LOADING` screen | Loading screen only; playable state not reached | Reverse the title-specific resource completion/transition path, then verify poker-table controls and sound |
-| `44444` | Zuma | 7 frames, 2 hashes, up to eight draws; only a tiny top-of-screen fragment is visible | Texture/transform partial | Verify atlas/RO resource upload and PopCap board composition |
+| `44444` | Zuma | Focused 50M-cycle run completes 8 frames with 3 hashes and 8 GL draws; the final DMA-only present covers the full buffer but contains 27,352 non-zero pixels and only a noisy top fragment | PopCap DMA/content partial | Resolve the hardware-aperture/data contract, then verify atlas/RO resource upload and board composition |
 | `50513` | Sudoku | Recognizable title screen; reversed-register event heads now drain cleanly, and Menu enters the save/settings teardown loop. An opt-in full RLB completion runs its callback chain but adds no board draws | Input lifecycle and Menu/exit path verified; board not reached | Derive the puzzle-start/select contract and render the puzzle grid |
 | `50514` | Royal Solitaire | 700 frames, 26 hashes and 59 changes; the character splash is spatially coherent, scripted event nodes are consumed, and the savefile request completes | Coherent splash; readiness/object contract unresolved and board not reached | Reconstruct the manager readiness callback, then validate card/selection interaction |
-| `55555` | Bejeweled | 6 frames, 3 hashes and 3 changes, up to 37 draws; title/jewel fragments but no coherent board | PopCap partial | Repair DMA/texture composition and then test wheel selection/moves |
+| `55555` | Bejeweled | Focused 50M-cycle run completes 7 frames with 4 hashes and 37 GL draws; the final DMA-only present covers the full buffer and has 76,794 non-zero pixels, but the scene is malformed/warped | PopCap DMA/content partial | Resolve the hardware-aperture/data contract, then repair board composition and test wheel selection/moves |
 | `66666` | Tetris | Corrected run reaches frame 501 with 20 hashes and up to 382 draws; the separate targeted schedule reaches the board, pause/resume, left/right, hard drop, and indexed `Menu.wav`/`Move.wav`/`Drop.wav` events | Best current target; interactive partial, not complete | Finish wheel displacement, line clears, persistence, long-run visual parity, and sound mixing |
 | `77777` | Mahjong | 700 frames, 71 hashes, up to eight draws; mostly dotted/garbled title output | Texture/UV partial | Decode the `main.rlb` resource path and tile atlas |
 | `88888` | Mini Golf | 700 frames, two hashes, five draws; mostly black with a loading/progress outline | Splash/loading only | Load the compact course resources and reach the menu |
@@ -124,6 +124,12 @@ Evidence is retained at `/tmp/fliwheel_holdem_ok_sweep_20260826/` and
   forcing it exposed unresolved init/render-server contracts in `14004`,
   `1500C`, and `1500E`; the default matrix stays on the no-fatal path. See
   [the init-vector probe](20260826_eapp_init_vectors.md).
+- The DMA-only present path now records PopCap frames in the same startup
+  manifest as GL-backed frames. A focused 50M-cycle run confirms full-buffer
+  writes for both Zuma and Bejeweled, but the final images remain malformed or
+  partial. The firmware-reference SDRAM-alias model was tested opt-in and
+  rejected after Bejeweled reproduced the final hash and then faulted. See
+  [the PopCap DMA contract probe](20260826_popcap_dma_contract.md).
 - Royal Solitaire's readiness investigation confirmed that its event list is
   delivered and consumed and that its savefile request completes; the guest
   manager gate at `0x180cfa5c` remains at `2`. A diagnostic clear only tears

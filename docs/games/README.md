@@ -68,6 +68,9 @@ PopCap engine games still need a content-level renderer regression:
 ./scripts/zuma.sh                  # startup/partial renderer probe
 ```
 
+The current DMA evidence and shared next gate are recorded in the
+[PopCap DMA contract probe](../game_tests/20260826_popcap_dma_contract.md).
+
 ### Sudoku / Solitaire
 
 Sudoku and Royal Solitaire use normalized coordinates and run directly:

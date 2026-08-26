@@ -51,9 +51,10 @@ const WORK_RAM_BASE: u32 = 0x1000_0000;
 // 0x1080_0000 (8 MiB) and 0x1200_0000 (32 MiB).
 const WORK_RAM_SIZE: usize = 64 * 1024 * 1024;
 
-/// Base address of stubbed hardware registers (observed in Zuma/Bejeweled at
-/// `0x1400000c`). On real iPod hardware this region contains DMA/display FIFO
-/// registers; the emulator stubs it with read-zero/write-discard semantics.
+/// Base address of the synthetic aperture used by the original clicky HLE
+/// bring-up (observed in Zuma/Bejeweled at `0x1400000c`). The firmware-side
+/// reference model also documents `0x14000000..0x18000000` as an uncached
+/// SDRAM alias; `CLICKY_EAPP_UNCACHED_ALIAS=1` selects that A/B path.
 const HW_STUB_BASE: u32 = 0x1400_0000;
 const HW_STUB_SIZE: usize = 0x400_0000; // 64 MiB - covers entire 0x14000000..0x18000000 gap
 // (DMA channel register banks at 64KB strides: 0x14000000, 0x14010000, 0x14020000, etc.)
@@ -553,6 +554,10 @@ struct EappBus {
     image_len: u32,
     work_ram: Ram,
     dma_framebuf: Ram,
+    /// Treat the 0x14000000 window as the PP502x uncached SDRAM alias when
+    /// explicitly requested. The default synthetic hardware path is retained
+    /// until the decrypted-game A/B result is accepted as the new contract.
+    uncached_sdram_alias: bool,
     /// Track range of DMA FB writes
     hw_fb_write_count: usize,
     hw_fb_write_min: u32,
@@ -671,6 +676,7 @@ impl Eapp {
                 image_len: mapped_image_len as u32,
                 work_ram,
                 dma_framebuf: Ram::new(320 * 240 * 2), // RGB565 320×240
+                uncached_sdram_alias: std::env::var_os("CLICKY_EAPP_UNCACHED_ALIAS").is_some(),
                 hw_fb_write_count: 0,
                 hw_fb_write_min: u32::MAX,
                 hw_fb_write_max: 0,
@@ -881,6 +887,10 @@ impl Eapp {
         if let Some(completed) = completed {
             self.live_log_completed_frame(&completed, true);
             self.live_log_signature_detail(&completed);
+            // DMA-only PopCap presents do not pass through the ordinary
+            // candidate-present path, so record them in the same startup
+            // manifest as GL-backed frames.
+            self.capture_startup_completed_frame(&completed);
             self.live_dump_completed_frame();
             let gate_b = self.live_gl.as_ref().map(|lg| lg.gate_b).unwrap_or(false);
             if gate_b {
@@ -8420,6 +8430,11 @@ impl Memory for EappBus {
             }
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
                 let rel = offset - HW_STUB_BASE;
+                if self.uncached_sdram_alias {
+                    let value = self.work_ram.r32(rel)?;
+                    self.trace_hw_read(4, offset, value);
+                    return Ok(value);
+                }
                 let value: u32 = if rel < 0x20000 {
                     // DMA control registers
                     1
@@ -8465,6 +8480,27 @@ impl Memory for EappBus {
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
                 self.trace_hw_write(4, offset, val);
                 let rel = offset - HW_STUB_BASE;
+                if self.uncached_sdram_alias {
+                    self.work_ram.w32(rel, val)?;
+                    if rel >= 0x20000 {
+                        let fb_off = rel - 0x20000;
+                        if (fb_off as usize) + 4 <= DMA_FB_SIZE {
+                            self.dma_framebuf.bulk_write(fb_off, &val.to_le_bytes());
+                            self.hw_fb_write_count += 1;
+                            self.hw_dma_dirty = true;
+                            if fb_off < self.hw_fb_write_min {
+                                self.hw_fb_write_min = fb_off;
+                            }
+                            if fb_off + 4 > self.hw_fb_write_max {
+                                self.hw_fb_write_max = fb_off + 4;
+                            }
+                            if fb_off == 0 && self.hw_fb_write_count > 1 {
+                                self.hw_dma_frame += 1;
+                            }
+                        }
+                    }
+                    return Ok(());
+                }
                 if rel < 0x20000 {
                     // DMA control register writes
                 } else {
@@ -8502,6 +8538,11 @@ impl Memory for EappBus {
             }
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
                 let rel = offset - HW_STUB_BASE;
+                if self.uncached_sdram_alias {
+                    let value = self.work_ram.r8(rel)?;
+                    self.trace_hw_read(1, offset, value as u32);
+                    return Ok(value);
+                }
                 let value: u8 = if rel < 0x20000 {
                     1
                 } else {
@@ -8531,6 +8572,11 @@ impl Memory for EappBus {
             }
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
                 let rel = offset - HW_STUB_BASE;
+                if self.uncached_sdram_alias {
+                    let value = self.work_ram.r16(rel)?;
+                    self.trace_hw_read(2, offset, value as u32);
+                    return Ok(value);
+                }
                 let value: u16 = if rel < 0x20000 {
                     1
                 } else {
@@ -8573,6 +8619,17 @@ impl Memory for EappBus {
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
                 self.trace_hw_write(1, offset, val as u32);
                 let rel = offset - HW_STUB_BASE;
+                if self.uncached_sdram_alias {
+                    self.work_ram.w8(rel, val)?;
+                    if rel >= 0x20000 {
+                        let fb_off = rel - 0x20000;
+                        if (fb_off as usize) < DMA_FB_SIZE {
+                            self.dma_framebuf.bulk_write(fb_off, &[val]);
+                            self.hw_dma_dirty = true;
+                        }
+                    }
+                    return Ok(());
+                }
                 if rel >= 0x20000 {
                     let fb_off = (rel - 0x20000) as u32;
                     if (fb_off as usize) < DMA_FB_SIZE {
@@ -8609,6 +8666,17 @@ impl Memory for EappBus {
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
                 self.trace_hw_write(2, offset, val as u32);
                 let rel = offset - HW_STUB_BASE;
+                if self.uncached_sdram_alias {
+                    self.work_ram.w16(rel, val)?;
+                    if rel >= 0x20000 {
+                        let fb_off = rel - 0x20000;
+                        if (fb_off as usize) + 2 <= DMA_FB_SIZE {
+                            self.dma_framebuf.bulk_write(fb_off, &val.to_le_bytes());
+                            self.hw_dma_dirty = true;
+                        }
+                    }
+                    return Ok(());
+                }
                 if rel >= 0x20000 {
                     let fb_off = (rel - 0x20000) as u32;
                     if (fb_off as usize) + 2 <= DMA_FB_SIZE {
