@@ -8559,8 +8559,8 @@ impl EappBus {
             return;
         };
         let source_start = self.pending_regs[1].wrapping_sub(16);
-        self.dump_work_ram_range(dir, "dma_source", source_start, DMA_FB_SIZE);
-        self.dump_work_ram_range(
+        self.dump_guest_range(dir, "dma_source", source_start, DMA_FB_SIZE);
+        self.dump_guest_range(
             dir,
             "dma_surface",
             source_start.saturating_sub(12),
@@ -8573,43 +8573,73 @@ impl EappBus {
             return;
         };
         let source_start = self.pending_regs[1].wrapping_sub(16);
-        self.dump_work_ram_range(dir, "watch_source", source_start, DMA_FB_SIZE);
+        self.dump_guest_range(dir, "watch_source", source_start, DMA_FB_SIZE);
         self.watch_source_dumped = true;
     }
 
-    fn dump_work_ram_range(&self, dir: &Path, label: &str, source_start: u32, len: usize) {
-        let work_end = WORK_RAM_BASE + WORK_RAM_SIZE as u32;
-        if source_start < WORK_RAM_BASE
-            || source_start.saturating_add(len as u32) > work_end
-        {
+    fn dump_guest_range(&self, dir: &Path, label: &str, source_start: u32, len: usize) {
+        if len > u32::MAX as usize {
             warn!(
                 target: "EAPP_HW",
-                "work-RAM source dump skipped source={:#010x} len={:#x}",
+                "guest source dump skipped source={:#010x} len={:#x}",
                 source_start,
                 len
             );
             return;
         }
+        let len_u32 = len as u32;
+        let Some(source_end) = source_start.checked_add(len_u32) else {
+            warn!(
+                target: "EAPP_HW",
+                "guest source dump skipped source={:#010x} len={:#x}",
+                source_start,
+                len
+            );
+            return;
+        };
+
+        let image_end = FILE_VMA_BASE.saturating_add(self.image_len);
+        let work_end = WORK_RAM_BASE.saturating_add(WORK_RAM_SIZE as u32);
+        let (region, offset, extension) = if source_start >= FILE_VMA_BASE
+            && source_end <= image_end
+        {
+            ("file-backed", source_start - FILE_VMA_BASE, "bin")
+        } else if source_start >= WORK_RAM_BASE && source_end <= work_end {
+            ("work-RAM", source_start - WORK_RAM_BASE, "rgb565")
+        } else {
+            warn!(
+                target: "EAPP_HW",
+                "guest source dump skipped source={:#010x} len={:#x}",
+                source_start,
+                len
+            );
+            return;
+        };
+
         let _ = fs::create_dir_all(dir);
-        let path = dir.join(format!("{label}_{source_start:#010x}.rgb565"));
+        let path = dir.join(format!("{label}_{source_start:#010x}.{extension}"));
         if path.exists() {
             return;
         }
         let mut data = vec![0u8; len];
-        self.work_ram
-            .bulk_read(source_start - WORK_RAM_BASE, &mut data);
+        if region == "file-backed" {
+            self.image.bulk_read(offset, &mut data);
+        } else {
+            self.work_ram.bulk_read(offset, &mut data);
+        }
         if let Err(err) = fs::write(&path, &data) {
             warn!(
                 target: "EAPP_HW",
-                "work-RAM source dump failed path={} error={}",
+                "guest source dump failed path={} error={}",
                 path.display(),
                 err
             );
         } else {
             info!(
                 target: "EAPP_HW",
-                "work-RAM source dump path={} source={:#010x} bytes={}",
+                "guest source dump path={} region={} source={:#010x} bytes={}",
                 path.display(),
+                region,
                 source_start,
                 data.len()
             );

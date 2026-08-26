@@ -174,6 +174,41 @@ these copies, and no evidence justifies changing it or adding a presentation
 rotation. The next useful target is the surface creation/render contract that
 produces the first malformed surface, not the final DMA store.
 
+## File-backed source boundary
+
+The backward walk reaches a more useful boundary in Bejeweled than another
+heap surface. Watching the low staging destination `0x1016d1f0` catches the
+resource-loader copy itself:
+
+| Field | Observed value |
+| --- | --- |
+| First store PC | `0x180016cc` |
+| Resource-loader copy call | `0x1801e108` (`lr=0x1801e10c`) |
+| Destination | `0x1016d1f0` |
+| Source at first store | `0x180ad8d0` |
+| Source dump start (`r1 - 16`) | `0x180ad8c0` / executable offset `0xad8c0` |
+| Requested copy length | `0x10bac` / 68,524 bytes |
+
+The source is file-backed eApp memory, not work RAM. The new diagnostic source
+dump preserves both cases, so the receipt from this run is:
+
+```text
+/tmp/fliwheel_bejeweled_file_source_20260826/watch_source_0x180ad8c0.bin
+```
+
+Its first 68,524 bytes match the executable slice at offset `0xad8c0`
+byte-for-byte. Both slices have SHA-256
+`1b33c57a425af115dad57ed71dbb6bfe9b6277c4c296bced137be92a339ff274`.
+The full 153,600-byte diagnostic dump has SHA-256
+`5fead233658063011ff8b90b12dc6ad883c8c277d81a554f2b0ea1d8736cfa1e`.
+
+This proves that the file-backed guest mapping and the resource-loader copy
+are reproducing the embedded asset bytes. The bytes decode as a coherent
+PopCap title/background surface, but the correct resource dimensions, pitch,
+and first composition operation are still unresolved. The current visual
+failure therefore cannot yet be assigned to the DMA aperture, the file read,
+or the ARM copy loop.
+
 ## SDRAM-alias A/B
 
 The firmware reference model in `~/Developer/ipod-emulator` documents
@@ -187,7 +222,9 @@ the alias model did not improve the title and remains disabled by default.
 ## Next gate
 
 Keep the final DMA receipts as the regression baseline. The next PopCap change
-should be evidence-driven around the hardware aperture’s read/write contract
-and the guest’s software-rendered buffer, then re-run both titles together.
-Texture association and board composition must improve without masking the
-existing GL draws or reintroducing the old fatal memory error.
+should identify the embedded resource’s dimensions/pitch and follow the first
+software composition operation that turns it into the repeated surface chain.
+Only then should a shared renderer change be considered, followed by paired
+Bejeweled/Zuma runs. Texture association and board composition must improve
+without masking the existing GL draws or reintroducing the old fatal memory
+error.
