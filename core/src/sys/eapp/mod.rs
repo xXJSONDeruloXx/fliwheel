@@ -449,9 +449,10 @@ pub struct Eapp {
     /// the consumed node until the following poll.
     input_event_reversed_owner: Option<u32>,
     input_event_reversed_clear_pending: bool,
-    /// Absolute clickwheel position reported by InputEvents:0. The guest
-    /// packet uses the low byte for the position and bit 30 for an active
-    /// wheel report; positions wrap over the physical 96-detent circle.
+    /// Absolute clickwheel position before the direct EAPP import ABI maps it
+    /// to the guest's normalized 8-bit wheel ring. The host model keeps the
+    /// physical 96-detent position so subsequent deltas and wrap behavior
+    /// remain faithful to the hardware.
     wheel_position: u8,
     render_state: Arc<Mutex<Vec<u32>>>,
     controls: Option<EappBinds>,
@@ -460,6 +461,9 @@ pub struct Eapp {
     app_object: u32,
     frame_context: u32,
     frame_counter: u64,
+    /// Optional diagnostic stop point for bounded guest traces. This is set
+    /// only by `FLIWHEEL_EAPP_STOP_FRAME` and leaves normal runs unchanged.
+    stop_frame: Option<u64>,
     /// Total CPU steps executed (for throttling DMA present checks)
     step_counter: u64,
     pending_guest_calls: VecDeque<PendingGuestCall>,
@@ -805,6 +809,7 @@ impl Eapp {
             app_object: 0,
             frame_context: 0,
             frame_counter: 0,
+            stop_frame: Self::parse_stop_frame_env(),
             step_counter: 0,
             pending_guest_calls: VecDeque::new(),
             staged_files: HashMap::new(),
@@ -2127,6 +2132,13 @@ impl Eapp {
         let addr = parse_num(addr_str)?;
         let len = parse_num(len_str).unwrap_or(0x20);
         Some((addr, addr.wrapping_add(len)))
+    }
+
+    fn parse_stop_frame_env() -> Option<u64> {
+        fliwheel_var("EAPP_STOP_FRAME")
+            .ok()
+            .and_then(|value| value.trim().parse::<u64>().ok())
+            .filter(|frame| *frame > 0)
     }
 
     /// Parse a comma-separated list of guest PCs for the bounded diagnostic
@@ -5486,16 +5498,27 @@ impl Eapp {
     }
 
     /// Convert a relative host scroll amount into the compact InputEvents
-    /// wheel packet used by the decrypted games. The guest consumes an
-    /// absolute position, so keep that position in the HLE and wrap it over
-    /// the 96 detents documented by the original clicky wheel path.
+    /// wheel packet used by the decrypted games. The hardware has 96
+    /// detents, but the direct EAPP import ABI exposes a normalized 0..255
+    /// ring. The real firmware performs that normalization between the
+    /// hardware register and the application; fliwheel bypasses that layer,
+    /// so retain the physical position here and encode the guest-facing
+    /// position explicitly.
+    const CLICKWHEEL_DETENTS: u32 = 96;
+    const EAPP_WHEEL_UNITS: u32 = 256;
+
+    fn normalized_wheel_position(position: u8) -> u8 {
+        ((position as u32 * Self::EAPP_WHEEL_UNITS) / Self::CLICKWHEEL_DETENTS) as u8
+    }
+
     fn wheel_frame_bits(position: &mut u8, delta: f32) -> u32 {
         let clicks = (-delta * 2.0) as i16;
         if clicks == 0 {
             return 0;
         }
-        *position = ((*position as i16 + clicks).rem_euclid(96)) as u8;
-        (1 << 30) | *position as u32
+        *position = ((*position as i16 + clicks)
+            .rem_euclid(Self::CLICKWHEEL_DETENTS as i16)) as u8;
+        (1 << 30) | Self::normalized_wheel_position(*position) as u32
     }
 
     fn wheel_input_bits(&mut self, delta: f32) -> u32 {
@@ -7239,6 +7262,14 @@ impl Eapp {
             }
             BootstrapPhase::Running => {
                 self.frame_counter = self.frame_counter.wrapping_add(1);
+                if self
+                    .stop_frame
+                    .is_some_and(|stop_frame| self.frame_counter >= stop_frame)
+                {
+                    self.halted = true;
+                    self.drain_watch_log();
+                    return;
+                }
                 if self.frame_counter == 1 || self.frame_counter % 600 == 0 {
                     info!(
                         target: "EAPP",
@@ -8293,6 +8324,57 @@ impl Eapp {
             "r0={:#010x} r1={:#010x} r2={:#010x} r3={:#010x} r4={:#010x} r5={:#010x} r6={:#010x} r7={:#010x} lr={:#010x} sp={:#010x}",
             regs[0], regs[1], regs[2], regs[3], regs[4], regs[5], regs[6], regs[7], lr, sp
         );
+
+        if fliwheel_var_os("EAPP_PC_TRACE_DETAIL").is_some() {
+            let extra_regs = [
+                self.cpu.reg_get(mode, 8),
+                self.cpu.reg_get(mode, 9),
+                self.cpu.reg_get(mode, 10),
+                self.cpu.reg_get(mode, 11),
+                self.cpu.reg_get(mode, 12),
+            ];
+            details.push_str(&format!(
+                " r8={:#010x} r9={:#010x} r10={:#010x} r11={:#010x} r12={:#010x}",
+                extra_regs[0],
+                extra_regs[1],
+                extra_regs[2],
+                extra_regs[3],
+                extra_regs[4]
+            ));
+        }
+
+        if self.metadata.title == "55555" && fliwheel_var_os("EAPP_PC_TRACE_DETAIL").is_some() {
+            let global = 0x180c_bd80;
+            let nav = 0x180c_954c;
+            let cursor = 0x180c_0674;
+            let input = if (WORK_RAM_BASE..WORK_RAM_BASE + WORK_RAM_SIZE as u32)
+                .contains(&regs[4])
+            {
+                regs[4]
+            } else {
+                0
+            };
+            details.push_str(&format!(
+                " bejeweled_global=[{:#04x},{:#04x}] nav_708_70b=[{:#04x},{:#04x},{:#04x},{:#04x}] nav_724_726=[{:#04x},{:#04x},{:#04x}] cursor_674=[{:#010x},{:#010x},{:#010x}] input_obj={:#010x} input_fields=[{:#010x},{:#010x},{:#010x},{:#010x}]",
+                self.read_guest_u8(global + 0x161).unwrap_or(0xff),
+                self.read_guest_u8(global + 0x162).unwrap_or(0xff),
+                self.read_guest_u8(nav + 0x708).unwrap_or(0xff),
+                self.read_guest_u8(nav + 0x709).unwrap_or(0xff),
+                self.read_guest_u8(nav + 0x70a).unwrap_or(0xff),
+                self.read_guest_u8(nav + 0x70b).unwrap_or(0xff),
+                self.read_guest_u8(nav + 0x724).unwrap_or(0xff),
+                self.read_guest_u8(nav + 0x725).unwrap_or(0xff),
+                self.read_guest_u8(nav + 0x726).unwrap_or(0xff),
+                self.read_guest_u32(cursor).unwrap_or(0),
+                self.read_guest_u32(cursor + 4).unwrap_or(0),
+                self.read_guest_u32(cursor + 8).unwrap_or(0),
+                input,
+                self.read_guest_u32(input + 4).unwrap_or(0) & 0xffff,
+                self.read_guest_u32(input + 0x18).unwrap_or(0),
+                self.read_guest_u32(input + 0x1c).unwrap_or(0),
+                self.read_guest_u32(input + 0x30).unwrap_or(0),
+            ));
+        }
 
         if self.metadata.title == "50514" {
             let global = 0x180c_fa5c;
@@ -9444,13 +9526,22 @@ mod tests {
     }
 
     #[test]
-    fn wheel_packet_uses_absolute_96_detent_position() {
+    fn wheel_packet_normalizes_physical_96_detents_to_guest_ring() {
         let mut position = 0;
 
-        assert_eq!(Eapp::wheel_frame_bits(&mut position, -1.0), 0x4000_0002);
+        assert_eq!(Eapp::wheel_frame_bits(&mut position, -1.0), 0x4000_0005);
         assert_eq!(position, 2);
         assert_eq!(Eapp::wheel_frame_bits(&mut position, 1.0), 0x4000_0000);
         assert_eq!(position, 0);
+    }
+
+    #[test]
+    fn normalized_wheel_position_preserves_quadrant_boundaries() {
+        assert_eq!(Eapp::normalized_wheel_position(0), 0x00);
+        assert_eq!(Eapp::normalized_wheel_position(24), 0x40);
+        assert_eq!(Eapp::normalized_wheel_position(48), 0x80);
+        assert_eq!(Eapp::normalized_wheel_position(72), 0xc0);
+        assert_eq!(Eapp::normalized_wheel_position(95), 0xfd);
     }
 
     #[test]

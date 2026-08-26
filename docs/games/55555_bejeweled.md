@@ -1,6 +1,6 @@
 # Bejeweled (Bundle 55555)
 
-**Status:** 🟡 POPCAP BOARD/TUTORIAL PARTIAL | **Evidence:** the legacy filesystem contract now reaches the menu, 8×8 board, and built-in tutorial without a fatal; wheel selection is still unresolved | **Engine:** PopCap Engine
+**Status:** 🟡 POPCAP BOARD/TUTORIAL PARTIAL | **Evidence:** the legacy filesystem contract now reaches the menu, 8×8 board, and built-in tutorial without a fatal; normalized wheel input reaches the guest, but target-gem selection is still unresolved | **Engine:** PopCap Engine
 
 ## Quick Start
 ```bash
@@ -21,12 +21,12 @@ selection, not the earlier loading-spinner diagnosis.
 - **Asset Format:** `.pix` + `.tga` (1 file)
 
 ## Fix Needed
-Complete the tutorial's wheel-selection contract, then verify adjacent-gem
-swaps, board updates, and the title's audio/save behavior. The wheel packet is
-already delivered through the guest's bit-30/low-byte input object; the
-remaining consumer/state transition needs a guest-side trace. `0x1402000c` is
-part of the observed pixel-write stream, so it should not be treated as a
-guessed completion register without new evidence.
+Complete the tutorial's target-gem selection and wheel-tap contract, then
+verify adjacent-gem swaps, board updates, and the title's audio/save behavior.
+The HLE now preserves the physical 96-detent position but emits the guest's
+normalized 256-unit wheel ring. `0x1402000c` is part of the observed
+pixel-write stream, so it should not be treated as a guessed completion
+register without new evidence.
 
 ## Environment
 ```bash
@@ -60,8 +60,10 @@ That run reached 1,200 guest frames and 175 unique hashes. The emulator's
 `Filesytem:0` opens `tweakdata.txt`, `Filesytem:2` returns its sequential bytes,
 and `Filesytem:1` closes the synthetic handle; the receipt is in
 `/tmp/fliwheel_bejeweled_fs2_20260826/logs/55555.log`. A controlled wheel
-sweep delivers changing positions to the guest input object but does not yet
-advance the tutorial. The linked input event probe now confirms that event 2
-is the title's action/select edge and event 1 is menu/back; the cursor/gameplay
-consumer still needs to be reached and verified. This remains a verified
-board/tutorial boundary rather than a playable-game claim.
+sweep delivers changing, normalized positions to the guest input object and
+moves the guest cursor, but does not yet advance the tutorial. The linked input
+event probe confirms that event 2 is the title's action/select edge and event 1
+is menu/back; the target-gem/tap consumer still needs to be reached and
+verified. See the [wheel normalization receipt](../game_tests/20260826_bejeweled_wheel_normalization.md).
+This remains a verified board/tutorial boundary rather than a playable-game
+claim.

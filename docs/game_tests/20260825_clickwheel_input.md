@@ -9,18 +9,22 @@ are already fully playable.
 ## Guest packet
 
 The decrypted Tetris and Sudoku consumers independently decode `InputEvents:0`
-as an absolute wheel position:
+as an absolute wheel position. The clickwheel hardware itself has 96
+detents, while Bejeweled's gameplay consumer establishes that the
+guest-facing application ring is 256 units wide:
 
 ```text
 bit 30       = wheel report present
-bits 0..7    = absolute position on a 96-detent circle
+bits 0..7    = absolute position on the guest's 256-unit ring
 bits 8..29   = unused by the observed consumers
 ```
 
-The HLE now keeps a persistent `0..95` position and converts host scroll
-callbacks into that packet. A host delta is consumed once at the next guest
-poll, so a single scroll event is not replayed on every frame. Button input
-continues to use the existing edge-linked event list and held-state mask.
+The HLE keeps a persistent physical `0..95` position, converts it to
+`floor(position * 256 / 96)` for the guest packet, and consumes a host delta
+once at the next guest poll. A single scroll event is not replayed on every
+frame. Button input continues to use the existing edge-linked event list and
+held-state mask. The scale evidence and Bejeweled receipt are recorded in
+[`20260826_bejeweled_wheel_normalization.md`](20260826_bejeweled_wheel_normalization.md).
 
 Headless scripts support `wheelup`, `wheeldown`, and explicit relative deltas:
 
@@ -46,7 +50,8 @@ The focused Tetris run used the parsed-resource path and captured frames:
 /tmp/fliwheel_next_audit/tetris_wheel_action/frame740.png
 ```
 
-The input trace contains the expected sequence:
+The input trace from that run contains the expected sequence for the
+pre-normalization probe:
 
 ```text
 frame 700  bits=0x40000002
@@ -55,6 +60,10 @@ frame 701  bits=0x40000004
 frame 710  bits=0x40000016
 frame 740  bits=0x00000010  action edge
 ```
+
+The current HLE keeps the physical position but emits normalized low-byte
+values; new receipts should therefore show `0x40000005`, `0x4000000a`, and so
+on for the same first two detents.
 
 The packet reaches the guest without a fatal exception. The frame-700 and
 frame-740 captures remain the same splash image, so this pass proves ingress
