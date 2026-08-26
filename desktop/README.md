@@ -33,3 +33,7 @@ target/release/eapp /path/to/Games_RO/66666 --headless --cycles 30000000
 The `scripts/` directory contains per-title launchers and the decrypted-game
 matrix harness. Runtime capture and trace options are documented in the
 current reports under `docs/game_tests/`.
+
+The arrow keys map to the shared side-button inputs. For Bejeweled they also
+model the four clickwheel touch quadrants used to swap the selected gem;
+scroll-wheel input moves the selection.

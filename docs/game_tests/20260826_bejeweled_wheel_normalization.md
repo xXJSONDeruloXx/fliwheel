@@ -74,8 +74,9 @@ score-bar overlay. Receipt:
 ```
 
 This proves the guest-side target-gem selection, tap direction, swap, and
-match-resolution path for this deterministic case. The remaining work is to
-surface the same gesture through normal headed input and expand coverage.
+match-resolution path for this deterministic case. The desktop runner now
+translates Bejeweled arrow-key presses into the same directional touch
+packets; the next check is a headed visual replay plus wider mode coverage.
 
 Receipt:
 

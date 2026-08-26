@@ -464,6 +464,11 @@ pub struct Eapp {
     /// Optional diagnostic stop point for bounded guest traces. This is set
     /// only by `FLIWHEEL_EAPP_STOP_FRAME` and leaves normal runs unchanged.
     stop_frame: Option<u64>,
+    /// Guest frame on which the scripted relative wheel delta was last
+    /// applied. A title may poll InputEvents more than once per frame; the
+    /// script models one physical wheel report per frame, like live host
+    /// input, rather than multiplying motion by the poll count.
+    input_script_wheel_frame: Option<u64>,
     /// Total CPU steps executed (for throttling DMA present checks)
     step_counter: u64,
     pending_guest_calls: VecDeque<PendingGuestCall>,
@@ -810,6 +815,7 @@ impl Eapp {
             frame_context: 0,
             frame_counter: 0,
             stop_frame: Self::parse_stop_frame_env(),
+            input_script_wheel_frame: None,
             step_counter: 0,
             pending_guest_calls: VecDeque::new(),
             staged_files: HashMap::new(),
@@ -5383,16 +5389,41 @@ impl Eapp {
                     }
                     self.input_event_reversed_clear_pending = false;
                 }
-                let bits = Self::input_state_bits(&state)
+                let button_bits = if self.metadata.title == "55555" {
+                    // Bejeweled uses the four clickwheel quadrants as a touch
+                    // direction for swapping, not as ordinary D-pad buttons.
+                    // Keep action/menu available, but let the title-specific
+                    // packet carry the directional tap contract.
+                    Self::input_state_bits(&state) & !0x0f
+                } else {
+                    Self::input_state_bits(&state)
+                };
+                let bits = button_bits
                     | self.env_input_script_bits()
-                    | self.wheel_input_bits(state.wheel_delta);
+                    | self.wheel_input_bits(state.wheel_delta)
+                    | self.bejeweled_tap_bits(&state);
                 if args[0] != 0 {
                     self.write_guest_u32(args[0], bits);
                 }
                 if args[1] != 0 {
                     self.write_guest_u32(args[1], bits);
                 }
-                let event_list = self.build_input_event_list(&state);
+                let event_state = if self.metadata.title == "55555" {
+                    // In Bejeweled the directional keys represent a
+                    // clickwheel touch quadrant. Do not also expose them as
+                    // ordinary linked button events, or the shared event
+                    // consumer moves the selection before the touch handler
+                    // can perform the swap.
+                    let mut event_state = state.clone();
+                    event_state.up = false;
+                    event_state.down = false;
+                    event_state.left = false;
+                    event_state.right = false;
+                    event_state
+                } else {
+                    state.clone()
+                };
+                let event_list = self.build_input_event_list(&event_state);
                 let mode = self.cpu.mode();
                 let r4 = self.cpu.reg_get(mode, 4);
                 let r5 = self.cpu.reg_get(mode, 5);
@@ -5470,7 +5501,11 @@ impl Eapp {
         // on every subsequent frame.
         live_state.wheel_delta = 0.0;
         drop(live_state);
-        self.apply_env_input_script(&mut state);
+        let apply_script_wheel = self.input_script_wheel_frame != Some(self.frame_counter);
+        if apply_script_wheel {
+            self.input_script_wheel_frame = Some(self.frame_counter);
+        }
+        self.apply_env_input_script(&mut state, apply_script_wheel);
         state
     }
 
@@ -5525,6 +5560,33 @@ impl Eapp {
         Self::wheel_frame_bits(&mut self.wheel_position, delta)
     }
 
+    /// Bejeweled treats a clickwheel-side tap as a touch packet whose angle
+    /// selects the adjacent gem. The desktop frontend's arrow keys are the
+    /// natural equivalent of those four physical quadrants. This stays
+    /// title-scoped because the same keys are ordinary buttons elsewhere.
+    fn bejeweled_tap_bits(&self, state: &EappInputState) -> u32 {
+        if self.metadata.title != "55555" {
+            return 0;
+        }
+        Self::bejeweled_tap_angle(state)
+            .map(|angle| (1 << 30) | angle as u32)
+            .unwrap_or(0)
+    }
+
+    fn bejeweled_tap_angle(state: &EappInputState) -> Option<u8> {
+        if state.up {
+            Some(0x30)
+        } else if state.left {
+            Some(0x70)
+        } else if state.down {
+            Some(0xb0)
+        } else if state.right {
+            Some(0xf0)
+        } else {
+            None
+        }
+    }
+
     /// Headless input smoke-test helper. Format:
     /// `FLIWHEEL_EAPP_INPUT_SCRIPT="menu:190-200,menu:230-240,action:260-270"`.
     /// Wheel detents can be scripted with `wheelup`, `wheeldown`, or an
@@ -5533,7 +5595,7 @@ impl Eapp {
     /// `bits=0x40000001:190-195`. This intentionally layers on top of live host
     /// input and is ignored when unset, so normal headed input remains
     /// controlled by minifb callbacks.
-    fn apply_env_input_script(&self, state: &mut EappInputState) {
+    fn apply_env_input_script(&self, state: &mut EappInputState, apply_wheel: bool) {
         let Ok(script) = fliwheel_var("EAPP_INPUT_SCRIPT") else {
             return;
         };
@@ -5562,12 +5624,14 @@ impl Eapp {
                 // A positive GUI scroll delta is the same direction as a
                 // wheel-down event. The sign is preserved in the packet
                 // conversion below, matching the desktop callback path.
-                "wheel" | "wheeldown" | "scroll" => state.wheel_delta += 1.0,
-                "wheelup" => state.wheel_delta -= 1.0,
+                "wheel" | "wheeldown" | "scroll" if apply_wheel => state.wheel_delta += 1.0,
+                "wheelup" if apply_wheel => state.wheel_delta -= 1.0,
                 _ => {
-                    if let Some(raw) = key.strip_prefix("wheel=") {
-                        if let Ok(delta) = raw.parse::<f32>() {
-                            state.wheel_delta += delta;
+                    if apply_wheel {
+                        if let Some(raw) = key.strip_prefix("wheel=") {
+                            if let Ok(delta) = raw.parse::<f32>() {
+                                state.wheel_delta += delta;
+                            }
                         }
                     }
                 }
@@ -9552,6 +9616,27 @@ mod tests {
 
         assert_eq!(Eapp::wheel_frame_bits(&mut position, 0.0), 0);
         assert_eq!(position, 17);
+    }
+
+    #[test]
+    fn bejeweled_arrow_buttons_map_to_clickwheel_tap_angles() {
+        let cases: [(&str, fn(&mut EappInputState), u8); 4] = [
+            ("up", |state: &mut EappInputState| state.up = true, 0x30),
+            ("left", |state: &mut EappInputState| state.left = true, 0x70),
+            ("down", |state: &mut EappInputState| state.down = true, 0xb0),
+            (
+                "right",
+                |state: &mut EappInputState| state.right = true,
+                0xf0,
+            ),
+        ];
+
+        for (name, set, expected) in cases {
+            let mut state = EappInputState::default();
+            set(&mut state);
+            assert_eq!(Eapp::bejeweled_tap_angle(&state), Some(expected), "{name}");
+        }
+        assert_eq!(Eapp::bejeweled_tap_angle(&EappInputState::default()), None);
     }
 
     #[test]

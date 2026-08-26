@@ -23,8 +23,8 @@ overlay. Normal headed play and broader mode/audio/save coverage remain open.
 - **Asset Format:** `.pix` + `.tga` (1 file)
 
 ## Fix Needed
-Expose the verified wheel/tap gesture through the headed front end, then
-repeat the match in both modes and cover the title's audio/save behavior. The
+Verify the translated wheel/tap gesture in a headed run, then repeat the match
+in both modes and cover the title's audio/save behavior. The
 HLE preserves the physical 96-detent position but emits the guest's
 normalized 256-unit wheel ring. `0x1402000c` is part of the observed
 pixel-write stream, so it should not be treated as a guessed completion
@@ -84,5 +84,6 @@ selected visual frames are in:
 ```
 
 This is a verified playable core path under the deterministic input script,
-not yet a claim that every headed gesture, mode, audio path, or save path is
-complete.
+and the desktop runner now exposes the same directional tap mapping through
+the arrow keys. A headed visual confirmation, mode coverage, audio path, and
+save path are still open.
