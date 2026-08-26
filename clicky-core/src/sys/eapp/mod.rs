@@ -567,6 +567,11 @@ struct EappBus {
     /// DMA framebuffer store. This is diagnostic because the optimized ARM
     /// copy has already advanced r1 by one 16-byte load at the store PC.
     dma_source_dump_dir: Option<PathBuf>,
+    /// Optional one-shot dump of the upstream source seen by the first
+    /// work-RAM watchpoint hit. This is useful for following the renderer's
+    /// buffer-composition copy one stage earlier than the DMA source.
+    watch_source_dump_dir: Option<PathBuf>,
+    watch_source_dumped: bool,
     /// Track range of DMA FB writes
     hw_fb_write_count: usize,
     hw_fb_write_min: u32,
@@ -593,6 +598,12 @@ struct EappBus {
     /// `watch_log` tagged with `pending_pc`. Used for RE: attributing
     /// object-field writes to the guest instruction that performed them.
     watch: Option<(u32, u32)>,
+    /// Include register state with bounded watchpoint hits when requested.
+    watch_regs: bool,
+    /// Remaining targeted entries for the shared memcpy implementation. This
+    /// is filtered by the watch range so a PopCap surface copy can be seen at
+    /// its entry without logging every unrelated asset copy.
+    memcpy_trace_remaining: usize,
     /// PC of the instruction currently executing. Captured by `step()` before
     /// `cpu.step(...)` so the bus (which only sees `&mut EappBus`) can tag
     /// watchpoint hits. Stale by one instruction for multi-access instrs, but
@@ -614,6 +625,19 @@ struct WatchHit {
     addr: u32,
     val: u32,
     pc: u32,
+    regs: Option<WatchRegs>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WatchRegs {
+    r0: u32,
+    r1: u32,
+    r2: u32,
+    r3: u32,
+    lr: u32,
+    sp: u32,
+    prev_pc: u32,
+    prev_lr: u32,
 }
 
 #[derive(Error, Debug)]
@@ -699,6 +723,9 @@ impl Eapp {
                 hw_control_value: Self::parse_hw_control_value_env(),
                 dma_source_dump_dir: std::env::var_os("CLICKY_EAPP_DMA_SOURCE_DUMP_DIR")
                     .map(PathBuf::from),
+                watch_source_dump_dir: std::env::var_os("CLICKY_EAPP_WATCH_SOURCE_DUMP_DIR")
+                    .map(PathBuf::from),
+                watch_source_dumped: false,
                 hw_fb_write_count: 0,
                 hw_fb_write_min: u32::MAX,
                 hw_fb_write_max: 0,
@@ -708,6 +735,8 @@ impl Eapp {
                 hw_trace_read_remaining: Self::parse_hw_trace_reads_env(),
                 hw_trace_regs: std::env::var_os("CLICKY_EAPP_HW_TRACE_REGS").is_some(),
                 watch: None,
+                watch_regs: std::env::var_os("CLICKY_EAPP_WATCH_REGS").is_some(),
+                memcpy_trace_remaining: Self::parse_memcpy_trace_env(),
                 pending_pc: 0,
                 pending_regs: [0; 4],
                 pending_lr: 0,
@@ -864,6 +893,20 @@ impl Eapp {
                 "  write addr={:#010x} val={:#010x}{} pc={:#010x}",
                 hit.addr, hit.val, ascii, hit.pc,
             );
+            if let Some(regs) = hit.regs {
+                warn!(
+                    target: "EAPP",
+                    "    regs r0={:#010x} r1={:#010x} r2={:#010x} r3={:#010x} lr={:#010x} sp={:#010x} prev_pc={:#010x} prev_lr={:#010x}",
+                    regs.r0,
+                    regs.r1,
+                    regs.r2,
+                    regs.r3,
+                    regs.lr,
+                    regs.sp,
+                    regs.prev_pc,
+                    regs.prev_lr,
+                );
+            }
         }
     }
 
@@ -1505,6 +1548,7 @@ impl Eapp {
         }
         self.bus.pending_lr = self.cpu.reg_get(mode, reg::LR);
         self.bus.pending_sp = self.cpu.reg_get(mode, reg::SP);
+        self.bus.trace_memcpy(pc);
         if pc == BOOTSTRAP_RETURN_PC || (pc == 0 && self.bootstrap_phase != BootstrapPhase::Done) {
             self.handle_bootstrap_return();
             return Ok(());
@@ -2091,6 +2135,14 @@ impl Eapp {
                     .unwrap_or_else(|| value.parse::<u32>().ok())
             })
             .unwrap_or(1)
+    }
+
+    fn parse_memcpy_trace_env() -> usize {
+        match std::env::var("CLICKY_EAPP_MEMCPY_TRACE") {
+            Ok(value) if value.trim() == "1" => 256,
+            Ok(value) => value.trim().parse::<usize>().unwrap_or(0),
+            Err(_) => 0,
+        }
     }
 
     /// Read the experimental GL HLE env flags and construct live state only
@@ -8376,6 +8428,49 @@ fn upload_summary(upload: &live_gl::LiveGlUpload) -> String {
 }
 
 impl EappBus {
+    fn capture_watch_regs(&self) -> Option<WatchRegs> {
+        self.watch_regs.then_some(WatchRegs {
+            r0: self.pending_regs[0],
+            r1: self.pending_regs[1],
+            r2: self.pending_regs[2],
+            r3: self.pending_regs[3],
+            lr: self.pending_lr,
+            sp: self.pending_sp,
+            prev_pc: self.previous_pc,
+            prev_lr: self.previous_lr,
+        })
+    }
+
+    fn trace_memcpy(&mut self, pc: u32) {
+        if self.memcpy_trace_remaining == 0
+            || !matches!(
+                pc,
+                0x1800_1668 | 0x1800_170c | 0x1800_171c | 0x1800_1788 | 0x1800_17b4
+            )
+        {
+            return;
+        }
+        let Some((start, end)) = self.watch else {
+            return;
+        };
+        let destination = self.pending_regs[0];
+        if !ranges_overlap(destination, 4, start, end) {
+            return;
+        }
+        self.memcpy_trace_remaining -= 1;
+        info!(
+            target: "EAPP_HW",
+            "memcpy pc={:#010x} dst={:#010x} src={:#010x} len_or_state={:#010x} r3={:#010x} lr={:#010x} prev_pc={:#010x}",
+            pc,
+            destination,
+            self.pending_regs[1],
+            self.pending_regs[2],
+            self.pending_regs[3],
+            self.pending_lr,
+            self.previous_pc,
+        );
+    }
+
     fn trace_hw_read(&mut self, width: u8, offset: u32, value: u32) {
         let remaining = if self.hw_trace_read_remaining > 0 {
             self.hw_trace_read_remaining -= 1;
@@ -8464,37 +8559,56 @@ impl EappBus {
             return;
         };
         let source_start = self.pending_regs[1].wrapping_sub(16);
+        self.dump_work_ram_range(dir, "dma_source", source_start, DMA_FB_SIZE);
+        self.dump_work_ram_range(
+            dir,
+            "dma_surface",
+            source_start.saturating_sub(12),
+            DMA_FB_SIZE + 12,
+        );
+    }
+
+    fn dump_watch_source(&mut self) {
+        let Some(dir) = self.watch_source_dump_dir.as_ref() else {
+            return;
+        };
+        let source_start = self.pending_regs[1].wrapping_sub(16);
+        self.dump_work_ram_range(dir, "watch_source", source_start, DMA_FB_SIZE);
+        self.watch_source_dumped = true;
+    }
+
+    fn dump_work_ram_range(&self, dir: &Path, label: &str, source_start: u32, len: usize) {
         let work_end = WORK_RAM_BASE + WORK_RAM_SIZE as u32;
         if source_start < WORK_RAM_BASE
-            || source_start.saturating_add(DMA_FB_SIZE as u32) > work_end
+            || source_start.saturating_add(len as u32) > work_end
         {
             warn!(
                 target: "EAPP_HW",
-                "DMA source dump skipped source={:#010x} len={:#x}",
+                "work-RAM source dump skipped source={:#010x} len={:#x}",
                 source_start,
-                DMA_FB_SIZE
+                len
             );
             return;
         }
         let _ = fs::create_dir_all(dir);
-        let path = dir.join(format!("dma_source_{source_start:#010x}.rgb565"));
+        let path = dir.join(format!("{label}_{source_start:#010x}.rgb565"));
         if path.exists() {
             return;
         }
-        let mut data = vec![0u8; DMA_FB_SIZE];
+        let mut data = vec![0u8; len];
         self.work_ram
             .bulk_read(source_start - WORK_RAM_BASE, &mut data);
         if let Err(err) = fs::write(&path, &data) {
             warn!(
                 target: "EAPP_HW",
-                "DMA source dump failed path={} error={}",
+                "work-RAM source dump failed path={} error={}",
                 path.display(),
                 err
             );
         } else {
             info!(
                 target: "EAPP_HW",
-                "DMA source dump path={} source={:#010x} bytes={}",
+                "work-RAM source dump path={} source={:#010x} bytes={}",
                 path.display(),
                 source_start,
                 data.len()
@@ -8606,10 +8720,14 @@ impl Memory for EappBus {
     fn w32(&mut self, offset: u32, val: u32) -> MemResult<()> {
         if let Some((start, end)) = self.watch {
             if ranges_overlap(offset, 4, start, end) {
+                if self.watch_source_dump_dir.is_some() && !self.watch_source_dumped {
+                    self.dump_watch_source();
+                }
                 self.watch_log.push(WatchHit {
                     addr: offset,
                     val,
                     pc: self.pending_pc,
+                    regs: self.capture_watch_regs(),
                 });
                 // Hard cap to avoid OOM on a flooding range.
                 if self.watch_log.len() > 4096 {
@@ -8749,10 +8867,14 @@ impl Memory for EappBus {
     fn w8(&mut self, offset: u32, val: u8) -> MemResult<()> {
         if let Some((start, end)) = self.watch {
             if ranges_overlap(offset, 1, start, end) {
+                if self.watch_source_dump_dir.is_some() && !self.watch_source_dumped {
+                    self.dump_watch_source();
+                }
                 self.watch_log.push(WatchHit {
                     addr: offset,
                     val: val as u32,
                     pc: self.pending_pc,
+                    regs: self.capture_watch_regs(),
                 });
                 if self.watch_log.len() > 4096 {
                     self.watch_log.truncate(4096);
@@ -8796,10 +8918,14 @@ impl Memory for EappBus {
     fn w16(&mut self, offset: u32, val: u16) -> MemResult<()> {
         if let Some((start, end)) = self.watch {
             if ranges_overlap(offset, 2, start, end) {
+                if self.watch_source_dump_dir.is_some() && !self.watch_source_dumped {
+                    self.dump_watch_source();
+                }
                 self.watch_log.push(WatchHit {
                     addr: offset,
                     val: val as u32,
                     pc: self.pending_pc,
+                    regs: self.capture_watch_regs(),
                 });
                 if self.watch_log.len() > 4096 {
                     self.watch_log.truncate(4096);

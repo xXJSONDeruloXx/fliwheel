@@ -137,6 +137,43 @@ visited. The next PopCap gate should inspect the software-renderer composition
 and its guest-visible memory contract, rather than changing RGB565 byte order
 or aperture write packing.
 
+## Surface-copy chain
+
+The source buffer is part of a repeated PopCap surface copy chain. An opt-in
+watchpoint records the guest registers at the first write into a surface and
+can dump the source range one copy earlier:
+
+```text
+CLICKY_EAPP_WATCH=0x13d9df70,0x2580 \
+CLICKY_EAPP_WATCH_REGS=1 \
+CLICKY_EAPP_WATCH_SOURCE_DUMP_DIR=/tmp/fliwheel_popcap_watch \
+target/release/eapp '<game-dir>' --headless --cycles 50000000
+```
+
+The first copy observed for each title has the same 12-byte surface-header
+shape:
+
+| Title | Destination surface base | Source payload | Next upstream copy |
+| --- | --- | --- | --- |
+| Bejeweled (`55555`) | `0x13d9df70` | `0x13b1beec` | `0x13b1bee0 <- 0x13899e5c` |
+| Zuma (`44444`) | `0x13d9df70` | `0x13c17f2c` | `0x13b1bee0 <- 0x13995e9c` |
+
+Following additional hops preserves the same relationship: a copy reads
+from the previous surface base plus `0x0c` and writes the next surface base.
+The first aperture source likewise starts at `surface_base + 0x0c`. The
+diagnostic `dma_surface_*.rgb565` dump includes the 12-byte prefix; for both
+titles, its bytes at offset `0x0c` are byte-for-byte identical to the captured
+DMA frame. This makes the aperture copy and the 12-byte payload offset
+internally consistent, while confirming that the malformed geometry is already
+present in the software-rendered surface.
+
+The observed PCs disassemble to the ordinary ARM `LDMIA`/`STMIA` forward-copy
+loop, with title-specific offsets in the two binaries. The current block
+transfer implementation uses aligned ascending register-list semantics for
+these copies, and no evidence justifies changing it or adding a presentation
+rotation. The next useful target is the surface creation/render contract that
+produces the first malformed surface, not the final DMA store.
+
 ## SDRAM-alias A/B
 
 The firmware reference model in `~/Developer/ipod-emulator` documents
