@@ -600,6 +600,10 @@ struct EappBus {
     watch: Option<(u32, u32)>,
     /// Include register state with bounded watchpoint hits when requested.
     watch_regs: bool,
+    /// Remaining reads to log when they overlap the write-watchpoint range.
+    /// This is opt-in because a surface-sized range can be read millions of
+    /// times during a bounded run.
+    watch_read_remaining: usize,
     /// Remaining targeted entries for the shared memcpy implementation. This
     /// is filtered by the watch range so a PopCap surface copy can be seen at
     /// its entry without logging every unrelated asset copy.
@@ -736,6 +740,7 @@ impl Eapp {
                 hw_trace_regs: std::env::var_os("CLICKY_EAPP_HW_TRACE_REGS").is_some(),
                 watch: None,
                 watch_regs: std::env::var_os("CLICKY_EAPP_WATCH_REGS").is_some(),
+                watch_read_remaining: Self::parse_watch_reads_env(),
                 memcpy_trace_remaining: Self::parse_memcpy_trace_env(),
                 pending_pc: 0,
                 pending_regs: [0; 4],
@@ -2139,6 +2144,14 @@ impl Eapp {
 
     fn parse_memcpy_trace_env() -> usize {
         match std::env::var("CLICKY_EAPP_MEMCPY_TRACE") {
+            Ok(value) if value.trim() == "1" => 256,
+            Ok(value) => value.trim().parse::<usize>().unwrap_or(0),
+            Err(_) => 0,
+        }
+    }
+
+    fn parse_watch_reads_env() -> usize {
+        match std::env::var("CLICKY_EAPP_WATCH_READS") {
             Ok(value) if value.trim() == "1" => 256,
             Ok(value) => value.trim().parse::<usize>().unwrap_or(0),
             Err(_) => 0,
@@ -6460,6 +6473,11 @@ impl Eapp {
                                     .bundle_dir
                                     .to_str()
                                     .map_or(false, |p| p.contains("33333"));
+                                let is_popcap = self
+                                    .metadata
+                                    .bundle_dir
+                                    .to_str()
+                                    .map_or(false, |p| p.contains("44444") || p.contains("55555"));
                                 let tetris_complete = is_tetris
                                     && std::env::var("CLICKY_EAPP_ASYNC3_COMPLETE")
                                         .map(|v| v == "1" || v == "true")
@@ -6468,13 +6486,25 @@ impl Eapp {
                                     && std::env::var("EAPP_TEXAS_ASYNC3_COMPLETE")
                                         .map(|v| v == "1" || v == "true")
                                         .unwrap_or(false);
-                                let complete = tetris_complete || texas_complete;
+                                // PopCap's resource table derives the final
+                                // asset length from the byte count delivered
+                                // to the async callback. Its .ro reads are a
+                                // normal successful request (status=0), so
+                                // report the actual short-read length by
+                                // default. Keep this scoped to PopCap .ro
+                                // resources: audio and preference requests
+                                // still use their separately proven contracts.
+                                let popcap_resource_read = is_popcap
+                                    && host_path.extension().map_or(false, |ext| ext == "ro");
+                                let complete = tetris_complete || texas_complete || popcap_resource_read;
                                 if complete {
                                     let status = if texas_complete {
                                         std::env::var("EAPP_TEXAS_ASYNC3_STATUS")
                                             .ok()
                                             .and_then(|v| v.parse::<u32>().ok())
                                             .unwrap_or(0)
+                                    } else if popcap_resource_read {
+                                        0
                                     } else {
                                         1
                                     };
@@ -8471,6 +8501,44 @@ impl EappBus {
         );
     }
 
+    fn trace_watch_read(&mut self, width: u8, offset: u32, value: u32) {
+        if self.watch_read_remaining == 0 {
+            return;
+        }
+        let Some((start, end)) = self.watch else {
+            return;
+        };
+        if !ranges_overlap(offset, width as u32, start, end) {
+            return;
+        }
+        self.watch_read_remaining -= 1;
+        let regs = if self.watch_regs {
+            format!(
+                " r0={:#010x} r1={:#010x} r2={:#010x} r3={:#010x} lr={:#010x} sp={:#010x} prev_pc={:#010x} prev_lr={:#010x}",
+                self.pending_regs[0],
+                self.pending_regs[1],
+                self.pending_regs[2],
+                self.pending_regs[3],
+                self.pending_lr,
+                self.pending_sp,
+                self.previous_pc,
+                self.previous_lr,
+            )
+        } else {
+            String::new()
+        };
+        info!(
+            target: "EAPP_WATCH_READ",
+            "read w{} addr={:#010x} val={:#010x} pc={:#010x} remaining={}{}",
+            width,
+            offset,
+            value,
+            self.pending_pc,
+            self.watch_read_remaining,
+            regs,
+        );
+    }
+
     fn trace_hw_read(&mut self, width: u8, offset: u32, value: u32) {
         let remaining = if self.hw_trace_read_remaining > 0 {
             self.hw_trace_read_remaining -= 1;
@@ -8709,21 +8777,25 @@ impl Memory for EappBus {
     fn r32(&mut self, offset: u32) -> MemResult<u32> {
         match offset {
             FILE_VMA_BASE..=u32::MAX if offset - FILE_VMA_BASE < self.image_len => {
-                self.image.r32(offset - FILE_VMA_BASE)
+                let value = self.image.r32(offset - FILE_VMA_BASE)?;
+                self.trace_watch_read(4, offset, value);
+                Ok(value)
             }
             WORK_RAM_BASE..=u32::MAX if offset - WORK_RAM_BASE < WORK_RAM_SIZE as u32 => {
-                let val = self.work_ram.r32(offset - WORK_RAM_BASE);
+                let val = self.work_ram.r32(offset - WORK_RAM_BASE)?;
                 // Watch reads from the rserver header/init region (Lost game)
                 // Rserver loaded at 0x10001038, header at 0x10001038..0x10001237
                 // Data at 0x10012038
                 // rserver_watch removed (too noisy) — use ordinal-level tracing instead
-                val
+                self.trace_watch_read(4, offset, val);
+                Ok(val)
             }
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
                 let rel = offset - HW_STUB_BASE;
                 if self.uncached_sdram_alias {
                     let value = self.work_ram.r32(rel)?;
                     self.trace_hw_read(4, offset, value);
+                    self.trace_watch_read(4, offset, value);
                     return Ok(value);
                 }
                 let value: u32 = if rel < 0x20000 {
@@ -8741,6 +8813,7 @@ impl Memory for EappBus {
                     }
                 };
                 self.trace_hw_read(4, offset, value);
+                self.trace_watch_read(4, offset, value);
                 Ok(value)
             }
             _ => Err(MemException::Unexpected),
@@ -8829,16 +8902,21 @@ impl Memory for EappBus {
     fn r8(&mut self, offset: u32) -> MemResult<u8> {
         match offset {
             FILE_VMA_BASE..=u32::MAX if offset - FILE_VMA_BASE < self.image_len => {
-                self.image.r8(offset - FILE_VMA_BASE)
+                let value = self.image.r8(offset - FILE_VMA_BASE)?;
+                self.trace_watch_read(1, offset, value as u32);
+                Ok(value)
             }
             WORK_RAM_BASE..=u32::MAX if offset - WORK_RAM_BASE < WORK_RAM_SIZE as u32 => {
-                self.work_ram.r8(offset - WORK_RAM_BASE)
+                let value = self.work_ram.r8(offset - WORK_RAM_BASE)?;
+                self.trace_watch_read(1, offset, value as u32);
+                Ok(value)
             }
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
                 let rel = offset - HW_STUB_BASE;
                 if self.uncached_sdram_alias {
                     let value = self.work_ram.r8(rel)?;
                     self.trace_hw_read(1, offset, value as u32);
+                    self.trace_watch_read(1, offset, value as u32);
                     return Ok(value);
                 }
                 let value: u8 = if rel < 0x20000 {
@@ -8854,6 +8932,7 @@ impl Memory for EappBus {
                     }
                 };
                 self.trace_hw_read(1, offset, value as u32);
+                self.trace_watch_read(1, offset, value as u32);
                 Ok(value)
             }
             _ => Err(MemException::Unexpected),
@@ -8863,16 +8942,21 @@ impl Memory for EappBus {
     fn r16(&mut self, offset: u32) -> MemResult<u16> {
         match offset {
             FILE_VMA_BASE..=u32::MAX if offset - FILE_VMA_BASE < self.image_len => {
-                self.image.r16(offset - FILE_VMA_BASE)
+                let value = self.image.r16(offset - FILE_VMA_BASE)?;
+                self.trace_watch_read(2, offset, value as u32);
+                Ok(value)
             }
             WORK_RAM_BASE..=u32::MAX if offset - WORK_RAM_BASE < WORK_RAM_SIZE as u32 => {
-                self.work_ram.r16(offset - WORK_RAM_BASE)
+                let value = self.work_ram.r16(offset - WORK_RAM_BASE)?;
+                self.trace_watch_read(2, offset, value as u32);
+                Ok(value)
             }
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
                 let rel = offset - HW_STUB_BASE;
                 if self.uncached_sdram_alias {
                     let value = self.work_ram.r16(rel)?;
                     self.trace_hw_read(2, offset, value as u32);
+                    self.trace_watch_read(2, offset, value as u32);
                     return Ok(value);
                 }
                 let value: u16 = if rel < 0x20000 {
@@ -8888,6 +8972,7 @@ impl Memory for EappBus {
                     }
                 };
                 self.trace_hw_read(2, offset, value as u32);
+                self.trace_watch_read(2, offset, value as u32);
                 Ok(value)
             }
             _ => Err(MemException::Unexpected),

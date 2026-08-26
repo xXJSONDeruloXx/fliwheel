@@ -209,6 +209,55 @@ and first composition operation are still unresolved. The current visual
 failure therefore cannot yet be assigned to the DMA aperture, the file read,
 or the ARM copy loop.
 
+## AsyncFileIO:3 byte-count contract
+
+The next boundary was the request completion object, not the DMA aperture.
+The callback at `0x1801fe8c` loads request words `+0x20` (status) and `+0x24`
+(byte count) before forwarding both values to the owner completion helper.
+The HLE was copying the `.ro` payload into the requested destination but was
+leaving those two words at zero for PopCap.
+
+That zero is not harmless. Bejeweled's resource object is initialized with
+`[object+0xc] = 0` because the observed async request used the actual-file
+length only in the HLE, not in the guest completion fields. The final resource
+table entry then computes its length as `0 - offset`. For game 1, the measured
+values are:
+
+```text
+actual async read       464,304 = 0x71670
+resource final offset   385,436 = 0x5e79c
+malformed copy length    68,524 = 0x10bac
+```
+
+The `0x10bac` copy is exactly the low staging copy observed from the
+file-backed executable range. This connects the missing callback byte count to
+the malformed resource path with an arithmetic check, rather than a visual
+guess.
+
+The HLE now reports `(status=0, byte_count=actual_read)` for PopCap `.ro`
+requests by default. It remains scoped to those resource reads, so audio and
+preference requests keep their separately investigated contracts. A paired
+30,000,000-cycle regression with no opt-in environment variable produced:
+
+| Title | `.ro` reads | GL result after count fix | DMA result | Exit/fatal |
+| --- | --- | --- | --- | --- |
+| Bejeweled (`55555`) | `game1.ro` 464,304 B; `game2.ro` 448,148 B | resource-backed scene, 174 steady draws / 176 peak | no DMA framebuffer writes | 0 / none |
+| Zuma (`44444`) | `title.ro` 332,284 B; `game.ro` 500,672 B; `graphictext_enUS.ro` 63,224 B | resource-backed scene, 11 steady draws | no DMA framebuffer writes | 0 / none |
+
+The corrected path is materially further along: it reaches the title-specific
+GL resources instead of ending in the earlier DMA-only composition. It is not
+yet correct or playable. Bejeweled's later frame contains the expected
+background/UI composition but garbled text and missing associations; Zuma's
+scene is still sparse and incomplete. The next visual gate is therefore
+texture association, texture orientation/format validation, and the PopCap
+draw transform, not another synthetic completion-register or DMA-status
+change. The paired receipts are:
+
+```text
+/tmp/fliwheel_bejeweled_startup_default_20260826/
+/tmp/fliwheel_zuma_startup_default_20260826/
+```
+
 ## SDRAM-alias A/B
 
 The firmware reference model in `~/Developer/ipod-emulator` documents
@@ -221,10 +270,10 @@ the alias model did not improve the title and remains disabled by default.
 
 ## Next gate
 
-Keep the final DMA receipts as the regression baseline. The next PopCap change
-should identify the embedded resource’s dimensions/pitch and follow the first
-software composition operation that turns it into the repeated surface chain.
-Only then should a shared renderer change be considered, followed by paired
-Bejeweled/Zuma runs. Texture association and board composition must improve
-without masking the existing GL draws or reintroducing the old fatal memory
-error.
+Keep the DMA receipts as historical boundary evidence and retain them as a
+regression check. The active PopCap path is now the byte-count-corrected
+resource-backed GL path. The next change should identify which uploaded
+resource each material handle owns, validate the RGBA4444 row/orientation
+contract, and follow the first board-composition operation. Any shared
+renderer change must be paired against both titles without hiding GL draws or
+reintroducing the old fatal memory error.
