@@ -119,6 +119,11 @@ Evidence is retained at `/tmp/fliwheel_holdem_ok_sweep_20260826/` and
 - The desktop host sink remains headless-unverified. Tetris has a persistent
   `rodio` sink and a guest-indexed event queue, but physical output, overlap,
   timing, and mixer parity still need a headed test and waveform regression.
+- The reference eApp lifecycle's one-time init vector is implemented behind
+  `CLICKY_EAPP_INIT_VECTORS=1` with valid scratch contexts. It remains opt-in:
+  forcing it exposed unresolved init/render-server contracts in `14004`,
+  `1500C`, and `1500E`; the default matrix stays on the no-fatal path. See
+  [the init-vector probe](20260826_eapp_init_vectors.md).
 
 ## External visual/control references
 

@@ -537,6 +537,7 @@ struct PendingGuestCall {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 enum BootstrapPhase {
     Entry,
+    Init,
     Running,
     Done,
 }
@@ -6884,18 +6885,36 @@ impl Eapp {
                     self.frame_context,
                     self.header.aux_addr
                 );
-                // Vortex-specific surface preallocation to prevent null pointer crashes
-                // Must run before first guest frame to set up container structures
-                if self.metadata.bundle_dir.to_str().map_or(false, |p| p.contains("12345")) {
-                    info!(target: "EAPP", "VORTEX: detected bundle, running preallocation");
-                    self.vortex_preallocate_surfaces();
-                    // Verify the write
-                    let verify = self.read_guest_u32(WORK_RAM_BASE + 0xff0).unwrap_or(0xdead);
-                    info!(target: "EAPP", "VORTEX: verification read of WORK_RAM+0xff0 = {:#010x}", verify);
+                let run_init_vectors = std::env::var_os("CLICKY_EAPP_INIT_VECTORS").is_some();
+                if self.header.init_addr != 0 && run_init_vectors {
+                    // RetailOS supplies valid context pointers for each lifecycle vector.  The
+                    // entry vector's return registers are not the init vector's arguments.
+                    let init_context0 = self.alloc_zeroed(0x400);
+                    let init_context1 = self.alloc_zeroed(0x400);
+                    self.cpu
+                        .reg_set(self.cpu.mode(), 0, init_context0);
+                    self.cpu
+                        .reg_set(self.cpu.mode(), 1, init_context1);
+                    self.cpu.reg_set(self.cpu.mode(), 2, 0);
+                    self.cpu.reg_set(self.cpu.mode(), 3, 0);
+                    self.bootstrap_phase = BootstrapPhase::Init;
+                    self.cpu
+                        .reg_set(self.cpu.mode(), reg::PC, self.header.init_addr);
+                    self.cpu
+                        .reg_set(self.cpu.mode(), reg::LR, BOOTSTRAP_RETURN_PC);
+                    return;
                 }
-                self.bootstrap_phase = BootstrapPhase::Running;
-                self.queue_next_frame();
-                self.fill_framebuffer(HLE_INFO_FRAMEBUFFER);
+                if self.header.init_addr != 0 {
+                    info!(
+                        target: "EAPP",
+                        "bootstrap init vector skipped; set CLICKY_EAPP_INIT_VECTORS=1 to enable"
+                    );
+                }
+                self.finish_bootstrap_entry();
+            }
+            BootstrapPhase::Init => {
+                info!(target: "EAPP", "bootstrap init vector returned");
+                self.finish_bootstrap_entry();
             }
             BootstrapPhase::Running => {
                 self.frame_counter = self.frame_counter.wrapping_add(1);
@@ -6917,6 +6936,21 @@ impl Eapp {
                 self.halted = true;
             }
         }
+    }
+
+    fn finish_bootstrap_entry(&mut self) {
+        // Vortex-specific surface preallocation to prevent null pointer crashes.
+        // Must run before first guest frame to set up container structures.
+        if self.metadata.bundle_dir.to_str().map_or(false, |p| p.contains("12345")) {
+            info!(target: "EAPP", "VORTEX: detected bundle, running preallocation");
+            self.vortex_preallocate_surfaces();
+            // Verify the write.
+            let verify = self.read_guest_u32(WORK_RAM_BASE + 0xff0).unwrap_or(0xdead);
+            info!(target: "EAPP", "VORTEX: verification read of WORK_RAM+0xff0 = {:#010x}", verify);
+        }
+        self.bootstrap_phase = BootstrapPhase::Running;
+        self.queue_next_frame();
+        self.fill_framebuffer(HLE_INFO_FRAMEBUFFER);
     }
 
     fn queue_next_frame(&mut self) {
