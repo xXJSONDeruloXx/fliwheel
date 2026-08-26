@@ -1,6 +1,6 @@
 # Sudoku (Bundle 50513)
 
-**Status:** 🟡 MENU PATH VERIFIED | **Draws:** 2 (8s) | **Frames Presented:** 120 | **Engine:** Sudoku/Solitaire (NDC)
+**Status:** 🟡 INPUT LIFECYCLE + MENU/EXIT PATH VERIFIED | **Draws:** 2 (8s) | **Frames Presented:** 120 | **Engine:** Sudoku/Solitaire (NDC)
 
 ## Quick Start
 ```bash
@@ -17,7 +17,7 @@ CLICKY_EAPP_INPUT_SCRIPT='menu:30-40' \
 ## What Renders
 - **Splash screen**: 320×240 Rgb565 fullscreen texture, centered and right-side-up
 - **Input-wait loop**: Game polls `InputEvents:0` every frame waiting for click wheel
-- **Menu transition**: the scripted Menu event reaches the guest and enters its save/settings transition
+- **Menu/exit transition**: the scripted Menu event reaches the guest and enters its save/settings teardown loop
 - The gameplay board and action mapping are not verified yet; a no-input run still remains on the splash/title state
 
 ## Bundle Info
@@ -41,16 +41,26 @@ CLICKY_EAPP_INPUT_SCRIPT='menu:30-40' \
 Sudoku’s `InputEvents:0` import uses the reversed owner-register convention also
 seen in the Solitaire family: the event-list owner is in `r5` while `r4` is
 empty. The HLE now detects either ABI shape and writes the transition list to
-the owner object. With `menu:30-40`, the guest consumes a Menu press at about
-frame 433, performs its save-file path, and settles back into a clean idle
-state. The host deliberately leaves this event list guest-visible for now;
-clearing it immediately caused the guest to miss the event.
+the owner object. For the reversed shape, the HLE defers clearing the consumed
+head until the next poll and remembers the owner when the wrapper temporarily
+drops `r5`, so later press/release edges remain guest-visible without becoming
+stale. With `menu:30-40`, the guest consumes a Menu press at about frame 433,
+performs its save-file path, and settles back into a clean idle state.
+
+Static disassembly identifies that Menu edge as a teardown/exit transition,
+not the puzzle-start control: it clears the title runtime object and leaves
+the guest alternating its save/settings states while waiting for that object.
+An opt-in `EAPP_SUDOKU_ASYNC0_COMPLETE=1` probe stages the complete RLB and
+executes its callback chain, but still produces no board scene. The full
+negative result and cross-title regression are recorded in
+[`20260826_sudoku_event_lifecycle.md`](../game_tests/20260826_sudoku_event_lifecycle.md).
 
 See the dated evidence in
 [`20260825_sudoku_input.md`](../game_tests/20260825_sudoku_input.md).
 
 The compact scripted event path is proven for the Menu transition, but the
-full game-start/action path and raw hardware-packet mapping still need work.
+full game-start/action path, board scene, and raw hardware-packet mapping
+still need work.
 
 ## Environment
 ```bash

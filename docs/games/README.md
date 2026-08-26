@@ -18,7 +18,7 @@ claims.
 | Mini Golf | 88888 | 🟡 Loading/progress only | [→](88888_minigolf.md) |
 | The Sims Bowling | 1500C | ❌ Renderer/asset decode blocked | [→](1500C_simsbowling.md) |
 | The Sims Pool | 1500E | ❌ Renderer/asset decode blocked | [→](1500E_simspool.md) |
-| Sudoku | 50513 | 🟡 Splash/menu reached | [→](50513_sudoku.md) |
+| Sudoku | 50513 | 🟡 Input lifecycle + menu/exit path verified; board not reached | [→](50513_sudoku.md) |
 | Royal Solitaire | 50514 | 🟡 UV/quad corruption | [matrix](../game_tests/20260826_interactive_matrix.md#current-matrix) |
 | Bejeweled | 55555 | 🟡 PopCap partial | [→](55555_bejeweled.md) |
 | Zuma | 44444 | 🟡 PopCap partial | [→](44444_zuma.md) |
@@ -167,6 +167,13 @@ For a portable corpus-wide probe, pass the root explicitly:
 - TWA root cause: pack content loading pipeline, not dir enumeration
 - Lost root cause: programmable GPU pipeline, not missing ordinals
 
+### 2026-08-26: Reversed-register input lifecycle
+- Sudoku/Solitaire-family `InputEvents:0` owners are retained across the
+  wrapper's dropped register and cleared one poll later, preventing stale
+  event heads without changing Tetris's owner path
+- Sudoku's Menu edge is confirmed as teardown/exit; the puzzle-start event and
+  post-RLB scene contract remain open
+
 ### 2026-06-26: Sudoku works, PopCap DMA, 12/16 games rendering
 - Sudoku: auto-begin, NDC scaling, auto-vflip, 0-draw preservation
 - Bejeweled/Zuma: DMA framebuffer overlay injection + alpha blending
@@ -181,6 +188,7 @@ For a portable corpus-wide probe, pass the root explicitly:
 
 - [2026-08-26 interactive decrypted matrix](../game_tests/20260826_interactive_matrix.md)
 - [2026-08-25 Sudoku input regression](../game_tests/20260825_sudoku_input.md)
+- [2026-08-26 Sudoku event lifecycle](../game_tests/20260826_sudoku_event_lifecycle.md)
 - [Compatibility Report](../game_tests/20260625_compatibility_report.md) — full metrics
 - [Debug Analysis](../game_tests/debug_analysis.md) — root cause analysis
 - [EAPP Format Specification](../EAPP_FORMAT_SPECIFICATION.md)

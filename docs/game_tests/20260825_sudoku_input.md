@@ -45,15 +45,20 @@ reaches `frame_state=6` at frame 433, invokes the save-file path
 (`AsyncFileIO:12/14/16`), then returns to `frame_state=4`. The run remains
 clean through the watchdog: no fatal memory fault, panic, or emulator crash.
 
-The event list is not cleared by the host for this reversed-register family.
-An experiment that cleared it during the raw input poll made the guest miss
-the queued Menu event; the change was removed. Tetris’s existing owner shape
-still clears its press/release transition normally after the guest observes it.
+The reversed-register path now defers clearing the consumed head until the
+following poll. This gives the guest one frame to consume the node, while the
+remembered owner lets a later press/release edge be linked even when the
+wrapper temporarily passes zero in `r5`. Tetris’s existing owner shape still
+clears its press/release transition normally after the guest observes it.
 
 ## Boundary
 
-This verifies menu ingress, not complete playability. The current evidence does
-not yet show the correct action sequence for entering a Sudoku board or moving
-the cursor. Scripted raw packet values `0x40000001` through `0x40000005` also
-did not advance the visible state, so they remain an open hardware-packet
-mapping question rather than a claimed fix.
+This verifies menu ingress and event-list lifetime, not complete playability.
+The Menu edge is a teardown/exit transition in the guest state machine, not
+the puzzle-start control. The current evidence does not yet show the correct
+action sequence for entering a Sudoku board or moving the cursor. Scripted
+raw packet values `0x40000001` through `0x40000005` also did not advance the
+visible state, so they remain an open hardware-packet mapping question rather
+than a claimed fix. A title-scoped `EAPP_SUDOKU_ASYNC0_COMPLETE=1` probe also
+completes the full RLB callback chain without producing a board scene; it is
+not enabled in the default runner.

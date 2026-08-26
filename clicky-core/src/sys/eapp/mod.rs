@@ -418,6 +418,12 @@ pub struct Eapp {
     /// valid pointer to the current held-state. Keep the prior mask so we can
     /// emit edge nodes and clear the guest list head when no edge occurred.
     input_event_prev_mask: u8,
+    /// The Sudoku/Solitaire-family wrapper does not pass its work-RAM owner on
+    /// every InputEvents poll. Keep the last reversed-register owner so an
+    /// edge produced by a later poll can still be linked, and defer clearing
+    /// the consumed node until the following poll.
+    input_event_reversed_owner: Option<u32>,
+    input_event_reversed_clear_pending: bool,
     /// Absolute clickwheel position reported by InputEvents:0. The guest
     /// packet uses the low byte for the position and bit 30 for an active
     /// wheel report; positions wrap over the physical 96-detent circle.
@@ -678,6 +684,8 @@ impl Eapp {
             recent_pcs: VecDeque::with_capacity(RECENT_PC_LIMIT),
             input_state,
             input_event_prev_mask: 0,
+            input_event_reversed_owner: None,
+            input_event_reversed_clear_pending: false,
             wheel_position: 0,
             render_state,
             controls: Some(controls),
@@ -5115,6 +5123,16 @@ impl Eapp {
             // for callers that use r0, but also write it through both pointer
             // args so pointer-output ABI users actually see host input.
             0 => {
+                // The reversed-register Sudoku/Solitaire wrapper polls once
+                // after the guest has consumed the previous list head. Clear
+                // that old node now, rather than during the same import that
+                // created it (which makes the guest miss the edge).
+                if self.input_event_reversed_clear_pending {
+                    if let Some(owner) = self.input_event_reversed_owner {
+                        self.write_guest_u32(owner.wrapping_add(0x30), 0);
+                    }
+                    self.input_event_reversed_clear_pending = false;
+                }
                 let bits = Self::input_state_bits(&state)
                     | self.env_input_script_bits()
                     | self.wheel_input_bits(state.wheel_delta);
@@ -5146,6 +5164,7 @@ impl Eapp {
                     0
                 };
                 let input_ctx = if input_obj == r4 { r5 } else { r4 };
+                let reversed_owner = !r4_is_work_ram && r5_is_work_ram;
                 if input_obj != 0 {
                     // Tetris' post-import wrapper passes [input_obj+0x30] as
                     // the event-list head to the event consumer. input_ctx+0x20
@@ -5153,6 +5172,22 @@ impl Eapp {
                     // overwrite the head, including zero, so a one-frame press
                     // cannot be re-consumed forever as a stale event node.
                     self.write_guest_u32(input_obj.wrapping_add(0x30), event_list);
+                    if reversed_owner {
+                        self.input_event_reversed_owner = Some(input_obj);
+                    }
+                } else if event_list != 0 {
+                    // Once the wrapper drops the owner register, retain the
+                    // same guest-visible ABI by linking the new edge through
+                    // the last reversed owner. The guest will consume it at
+                    // the start of its next frame, and the next poll clears
+                    // it through the deferred path above.
+                    if let Some(owner) = self.input_event_reversed_owner {
+                        self.write_guest_u32(owner.wrapping_add(0x30), event_list);
+                        self.input_event_reversed_clear_pending = true;
+                    }
+                }
+                if input_obj != 0 && reversed_owner && event_list != 0 {
+                    self.input_event_reversed_clear_pending = true;
                 }
                 if bits != 0 || event_list != 0 {
                     info!(
@@ -5997,9 +6032,11 @@ impl Eapp {
                 // and forwards those values to the request callback. The
                 // callback is supplied by the guest in owner+0x34; it is not a
                 // fixed address because every EAPP binary has its own code
-                // layout. Keep the completion env-gated with the
-                // AsyncFileIO:3 byte-count path until the full parsed-resource
-                // boot reaches the final menu.
+                // layout. Keep whole-file completion title-scoped and
+                // opt-in: Tetris and Texas Hold'em have separate proven
+                // probes, while Sudoku's RLB completion remains a diagnostic
+                // experiment until its post-callback scene contract is
+                // understood.
                 let owner = args[3];
                 let is_tetris = self
                     .metadata
@@ -6011,15 +6048,24 @@ impl Eapp {
                     .bundle_dir
                     .to_str()
                     .map_or(false, |p| p.contains("33333"));
+                let is_sudoku = self
+                    .metadata
+                    .bundle_dir
+                    .to_str()
+                    .map_or(false, |p| p.contains("50513"));
                 let tetris_complete = is_tetris
                     && std::env::var("CLICKY_EAPP_ASYNC3_COMPLETE")
                         .map(|v| v == "1" || v == "true")
                         .unwrap_or(false);
                 let texas_complete = is_texas
                     && std::env::var("EAPP_TEXAS_ASYNC0_COMPLETE")
+                    .map(|v| v == "1" || v == "true")
+                    .unwrap_or(false);
+                let sudoku_complete = is_sudoku
+                    && std::env::var("EAPP_SUDOKU_ASYNC0_COMPLETE")
                         .map(|v| v == "1" || v == "true")
                         .unwrap_or(false);
-                let complete = tetris_complete || texas_complete;
+                let complete = tetris_complete || texas_complete || sudoku_complete;
                 let callback_pc = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
                 if let Some(host_path) = self.resolve_or_create_host_path(&path) {
                     self.note_audio_asset_path(&host_path);
@@ -6030,11 +6076,12 @@ impl Eapp {
                     let n = bytes.len() as u32;
                     info!(
                         target: "EAPP_IMPORT",
-                        "AsyncFileIO:0 stream path={} owner={:#010x} bytes={} complete={}",
+                        "AsyncFileIO:0 stream path={} owner={:#010x} bytes={} complete={} callback={:#010x}",
                         host_path.display(),
                         owner,
                         n,
-                        complete as u8
+                        complete as u8,
+                        callback_pc
                     );
                     if complete && owner != 0 && callback_pc != 0 {
                         // AsyncFileIO:0 is a whole-file load, not just a
