@@ -86,6 +86,32 @@ zero-fill uses the same transfer shape with destination `0x14000000`. This
 rules out treating `0x1402000c` as a completion register and keeps the next
 investigation focused on the guest-produced buffer and aperture semantics.
 
+## Control-read A/B
+
+The synthetic control aperture historically returned `1` for every read. The
+opt-in `CLICKY_EAPP_HW_CONTROL_VALUE=<value>` override makes that value
+measurable without changing framebuffer writes. A paired 50,000,000-cycle run
+with the value forced to `0` produced the same result as the default for both
+titles:
+
+| Title | Default raw SHA-256 | Control=0 raw SHA-256 | Result |
+| --- | --- | --- | --- |
+| Bejeweled (`55555`) | `f6f31a7874104f7b26479a71a150083b0ba469a22faf1e52ae9c3180a057a3df` | identical | full write, exit 0 |
+| Zuma (`44444`) | `b84eb7639995bc2d1305e7417cfd04823e851de3ec9c2545d7b3ff351005a7c4` | identical | full write, exit 0 |
+
+The corresponding raw files are under:
+
+```text
+/tmp/fliwheel_bejeweled_hwcontrol0_raw_20260826/
+/tmp/fliwheel_bejeweled_hwcontrol1_raw_20260826/
+/tmp/fliwheel_zuma_hwcontrol0_raw_20260826/
+/tmp/fliwheel_zuma_hwcontrol1_raw_20260826/
+```
+
+This is negative evidence against the current control-read value being the
+source of the PopCap visual corruption. The override remains diagnostic only;
+the default remains `1`.
+
 ## SDRAM-alias A/B
 
 The firmware reference model in `~/Developer/ipod-emulator` documents

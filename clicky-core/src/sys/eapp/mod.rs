@@ -558,6 +558,11 @@ struct EappBus {
     /// explicitly requested. The default synthetic hardware path is retained
     /// until the decrypted-game A/B result is accepted as the new contract.
     uncached_sdram_alias: bool,
+    /// Value returned for reads from the synthetic control aperture. The
+    /// default preserves the historical HLE value; an explicit override is
+    /// useful for bounded contract A/B runs without changing the framebuffer
+    /// write path.
+    hw_control_value: u32,
     /// Track range of DMA FB writes
     hw_fb_write_count: usize,
     hw_fb_write_min: u32,
@@ -687,6 +692,7 @@ impl Eapp {
                 work_ram,
                 dma_framebuf: Ram::new(320 * 240 * 2), // RGB565 320×240
                 uncached_sdram_alias: std::env::var_os("CLICKY_EAPP_UNCACHED_ALIAS").is_some(),
+                hw_control_value: Self::parse_hw_control_value_env(),
                 hw_fb_write_count: 0,
                 hw_fb_write_min: u32::MAX,
                 hw_fb_write_max: 0,
@@ -2065,6 +2071,20 @@ impl Eapp {
             .ok()
             .and_then(|value| value.trim().parse::<usize>().ok())
             .unwrap_or(0)
+    }
+
+    fn parse_hw_control_value_env() -> u32 {
+        std::env::var("CLICKY_EAPP_HW_CONTROL_VALUE")
+            .ok()
+            .and_then(|value| {
+                let value = value.trim();
+                value
+                    .strip_prefix("0x")
+                    .or_else(|| value.strip_prefix("0X"))
+                    .map(|hex| u32::from_str_radix(hex, 16).ok())
+                    .unwrap_or_else(|| value.parse::<u32>().ok())
+            })
+            .unwrap_or(1)
     }
 
     /// Read the experimental GL HLE env flags and construct live state only
@@ -8515,7 +8535,7 @@ impl Memory for EappBus {
                 }
                 let value: u32 = if rel < 0x20000 {
                     // DMA control registers
-                    1
+                    self.hw_control_value
                 } else {
                     // DMA framebuffer: read back stored pixel data
                     let fb_off = (rel - 0x20000) as u32;
@@ -8622,7 +8642,7 @@ impl Memory for EappBus {
                     return Ok(value);
                 }
                 let value: u8 = if rel < 0x20000 {
-                    1
+                    self.hw_control_value as u8
                 } else {
                     let fb_off = (rel - 0x20000) as usize;
                     if fb_off < DMA_FB_SIZE {
@@ -8656,7 +8676,7 @@ impl Memory for EappBus {
                     return Ok(value);
                 }
                 let value: u16 = if rel < 0x20000 {
-                    1
+                    self.hw_control_value as u16
                 } else {
                     let fb_off = (rel - 0x20000) as usize;
                     if fb_off + 2 <= DMA_FB_SIZE {
