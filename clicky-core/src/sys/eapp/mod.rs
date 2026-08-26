@@ -5858,9 +5858,15 @@ impl Eapp {
                 // AsyncFileIO:3 byte-count path until the full parsed-resource
                 // boot reaches the final menu.
                 let owner = args[3];
-                let complete = std::env::var("CLICKY_EAPP_ASYNC3_COMPLETE")
-                    .map(|v| v == "1" || v == "true")
-                    .unwrap_or(false);
+                let is_tetris = self
+                    .metadata
+                    .bundle_dir
+                    .to_str()
+                    .map_or(false, |p| p.contains("66666"));
+                let complete = is_tetris
+                    && std::env::var("CLICKY_EAPP_ASYNC3_COMPLETE")
+                        .map(|v| v == "1" || v == "true")
+                        .unwrap_or(false);
                 let callback_pc = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
                 if let Some(host_path) = self.resolve_or_create_host_path(&path) {
                     self.note_audio_asset_path(&host_path);
@@ -6061,9 +6067,15 @@ impl Eapp {
                                 // reversed; default stays at 0 (golden). Set
                                 // CLICKY_EAPP_ASYNC3_COMPLETE=1 to re-enable
                                 // the iteration-10 behavior for RE.
-                                let complete = std::env::var("CLICKY_EAPP_ASYNC3_COMPLETE")
-                                    .map(|v| v == "1" || v == "true")
-                                    .unwrap_or(false);
+                                let is_tetris = self
+                                    .metadata
+                                    .bundle_dir
+                                    .to_str()
+                                    .map_or(false, |p| p.contains("66666"));
+                                let complete = is_tetris
+                                    && std::env::var("CLICKY_EAPP_ASYNC3_COMPLETE")
+                                        .map(|v| v == "1" || v == "true")
+                                        .unwrap_or(false);
                                 if complete {
                                     self.write_guest_u32(req.wrapping_add(0x20), 1);
                                     self.write_guest_u32(req.wrapping_add(0x24), n as u32);

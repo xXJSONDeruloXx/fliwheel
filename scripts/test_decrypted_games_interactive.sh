@@ -75,7 +75,6 @@ export CLICKY_EXPERIMENTAL_GL_HLE=1
 export CLICKY_GL_GATE_B=1
 export CLICKY_GL_LIVE_CONTINUOUS=1
 export CLICKY_GL_PRESENT_VFLIP=1
-export CLICKY_EAPP_ASYNC3_COMPLETE=1
 export CLICKY_EAPP_INPUT_SCRIPT="$input_script"
 export EAPP_AUDIO_DISABLE=1
 export EAPP_AUDIO_EVENT_TRACE=1
@@ -91,12 +90,21 @@ for bundle in "$games_root"/*; do
     capture_dir="$captures/$id"
     mkdir -p "$capture_dir"
 
+    run_env=(
+        "CLICKY_STARTUP_CAPTURE_DIR=$capture_dir"
+        "CLICKY_STARTUP_CAPTURE_PERIOD=1"
+        "CLICKY_STARTUP_CAPTURE_MAX_FRAMES=700"
+        "CLICKY_STARTUP_CAPTURE_MAX_DUMPS=100"
+    )
+    if [[ "$id" == "66666" ]]; then
+        # The parsed-resource completion experiment is currently Tetris-only.
+        # Other bundles use different callback/resource contracts; enabling it
+        # globally turns valid title-specific behavior into false faults.
+        run_env+=("CLICKY_EAPP_ASYNC3_COMPLETE=1")
+    fi
+
     set +e
-    CLICKY_STARTUP_CAPTURE_DIR="$capture_dir" \
-    CLICKY_STARTUP_CAPTURE_PERIOD=1 \
-    CLICKY_STARTUP_CAPTURE_MAX_FRAMES=700 \
-    CLICKY_STARTUP_CAPTURE_MAX_DUMPS=100 \
-    "$eapp" "$bundle" --headless --cycles "$cycles" >"$log" 2>&1
+    env "${run_env[@]}" "$eapp" "$bundle" --headless --cycles "$cycles" >"$log" 2>&1
     exit_code=$?
     set -e
 

@@ -11,7 +11,7 @@ claims.
 |------|---------|---------------|------|
 | Tetris | 66666 | 🟡 Content-level interaction partial | [→](66666_tetris.md) |
 | Cubis 2 | 99999 | ❌ Asset/renderer blocked | [→](99999_cubis2.md) |
-| Texas Hold'em | 33333 | ❌ Reproducible guest fault | [→](33333_holdem.md) |
+| Texas Hold'em | 33333 | 🟡 Loading screen only; playable state not reached | [→](33333_holdem.md) |
 | Ms. PAC-MAN | 14004 | 🟡 Loading screen only | [→](14004_mspacman.md) |
 | PAC-MAN | AAAAA | 🟡 Loading screen only | [→](AAAAA_pacman.md) |
 | Mahjong | 77777 | 🟡 Texture/UV partial | [→](77777_mahjong.md) |
@@ -32,9 +32,9 @@ claims.
 
 **Summary:** All 20 decrypted bundles launch far enough for a controlled
 interactive probe, but none is yet certified fully playable. Tetris is the
-furthest along; Hold'em has a reproducible guest fault; the remaining titles
-need content-specific input and renderer/asset fixes. The interactive matrix is
-the current status source.
+furthest along; Hold'em now runs its default path without a fatal but remains
+at loading; the remaining titles need content-specific input and
+renderer/asset fixes. The interactive matrix is the current status source.
 
 Latest interactive reports: `/tmp/fliwheel_interactive_full_{a,b,c,d}/interactive_matrix.md`.
 

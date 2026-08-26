@@ -4,10 +4,11 @@
 > log. The active project is the fresh `fliwheel` repository. Use
 > [`20260826_interactive_matrix.md`](game_tests/20260826_interactive_matrix.md)
 > for current corpus claims. The no-input smoke gate reaches all 20 decrypted
-> bundles, but scripted interaction exposes a reproducible Texas Hold'em fault
-> and major renderer/content gaps in the other titles. Tetris reaches its menu,
-> controls, and initial board with incremental rendering; full gameplay,
-> persistence, visual parity, and host audio remain open.
+> bundles. The corrected default-contract Hold'em probe completes without a
+> fatal but remains on `LOADING`; the other titles still have major
+> renderer/content gaps. Tetris reaches its menu, controls, and initial board
+> with incremental rendering; full gameplay, persistence, visual parity, and
+> host audio remain open.
 
 This branch is focused on **running clickwheel games on a Mac host** with the
 smallest viable amount of emulated iPod machinery.

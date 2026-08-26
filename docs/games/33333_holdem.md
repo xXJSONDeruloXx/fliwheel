@@ -1,6 +1,6 @@
 # Texas Hold'em (Bundle 33333)
 
-**Status:** ❌ REPRODUCIBLE GUEST FAULT | **Evidence:** scripted input faults at PC `0x18012738` after 8 frames | **Engine:** Hold'em Runtime
+**Status:** 🟡 LOADING SCREEN ONLY | **Evidence:** corrected default-contract run completes 30,000,000 cycles / 700 captured frames with no fatal, but stabilizes on `LOADING` | **Engine:** Hold'em Runtime
 
 ## Quick Start
 ```bash
@@ -26,6 +26,15 @@
 - Uses `Filesytem` import module (but doesn't depend on it for init)
 - Loads `.ipd` font atlases successfully through AsyncFileIO:3
 - Second-highest draw count — full poker table rendering
+- The current default path is safe but not yet playable: the common scripted
+  input schedule leaves the title on its loading screen. The experimental
+  `CLICKY_EAPP_ASYNC3_COMPLETE=1` completion fields are Tetris-only and must
+  not be used as Hold'em evidence; they exercise a different resource ABI.
+
+## Current evidence
+- Corrected matrix: `/tmp/fliwheel_holdem_matrix_20260826/interactive_matrix.md`
+- 30,000,000-cycle log: `/tmp/fliwheel_holdem_matrix_20260826/logs/33333.log`
+- 100 startup captures: `/tmp/fliwheel_holdem_matrix_20260826/captures/33333/`
 
 ## Environment
 ```bash
