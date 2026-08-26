@@ -338,7 +338,8 @@ The corresponding upright Zuma capture shows the stone-framed board,
 `PRESS SELECT TO ENTER THE TEMPLE`, `STAGE 1`, and `TEMPLE OF ZUKULKAN`.
 This is a verified renderer boundary, not a playable-game claim: the marble
 track, launcher interaction, and some overlay artwork remain incomplete.
-Bejeweled still presents its loading spinner and does not reach the board.
+Bejeweled's focused filesystem regression now reaches its board and built-in
+tutorial; its selector interaction remains incomplete.
 
 The orientation A/B control run with `CLICKY_GL_PRESENT_VFLIP=0` produced the
 same upright Zuma screen. The HLE therefore defaults PopCap bundles `44444`

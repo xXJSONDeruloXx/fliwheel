@@ -75,7 +75,7 @@ manifest. They measure visual activity, not correctness.
 | `44444` | Zuma | Latest 30M-cycle run reaches 700 guest frames, 101 unique capture hashes, and a clean 62-draw peak; the bound-texture selector renders the upright 320x240 stone-framed board, stage text, and title prompt without a fatal or DMA write | Board surface rendered; overlay/material composition partial | Trace remaining overlay placement, then exercise board entry and marble gameplay |
 | `50513` | Sudoku | Recognizable title screen; reversed-register event heads now drain cleanly, and Menu enters the save/settings teardown loop. An opt-in full RLB completion runs its callback chain but adds no board draws | Input lifecycle and Menu/exit path verified; board not reached | Derive the puzzle-start/select contract and render the puzzle grid |
 | `50514` | Royal Solitaire | 700 frames, 26 hashes and 59 changes; the character splash is spatially coherent, scripted event nodes are consumed, and the savefile request completes | Coherent splash; readiness/object contract unresolved and board not reached | Reconstruct the manager readiness callback, then validate card/selection interaction |
-| `55555` | Bejeweled | Latest 30M-cycle run reaches 319 guest frames, 24 unique capture hashes, and a clean 141-draw peak; bound texture association is active, but the visible result remains the centered loading spinner without a coherent board | PopCap loading/content partial | Identify the loading readiness contract, then map board composition and test wheel selection/moves |
+| `55555` | Bejeweled | Focused filesystem regression reaches the menu, 8×8 gem board, and built-in “Selecting Gems” tutorial; 700-frame board run has 98 unique hashes and a 179-draw peak, with no fatal | PopCap board/tutorial partial | Complete wheel cursor selection, then verify adjacent-gem swaps, audio, and persistence |
 | `66666` | Tetris | Corrected run reaches frame 501 with 20 hashes and up to 382 draws; the separate targeted schedule reaches the board, pause/resume, left/right, hard drop, and indexed `Menu.wav`/`Move.wav`/`Drop.wav` events | Best current target; interactive partial, not complete | Finish wheel displacement, line clears, persistence, long-run visual parity, and sound mixing |
 | `77777` | Mahjong | 700 frames, 71 hashes, up to eight draws; mostly dotted/garbled title output | Texture/UV partial | Decode the `main.rlb` resource path and tile atlas |
 | `88888` | Mini Golf | 700 frames, two hashes, five draws; mostly black with a loading/progress outline | Splash/loading only | Load the compact course resources and reach the menu |
@@ -155,10 +155,15 @@ Evidence is retained at `/tmp/fliwheel_holdem_ok_sweep_20260826/` and
 - PopCap draws now retain the guest's live OpenGLES:4 texture bind and prefer
   that texture name over the reused material handle when UV ranges overlap. A
   30M-cycle pair regression shows Zuma selecting uploads `7`, `6`, and `5` for
-  distinct overlay roles and presenting an upright board; Bejeweled remains at
-  its spinner. PopCap bundles now default to the guest screen origin, with
-  `CLICKY_GL_PRESENT_VFLIP` retained for explicit A/B tests. See the [PopCap
-  DMA contract probe](20260826_popcap_dma_contract.md).
+  distinct overlay roles and presenting an upright board. PopCap bundles now
+  default to the guest screen origin, with `CLICKY_GL_PRESENT_VFLIP` retained
+  for explicit A/B tests. See the [PopCap DMA contract probe](20260826_popcap_dma_contract.md).
+- The legacy `Filesytem` ABI now has independent synthetic handles,
+  sequential host-backed reads, and close semantics. Bejeweled reaches its
+  menu, 8×8 board, and “Selecting Gems” tutorial; its wheel packet is copied
+  into the guest input object but does not yet advance the selector. See the
+  [Bejeweled game report](../games/55555_bejeweled.md) and the [PopCap DMA
+  contract probe](20260826_popcap_dma_contract.md).
 - Royal Solitaire's readiness investigation confirmed that its event list is
   delivered and consumed and that its savefile request completes; the guest
   manager gate at `0x180cfa5c` remains at `2`. A diagnostic clear only tears

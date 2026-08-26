@@ -479,6 +479,11 @@ pub struct Eapp {
     /// into the caller's file object.
     async_open_files: HashMap<u32, PathBuf>,
     next_async_file_handle: u32,
+    /// Synthetic handles returned by the legacy `Filesytem:0` open call.
+    /// These are kept separate from direct AsyncFileIO handles because the
+    /// two modules use different object layouts and read contracts.
+    filesystem_open_files: HashMap<u32, FilesystemFile>,
+    next_filesystem_handle: u32,
     /// Synthetic Audio:0 source handles. The guest treats a non-negative
     /// return as an allocated source and later passes the same value to
     /// Audio:23/Audio:1 during teardown. Keep identity state even before the
@@ -523,6 +528,14 @@ struct StagedFile {
     offset: usize,
     /// Host path the bytes came from.
     host_path: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+struct FilesystemFile {
+    /// Host path backing a handle returned by the legacy `Filesytem` ABI.
+    host_path: PathBuf,
+    /// Sequential read position used by `Filesytem:2`.
+    offset: usize,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -794,6 +807,8 @@ impl Eapp {
             async_pending_requests: HashSet::new(),
             async_open_files: HashMap::new(),
             next_async_file_handle: 1,
+            filesystem_open_files: HashMap::new(),
+            next_filesystem_handle: 1,
             audio_handles: HashMap::new(),
             next_audio_handle: 1,
             audio_resource_paths: HashMap::new(),
@@ -6671,37 +6686,96 @@ impl Eapp {
     /// Calendar/local-time ABI used by Tetris' menu clock. The game calls
     /// `miscTBD:12(out_tm, ...)`, then reads `out_tm[1] + 60 * out_tm[2]` as
     /// minutes since midnight before passing that scalar to its `H:MM AM/PM`
-    /// Handle `Filesytem` (sic) import module used by iQuiz/TWA and some other
-    /// games. On real iPod hardware this provides filesystem open/read/close.
-    /// The emulator stubs it with minimal responses so games can progress past
-    /// their init sequences.
+    /// Handle `Filesytem` (sic) import module used by iQuiz/TWA, Bejeweled and
+    /// some other games. On real iPod hardware this provides filesystem
+    /// open/read/close. The ABI is object-backed: ordinal 0 receives the
+    /// caller's file object in `r3` and stores the synthetic handle at
+    /// `[r3+0]`; ordinal 2 receives that handle plus a buffer, length and
+    /// `&bytes_read`; ordinal 1 closes the handle.
     fn handle_filesystem_import(&mut self, ordinal: u32, args: [u32; 4]) -> u32 {
-        // Try to read the path from r1 for diagnostic purposes
+        // For ordinal 0, r1 is a path. For read/close calls this normally
+        // returns None because r1 is a buffer or an unused argument, but it
+        // remains useful in the trace when a title passes a string there.
         let path_str = self.try_read_c_string(args[1], 256);
         info!(target: "EAPP_IMPORT", "Filesytem:{} pc={:#010x} r0={:#010x} r1={:#010x} r2={:#010x} r3={:#010x} path={:?}",
             ordinal, self.bus.pending_pc, args[0], args[1], args[2], args[3], path_str);
         match ordinal {
-            // Ordinal 0: filesystem open/init. r1=path, r2=flags.
-            // Return 1 (success) and track the file for later reads.
+            // Ordinal 0: filesystem open/init. r1=path, r2=flags, r3=file
+            // object. The real implementation writes its handle into the
+            // first word of that object; Bejeweled immediately feeds it to
+            // Filesytem:2, so leaving this word zero traps the title in its
+            // resource-loading spinner.
             0 => {
-                if let Some(path) = path_str.as_deref() {
-                    if let Some(host_path) = self.resolve_or_create_host_path(path) {
-                        if host_path.exists() {
-                            let handle = self.next_async_file_handle;
-                            self.next_async_file_handle = self.next_async_file_handle.wrapping_add(1).max(1);
-                            self.async_open_files.insert(handle, host_path.clone());
-                            // Write handle to the output pointer if provided
-                            if args[2] != 0 {
-                                // r2 might be an output pointer for the handle
-                                // But on the real iPod this might be flags, not a pointer
-                            }
-                            info!(target: "EAPP_IMPORT", "Filesytem:0 opened {} -> handle {}", host_path.display(), handle);
-                        }
+                let Some(path) = path_str.as_deref() else {
+                    warn!(target: "EAPP_IMPORT", "Filesytem:0 called without a path");
+                    return 1;
+                };
+                let Some(host_path) = self.resolve_or_create_host_path(path) else {
+                    warn!(target: "EAPP_IMPORT", "Filesytem:0 could not resolve path {:?}", path);
+                    return 1;
+                };
+                if !host_path.is_file() {
+                    warn!(target: "EAPP_IMPORT", "Filesytem:0 path is not a file: {}", host_path.display());
+                    return 1;
+                }
+
+                let handle = self.next_filesystem_handle;
+                self.next_filesystem_handle = self.next_filesystem_handle.wrapping_add(1).max(1);
+                self.filesystem_open_files.insert(
+                    handle,
+                    FilesystemFile {
+                        host_path: host_path.clone(),
+                        offset: 0,
+                    },
+                );
+                let object = args[3];
+                let wrote_handle = object != 0 && self.write_guest_u32(object, handle);
+                info!(target: "EAPP_IMPORT", "Filesytem:0 opened {} -> handle {} object={:#010x} wrote_handle={} status=0", host_path.display(), handle, object, wrote_handle);
+                0
+            }
+            // Ordinal 1: close the handle stored at the head of the file
+            // object. The caller may pass zero during teardown; that is a
+            // harmless no-op on the firmware path as well.
+            1 => {
+                let handle = args[0];
+                let closed = self.filesystem_open_files.remove(&handle).is_some();
+                info!(target: "EAPP_IMPORT", "Filesytem:1 close handle={} closed={}", handle, closed);
+                0
+            }
+            // Ordinal 2: sequential read(handle, buffer, length, &bytes_read).
+            // The returned status is ignored by the game's wrapper; the
+            // output count is what determines whether a complete read landed.
+            2 => {
+                let handle = args[0];
+                let buffer = args[1];
+                let length = args[2] as usize;
+                let out = args[3];
+                let Some(file) = self.filesystem_open_files.get(&handle).cloned() else {
+                    if out != 0 {
+                        self.write_guest_u32(out, 0);
+                    }
+                    warn!(target: "EAPP_IMPORT", "Filesytem:2 unknown handle={} buffer={:#010x} len={}", handle, buffer, length);
+                    return 0;
+                };
+                let bytes = fs::read(&file.host_path).unwrap_or_else(|error| {
+                    warn!(target: "EAPP_IMPORT", "Filesytem:2 read error for {}: {}", file.host_path.display(), error);
+                    Vec::new()
+                });
+                let start = file.offset.min(bytes.len());
+                let count = length.min(bytes.len().saturating_sub(start));
+                let delivered = buffer != 0 && self.write_guest_bytes(buffer, &bytes[start..start + count]);
+                let got = if delivered || count == 0 { count as u32 } else { 0 };
+                if got != 0 {
+                    if let Some(open) = self.filesystem_open_files.get_mut(&handle) {
+                        open.offset = start + got as usize;
                     }
                 }
-                1
+                if out != 0 {
+                    self.write_guest_u32(out, got);
+                }
+                info!(target: "EAPP_IMPORT", "Filesytem:2 read handle={} buffer={:#010x} len={} -> {} bytes", handle, buffer, length, got);
+                0
             }
-            // Unknown ordinals: return 0 (no-op).
             _ => {
                 warn!(target: "EAPP_IMPORT", "unhandled Filesytem ordinal {}", ordinal);
                 0
