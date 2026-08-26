@@ -5608,10 +5608,25 @@ impl Eapp {
     }
 
     fn input_event_id_mask(&self, state: &EappInputState) -> u8 {
+        let mut mask = Self::input_event_id_mask_for_state(state);
+        for (key, _range) in self.active_env_input_script_entries() {
+            if let Some(raw) = key.strip_prefix("event=") {
+                if let Ok(id) = raw.parse::<u8>() {
+                    if (1..=5).contains(&id) {
+                        mask |= 1 << id;
+                    }
+                }
+            }
+        }
+        mask
+    }
+
+    fn input_event_id_mask_for_state(state: &EappInputState) -> u8 {
+        // The decrypted title probe confirms the five event-list IDs used by
+        // the shared game runtime: 1=menu/back, 2=action/select, 3=left,
+        // 4=right, and 5=up/down. This is intentionally separate from
+        // input_state_bits(), which exposes the compact packet bits directly.
         let mut mask = 0u8;
-        // The id-to-mask table in the guest maps 1..5 to five logical buttons.
-        // These bindings are still provisional, but unlike a return-only
-        // bitfield they feed the structure the game actually traverses.
         if state.menu {
             mask |= 1 << 1;
         }
@@ -5626,15 +5641,6 @@ impl Eapp {
         }
         if state.up || state.down {
             mask |= 1 << 5;
-        }
-        for (key, _range) in self.active_env_input_script_entries() {
-            if let Some(raw) = key.strip_prefix("event=") {
-                if let Ok(id) = raw.parse::<u8>() {
-                    if (1..=5).contains(&id) {
-                        mask |= 1 << id;
-                    }
-                }
-            }
         }
         mask
     }
@@ -9410,7 +9416,9 @@ fn vma_to_offset(addr: u32) -> Result<u32, EappBuildError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_palette8_rgba8, live_gl_default_present_vflip, Eapp};
+    use super::{
+        decode_palette8_rgba8, live_gl_default_present_vflip, Eapp, EappInputState,
+    };
 
     #[test]
     fn palette8_rgba8_decodes_palette_then_indices() {
@@ -9451,6 +9459,31 @@ mod tests {
 
         assert_eq!(Eapp::wheel_frame_bits(&mut position, 0.0), 0);
         assert_eq!(position, 17);
+    }
+
+    #[test]
+    fn input_event_ids_follow_guest_button_mapping() {
+        let buttons: [(&str, fn(&mut EappInputState), u8); 5] = [
+            ("menu", |state: &mut EappInputState| state.menu = true, 1 << 1),
+            (
+                "action",
+                |state: &mut EappInputState| state.action = true,
+                1 << 2,
+            ),
+            ("left", |state: &mut EappInputState| state.left = true, 1 << 3),
+            ("right", |state: &mut EappInputState| state.right = true, 1 << 4),
+            ("up/down", |state: &mut EappInputState| state.up = true, 1 << 5),
+        ];
+
+        for (name, set, expected) in buttons {
+            let mut state = EappInputState::default();
+            set(&mut state);
+            assert_eq!(Eapp::input_event_id_mask_for_state(&state), expected, "{name}");
+        }
+
+        let mut down = EappInputState::default();
+        down.down = true;
+        assert_eq!(Eapp::input_event_id_mask_for_state(&down), 1 << 5);
     }
 
     #[test]

@@ -37,7 +37,8 @@ FLIWHEEL_GL_LIVE_CONTINUOUS=1
 # for orientation A/B experiments.
 ```
 
-Focused evidence: [PopCap DMA contract probe](../game_tests/20260826_popcap_dma_contract.md).
+Focused evidence: [PopCap DMA contract probe](../game_tests/20260826_popcap_dma_contract.md)
+and [Bejeweled input event contract](../game_tests/20260826_bejeweled_input_event_contract.md).
 
 ## Current interactive boundary
 
@@ -60,5 +61,7 @@ That run reached 1,200 guest frames and 175 unique hashes. The emulator's
 and `Filesytem:1` closes the synthetic handle; the receipt is in
 `/tmp/fliwheel_bejeweled_fs2_20260826/logs/55555.log`. A controlled wheel
 sweep delivers changing positions to the guest input object but does not yet
-advance the tutorial, so this is a verified board/tutorial boundary rather
-than a playable-game claim.
+advance the tutorial. The linked input event probe now confirms that event 2
+is the title's action/select edge and event 1 is menu/back; the cursor/gameplay
+consumer still needs to be reached and verified. This remains a verified
+board/tutorial boundary rather than a playable-game claim.
