@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Inspect Apple clickwheel game bundles and firmware images.
 
-This script is intended to support the `clickwheel-games` bring-up effort by
+This script supports fliwheel's decrypted-game bring-up by
 making it easy to inventory `Games_RO` packages and inspect their executable /
 firmware metadata without needing any external tooling.
 """

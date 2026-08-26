@@ -4,11 +4,11 @@
 
 ## Quick Start
 ```bash
-./scripts/tetris.sh                 # default: build + headed run
-./scripts/tetris.sh --timeout 15    # auto-terminate after 15 seconds
-./scripts/tetris.sh --headless      # no window
-./scripts/tetris.sh --dump 100      # dump first 100 frames as PPM
-./scripts/tetris.sh --verbose       # debug-level logging
+./scripts/games/tetris.sh                 # default: build + headed run
+./scripts/games/tetris.sh --timeout 15    # auto-terminate after 15 seconds
+./scripts/games/tetris.sh --headless      # no window
+./scripts/games/tetris.sh --dump 100      # dump first 100 frames as PPM
+./scripts/games/tetris.sh --verbose       # debug-level logging
 ```
 
 ## Bundle Info

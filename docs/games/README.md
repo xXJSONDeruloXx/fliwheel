@@ -41,22 +41,28 @@ Latest interactive reports: `/tmp/fliwheel_interactive_full_{a,b,c,d}/interactiv
 
 ## Running Games
 
-### Rendering-smoke Games
+### Launchers
 
 These launch scripts exercise the rendering HLE and startup path; “working” in
 older notes does not mean input, persistence, gameplay, and sound are all
 verified.
 
 ```bash
-./scripts/tetris.sh                # most tested
-./scripts/cubis2.sh                # highest draw count
-./scripts/holdem.sh                # complex poker game
-./scripts/mspacman.sh              # classic arcade
-./scripts/pacman.sh                # classic arcade
-./scripts/mahjong.sh               # tile matching
-./scripts/minigolf.sh              # golf game
-./scripts/simsbowling.sh           # bowling sim
-./scripts/simspool.sh              # pool sim
+./scripts/games/tetris.sh                # most tested
+./scripts/games/cubis2.sh                # highest draw count
+./scripts/games/holdem.sh                # complex poker game
+./scripts/games/mspacman.sh              # classic arcade
+./scripts/games/pacman.sh                # classic arcade
+./scripts/games/mahjong.sh               # tile matching
+./scripts/games/minigolf.sh              # golf game
+./scripts/games/simsbowling.sh           # bowling sim
+./scripts/games/simspool.sh              # pool sim
+./scripts/games/iquiz.sh                 # pack/content loading
+./scripts/games/sat-reading.sh           # SAT Prep Reading
+./scripts/games/sat-writing.sh           # SAT Prep Writing
+./scripts/games/sat-math.sh              # SAT Prep Mathematics
+./scripts/games/musika.sh                # splash/runtime probe
+./scripts/games/lost.sh                  # render-server probe
 ```
 
 ### PopCap / legacy partial-render Games
@@ -64,8 +70,8 @@ verified.
 PopCap engine games still need a content-level renderer regression:
 
 ```bash
-./scripts/bejeweled.sh             # startup/partial renderer probe
-./scripts/zuma.sh                  # startup/partial renderer probe
+./scripts/games/bejeweled.sh             # startup/partial renderer probe
+./scripts/games/zuma.sh                  # startup/partial renderer probe
 ```
 
 The current DMA evidence and shared next gate are recorded in the
@@ -76,19 +82,19 @@ The current DMA evidence and shared next gate are recorded in the
 Sudoku and Royal Solitaire use normalized coordinates and run directly:
 
 ```bash
-./target/release/eapp /path/to/Games_RO/50513 --headless
-./target/release/eapp /path/to/Games_RO/50514 --headless
+./scripts/games/sudoku.sh /path/to/Games_RO/50513 --headless
+./scripts/games/solitaire.sh /path/to/Games_RO/50514 --headless
 ```
 
 ### Common Script Options
 
 ```bash
-./scripts/<game>.sh --timeout 15    # auto-terminate after 15s
-./scripts/<game>.sh --headless      # no window (CI / testing)
-./scripts/<game>.sh --verbose       # debug-level logging
-./scripts/<game>.sh --dump 30       # dump first 30 frames as PPM
-./scripts/<game>.sh --no-build      # skip cargo build
-./scripts/<game>.sh --no-capture    # skip PPM frame captures
+./scripts/games/<game>.sh --timeout 15    # auto-terminate after 15s
+./scripts/games/<game>.sh --headless      # no window (CI / testing)
+./scripts/games/<game>.sh --verbose       # debug-level logging
+./scripts/games/<game>.sh --dump 30       # dump first 30 frames as PPM
+./scripts/games/<game>.sh --no-build      # skip cargo build
+./scripts/games/<game>.sh --no-capture    # skip PPM frame captures
 ```
 
 ### Required Environment

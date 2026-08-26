@@ -4,9 +4,9 @@
 
 ## Quick Start
 ```bash
-./scripts/mahjong.sh
-./scripts/mahjong.sh --timeout 15
-./scripts/mahjong.sh --headless
+./scripts/games/mahjong.sh
+./scripts/games/mahjong.sh --timeout 15
+./scripts/games/mahjong.sh --headless
 ```
 
 ## Bundle Info

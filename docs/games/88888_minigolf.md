@@ -4,9 +4,9 @@
 
 ## Quick Start
 ```bash
-./scripts/minigolf.sh
-./scripts/minigolf.sh --timeout 15
-./scripts/minigolf.sh --headless
+./scripts/games/minigolf.sh
+./scripts/games/minigolf.sh --timeout 15
+./scripts/games/minigolf.sh --headless
 ```
 
 ## Bundle Info

@@ -4,9 +4,9 @@
 
 ## Quick Start
 ```bash
-./scripts/holdem.sh
-./scripts/holdem.sh --timeout 15
-./scripts/holdem.sh --headless
+./scripts/games/holdem.sh
+./scripts/games/holdem.sh --timeout 15
+./scripts/games/holdem.sh --headless
 ```
 
 ## Bundle Info

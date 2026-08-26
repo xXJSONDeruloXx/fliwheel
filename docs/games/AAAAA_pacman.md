@@ -4,9 +4,9 @@
 
 ## Quick Start
 ```bash
-./scripts/pacman.sh
-./scripts/pacman.sh --timeout 15
-./scripts/pacman.sh --headless
+./scripts/games/pacman.sh
+./scripts/games/pacman.sh --timeout 15
+./scripts/games/pacman.sh --headless
 ```
 
 ## Bundle Info

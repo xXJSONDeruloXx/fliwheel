@@ -4,9 +4,9 @@
 
 ## Quick Start
 ```bash
-./scripts/simsbowling.sh
-./scripts/simsbowling.sh --timeout 15
-./scripts/simsbowling.sh --headless
+./scripts/games/simsbowling.sh
+./scripts/games/simsbowling.sh --timeout 15
+./scripts/games/simsbowling.sh --headless
 ```
 
 ## Bundle Info

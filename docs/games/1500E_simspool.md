@@ -4,9 +4,9 @@
 
 ## Quick Start
 ```bash
-./scripts/simspool.sh
-./scripts/simspool.sh --timeout 15
-./scripts/simspool.sh --headless
+./scripts/games/simspool.sh
+./scripts/games/simspool.sh --timeout 15
+./scripts/games/simspool.sh --headless
 ```
 
 ## Bundle Info

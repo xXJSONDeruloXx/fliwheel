@@ -4,9 +4,9 @@
 
 ## Quick Start
 ```bash
-./scripts/mspacman.sh
-./scripts/mspacman.sh --timeout 15
-./scripts/mspacman.sh --headless
+./scripts/games/mspacman.sh
+./scripts/games/mspacman.sh --timeout 15
+./scripts/games/mspacman.sh --headless
 ```
 
 ## Bundle Info

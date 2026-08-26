@@ -1173,7 +1173,7 @@ fields) so menu entry stays intact while labels materialize.
   UV/upload-matching context; this loop narrows in on the text-accuracy gap.
 - Always run headed for visual confirmation unless doing a quick RE watch.
   Headed command:
-  `CLICKY_GL_TEXGEN_VERBOSE=1 ./scripts/tetris.sh --no-build --timeout 12`
+  `CLICKY_GL_TEXGEN_VERBOSE=1 ./scripts/games/tetris.sh --no-build --timeout 12`
 - The PC-hook + recorded-char-seq design is a clean runtime ABI model, not a
   hardcoded-string patch. The `0x1801616c` PC is Tetris-specific (its EA
   engine's own text code); sibling engines use different text paths that
@@ -1257,7 +1257,7 @@ with head/in-flight/done-byte dump), `0x1d500` (begin-load: entry[4]/[7]/
 `0x1fed8` (success-path code address).
 
 Run: `CLICKY_EAPP_ASYNC3_COMPLETE=1 EAPP_STRING_TRACE=1 EAPP_STRING_TRACE_LIMIT=400
-CLICKY_EAPP_WATCH=0x10013790,0x4 ./scripts/tetris.sh --no-build --timeout 10 --headless`
+CLICKY_EAPP_WATCH=0x10013790,0x4 ./scripts/games/tetris.sh --no-build --timeout 10 --headless`
 (`/tmp/tet_iter14_post3.log`).
 
 Empirical results:
@@ -2582,7 +2582,7 @@ CLICKY_EAPP_INPUT_SCRIPT='menu:25-30' \
 CLICKY_STARTUP_PROGRESS_FRAMES=600 \
 CLICKY_STARTUP_PROGRESS_INTERVAL=10 \
 CLICKY_GL_TEXGEN_VERBOSE=1 \
-./scripts/tetris.sh --no-build --timeout 35 --headless
+./scripts/games/tetris.sh --no-build --timeout 35 --headless
 ```
 
 Log: `/tmp/tet_iter22_async3_real_menu_event.log`
@@ -2627,7 +2627,7 @@ CLICKY_EAPP_HOST_EVENT_FLAGS=0x18 \
 CLICKY_EAPP_HOST_EVENT_DELAY=0 \
 CLICKY_STARTUP_PROGRESS_FRAMES=120 \
 CLICKY_STARTUP_PROGRESS_INTERVAL=5 \
-./scripts/tetris.sh --timeout 18 --headless
+./scripts/games/tetris.sh --timeout 18 --headless
 ```
 
 Log: `/tmp/tet_iter22_host_event_flags_rebuilt.log`
@@ -2729,7 +2729,7 @@ CLICKY_EAPP_ASYNC3_COMPLETE=1 \
 CLICKY_EAPP_INPUT_SCRIPT='<key>:25-30' \
 CLICKY_STARTUP_PROGRESS_FRAMES=70 \
 CLICKY_STARTUP_PROGRESS_INTERVAL=5 \
-./scripts/tetris.sh --no-build --headless --timeout 10 --no-capture
+./scripts/games/tetris.sh --no-build --headless --timeout 10 --no-capture
 ```
 
 Logs: `/tmp/tet_iter23_edge_all/{menu,action,left,right,up,down}.log`.
