@@ -162,7 +162,7 @@ Total: ~80 minutes of focused work
 
 ## Notes from Documentation
 
-From `IPOD_GAMES_BRINGUP.md`:
+From the archived [Clicky-era matrix report](../archive/firmware/IPOD_GAMES_BRINGUP.md):
 > - `12345` Vortex: `FatalMemException pc=0x18014d58 kind=Write off=0x00000004`
 >   - null-destination struct-fill at `pc=0x18014d58` after inline GL uploads
 >   - `[object+4]` buffer ptr is null, likely GL surface bind gap

@@ -1,7 +1,8 @@
 # Tetris Text Rendering (historical RE log)
 
 > Current status (2026-08-25): the shared glyph-cursor and localized A8 atlas
-> fixes are verified in [`20260825_tetris_text_and_name_entry.md`](game_tests/20260825_tetris_text_and_name_entry.md).
+> fixes are verified in
+> [`20260825_tetris_text_and_name_entry.md`](../../game_tests/20260825_tetris_text_and_name_entry.md).
 > Tetris reaches readable first-run name entry and accepts wheel/Select input,
 > but gameplay and the post-profile menu transition are still open. The notes
 > below are dated historical investigations; any older `COMPLETE` wording is

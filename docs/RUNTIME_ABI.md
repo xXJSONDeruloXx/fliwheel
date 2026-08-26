@@ -91,7 +91,8 @@ literal target array (module, ordinal) -> function
 
 Resolved during the 2026-06-20 eapp matrix hardening pass. These are
 ABI-level facts confirmed across multiple titles; per-game evidence lives in
-`docs/IPOD_GAMES_BRINGUP.md`.
+the [current interactive matrix](game_tests/20260826_interactive_matrix.md)
+and the linked game reports.
 
 | Ordinal | Resolved semantics | Cross-title evidence |
 |---------|--------------------|----------------------|

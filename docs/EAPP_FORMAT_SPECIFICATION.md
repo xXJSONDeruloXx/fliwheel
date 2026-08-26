@@ -153,10 +153,13 @@ xxd -l 40 file.bin
 ```
 
 ### Parsing
-See `scripts/analyze_eapp.py` (to be created) for automated analysis.
+The repository's executable discovery and corpus probes live under
+[`scripts/games/`](../scripts/games/); the runtime loader remains the authority
+for the complete header/import contract.
 
 ## References
 
-- `docs/DECRYPTION_ANALYSIS.md` - DRM analysis
-- `docs/FAIRPLAY_RESEARCH_FINDINGS.md` - Key extraction
-- `docs/FairPlay_Technical_Specification.md` - Encryption details
+- [`docs/archive/decryption/DECRYPTION_ANALYSIS.md`](archive/decryption/DECRYPTION_ANALYSIS.md)
+  - DRM analysis
+- [`docs/archive/decryption/FAIRPLAY_RESEARCH_FINDINGS.md`](archive/decryption/FAIRPLAY_RESEARCH_FINDINGS.md)
+  - FairPlay/key-extraction context

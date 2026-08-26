@@ -3,7 +3,8 @@
 Date: 2026-08-26
 
 This is the current focused checkpoint for bundle `66666`. It supersedes the
-older exploratory notes in [`tetris-text-rendering.md`](../tetris-text-rendering.md)
+older exploratory notes in
+[`20260826_tetris_text_rendering_re.md`](../archive/reports/20260826_tetris_text_rendering_re.md)
 for present status; that file remains as historical RE material.
 
 ## Verified
