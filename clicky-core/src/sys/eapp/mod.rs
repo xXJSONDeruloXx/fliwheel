@@ -146,6 +146,11 @@ const STRING_TRACE_PCS: &[u32] = &[
     0x1801_d644, // load-manager LINK fn: push entry to pending list
     0x1801_d664, // dead-spin guard if entry[7]!=0 (duplicate reg)
     0x1801_d8d0, // manager init (alloc 10-slot free-list)
+    0x1801_d770, // audio-stream manager: pop a pending entry and start its I/O
+    0x1801_d800, // audio-stream manager: start the shared owner read
+    0x1801_d824, // audio-stream manager: start the secondary owner read
+    0x1801_d840, // audio-stream manager: inspect the I/O initiator result
+    0x1801_d858, // audio-stream manager: return the selected slot or -1
     0x1801_fd74, // I/O initiator C used by audio-stream manager after d500
     0x1801_fddc, // initiator C success branch: request state becomes 3
     0x1801_fe28, // I/O initiator A (read path, 0x1801d370 shared owner cb)
@@ -7092,6 +7097,63 @@ impl Eapp {
                 details.push(format!(
                     "mgr={:#010x} head={:#010x} e[170]={:#04x} e[124]={:#04x} e[128]={:#010x}",
                     mgr, head, inf, e124, e128
+                ));
+            }
+            0x1801_d770 | 0x1801_d800 | 0x1801_d824 | 0x1801_d840 | 0x1801_d858 => {
+                // Audio-stream manager. d770 takes the pending-list head,
+                // initializes that entry, and starts either the shared-owner
+                // read (d800) or the secondary-owner read (d824). At d840,
+                // r0 is the initiator result; d858 returns r6, the entry's
+                // selected slot handle (or -1 when no pending entry exists).
+                // Keeping these probes at the guest PCs makes the release
+                // seen in the resource table trace attributable to the actual
+                // handoff rather than to an assumed HLE failure.
+                let manager = if pc == 0x1801_d770 { regs[0] } else { regs[5] };
+                let entry = if pc == 0x1801_d770 {
+                    self.read_guest_u32(manager.wrapping_add(0xf28)).unwrap_or(0)
+                } else {
+                    regs[4]
+                };
+                let mut state = if entry != 0 {
+                    format!(
+                        " e[0]={:#010x}",
+                        self.read_guest_u32(entry).unwrap_or(0)
+                    )
+                } else {
+                    String::new()
+                };
+                if entry != 0 {
+                    for (label, off) in [
+                        ("4", 0x04),
+                        ("5", 0x05),
+                        ("6", 0x06),
+                        ("7", 0x07),
+                        ("8", 0x08),
+                        ("9", 0x09),
+                        ("10c", 0x10c),
+                        ("110", 0x110),
+                        ("114", 0x114),
+                        ("118", 0x118),
+                        ("120", 0x120),
+                        ("124", 0x124),
+                        ("128", 0x128),
+                        ("164", 0x164),
+                        ("168", 0x168),
+                        ("16c", 0x16c),
+                        ("170", 0x170),
+                        ("180", 0x180),
+                    ] {
+                        let value = if off < 0x10 {
+                            self.read_guest_u8(entry.wrapping_add(off)).unwrap_or(0) as u32
+                        } else {
+                            self.read_guest_u32(entry.wrapping_add(off)).unwrap_or(0)
+                        };
+                        state.push_str(&format!(" e[{}]={:#010x}", label, value));
+                    }
+                }
+                details.push(format!(
+                    "AUDIO_MANAGER pc={:#010x} mgr={:#010x} entry={:#010x} r0={:#010x} r4={:#010x} r5={:#010x} r6={:#010x}{}",
+                    pc, manager, entry, regs[0], regs[4], regs[5], regs[6], state
                 ));
             }
             0x1801_d1b4 => {
