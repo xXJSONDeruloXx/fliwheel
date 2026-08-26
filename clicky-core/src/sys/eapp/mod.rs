@@ -2782,8 +2782,8 @@ impl Eapp {
 
     /// Ordinal 169: accumulate the guest's two-component draw transform
     /// (r1=first component, r2=second component as floats). Normal sprite
-    /// groups reset this state after each draw; Tetris' incremental tile
-    /// groups retain it across paired draws.
+    /// groups reset this state after each draw; Tetris' cell groups restore
+    /// the board origin before applying their local tile transform.
     fn live_handle_translate(&mut self, args: [u32; 4]) {
         let tx = f32::from_bits(args[1]);
         let ty = f32::from_bits(args[2]);
@@ -2836,15 +2836,11 @@ impl Eapp {
         let handle = args[0];
         let state_ptr = args[1];
         if let Some(lg) = self.live_gl.as_mut() {
-            if lg.use_incremental_translation
-                && matches!(handle, 0x13 | 0x19)
+            if lg.game_id == "66666"
+                && handle == 0x19
+                && lg.board_base_translation_valid
             {
-                if !lg.frame_material_bound {
-                    lg.frame_base_translation = lg.translation;
-                } else {
-                    lg.translation = lg.frame_base_translation;
-                }
-                lg.frame_material_bound = true;
+                lg.translation = lg.frame_base_translation;
             }
             lg.current_handle = handle;
             lg.current_state_ptr = state_ptr;
@@ -4470,8 +4466,16 @@ impl Eapp {
         let should_capture;
         if let Some(lg) = self.live_gl.as_mut() {
             let increment = records.len().max(1);
+            if lg.game_id == "66666" {
+                if let Some(matrix) = records.iter().find(|record| {
+                    record.handle == 0x13 && record.inferred_dim == Some((115, 223))
+                }) {
+                    lg.frame_base_translation = matrix.translation;
+                    lg.board_base_translation_valid = true;
+                }
+            }
             let preserve_translation = lg.use_incremental_translation
-                && records.iter().all(|record| matches!(record.handle, 0x13 | 0x19));
+                && records.iter().all(|record| record.handle == 0x19);
             lg.draws.extend(records);
             if !preserve_translation {
                 lg.translation = (0.0, 0.0);

@@ -149,10 +149,10 @@ pub struct LiveGlState {
     pub current_material_epoch: u64,
     pub translation: (f32, f32),
     /// Transform model for the Tetris material groups. The guest establishes
-    /// a frame-level base before the first material bind, then wraps each
-    /// material's tile draws in paired translations.
+    /// the board origin immediately before the matrix texture draw, then
+    /// wraps each cell material's tile draws in paired translations.
     pub frame_base_translation: (f32, f32),
-    pub frame_material_bound: bool,
+    pub board_base_translation_valid: bool,
     /// Draw count of the preceding frame. Tetris changes from full board
     /// composition to low-draw incremental updates at this boundary.
     pub previous_frame_draw_count: usize,
@@ -258,7 +258,7 @@ impl LiveGlState {
             current_material_epoch: 0,
             translation: (0.0, 0.0),
             frame_base_translation: (0.0, 0.0),
-            frame_material_bound: false,
+            board_base_translation_valid: false,
             previous_frame_draw_count: 0,
             use_incremental_translation: false,
             clear_color: Rgba8::rgba(0, 0, 0, 255),
@@ -313,7 +313,7 @@ impl LiveGlState {
         self.enabled_arrays.clear();
         self.translation = (0.0, 0.0);
         self.frame_base_translation = (0.0, 0.0);
-        self.frame_material_bound = false;
+        self.board_base_translation_valid = false;
         self.use_incremental_translation = self.game_id == "66666"
             && (1..=16).contains(&self.previous_frame_draw_count);
         self.pointer_text_carry_handle = None;

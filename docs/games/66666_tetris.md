@@ -1,6 +1,6 @@
 # Tetris (Bundle 66666)
 
-**Status:** 🟡 TEXT + BOARD ENTRY VERIFIED | **Gameplay:** gravity, controls, and hard drop smoke verified; parity open | **Engine:** Tetris Runtime
+**Status:** 🟡 CENTERED BOARD + INPUT PATH VERIFIED | **Gameplay:** gravity, controls, and hard drop smoke verified; parity open | **Engine:** Tetris Runtime
 
 ## Quick Start
 ```bash
@@ -42,10 +42,15 @@ character and Select commits it to the name field. The scripted path reaches
 `MENU`, `PICK GAME`, `CONTROLS`, and the initial 10×20 board. Tetris now honors
 the guest's explicit color clear, retains the framebuffer during incremental
 board updates, and carries the paired tile transforms for the matrix/mino
-materials. The board remains intact and input changes the dynamic draw stream.
+materials. Full gameplay frames now restore the board origin from the
+`matrix_565.pix` draw, centering the 115×223 well at `(102,7)` and placing the
+first active cell inside it. The board remains intact and input changes the
+dynamic draw stream.
 A focused follow-up now verifies pause/resume, gravity, side-button response,
-and the hard-drop transition. Wheel displacement, lock/line-clear behavior,
-exact physical mapping, persistence, and long-run play are still open.
+the hard-drop transition, and a 1,000-frame repeat-drop/game-over regression
+reaches `Drop.wav`, `Lock.wav`, and `GameOver.wav` resource events. Wheel
+displacement, later piece/line-clear transforms, exact physical mapping,
+persistence, host audio output, and full long-run parity are still open.
 
 The old no-input probe used a diagnostic `CLICKY_EAPP_HOST_EVENT_FLAGS=0x10`
 injection and is not evidence that ordinary no-input execution reaches the
@@ -55,6 +60,8 @@ See [`20260825_tetris_text_and_name_entry.md`](../game_tests/20260825_tetris_tex
 for the exact commands and capture artifacts.
 See [`20260826_tetris_gameplay_controls.md`](../game_tests/20260826_tetris_gameplay_controls.md)
 for the gameplay timing and control evidence.
+See [`20260826_tetris_board_origin.md`](../game_tests/20260826_tetris_board_origin.md)
+for the centered-board fix and long-run renderer checkpoint.
 
 ## Texture Details
 | File | Format | Dimensions | Notes |
@@ -103,4 +110,5 @@ automatic for bundle `66666`; no preservation override is required.
 - Clickwheel ingress evidence: [`20260825_clickwheel_input.md`](../game_tests/20260825_clickwheel_input.md)
 - Text/name-entry evidence: [`20260825_tetris_text_and_name_entry.md`](../game_tests/20260825_tetris_text_and_name_entry.md)
 - Gameplay controls evidence: [`20260826_tetris_gameplay_controls.md`](../game_tests/20260826_tetris_gameplay_controls.md)
+- Board-origin and long-run evidence: [`20260826_tetris_board_origin.md`](../game_tests/20260826_tetris_board_origin.md)
 - Frame capture produces PPM files visible with `open /tmp/tetris_capture_*.ppm`

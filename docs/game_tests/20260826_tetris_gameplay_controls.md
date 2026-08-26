@@ -6,6 +6,9 @@ This is the follow-up gameplay checkpoint for bundle `66666`, after the
 first-run name-entry, menu, controls, and board-entry work documented in
 [`20260825_tetris_text_and_name_entry.md`](20260825_tetris_text_and_name_entry.md).
 
+The subsequent centered-board and long-run renderer checkpoint is documented
+separately in [`20260826_tetris_board_origin.md`](20260826_tetris_board_origin.md).
+
 ## Verified
 
 - The initial board scene is reachable through the normal scripted first-run
