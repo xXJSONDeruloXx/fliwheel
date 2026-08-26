@@ -574,6 +574,11 @@ struct EappBus {
     /// Optional read-only hardware trace budget. This lets RE runs skip the
     /// large pixel upload and observe the status/read phase that follows it.
     hw_trace_read_remaining: usize,
+    /// Include the guest register state that precedes each bounded hardware
+    /// trace record. This is opt-in because it makes the bulk pixel trace
+    /// substantially larger, but it is useful for identifying the source and
+    /// destination of an otherwise opaque memcpy into the aperture.
+    hw_trace_regs: bool,
     /// Optional write-watchpoint range (start, end exclusive). When set,
     /// every byte write whose address falls in [start, end) is recorded to
     /// `watch_log` tagged with `pending_pc`. Used for RE: attributing
@@ -584,6 +589,11 @@ struct EappBus {
     /// watchpoint hits. Stale by one instruction for multi-access instrs, but
     /// close enough to locate the writer.
     pending_pc: u32,
+    pending_regs: [u32; 4],
+    pending_lr: u32,
+    pending_sp: u32,
+    previous_pc: u32,
+    previous_lr: u32,
     /// Accumulated write-watchpoint hits (addr, value, pc). Drained and
     /// dumped on fatal / at end of run. Bounded; a flooded range is a sign
     /// the watch was set too wide.
@@ -684,8 +694,14 @@ impl Eapp {
                 hw_dma_dirty: false,
                 hw_trace_remaining: Self::parse_hw_trace_env(),
                 hw_trace_read_remaining: Self::parse_hw_trace_reads_env(),
+                hw_trace_regs: std::env::var_os("CLICKY_EAPP_HW_TRACE_REGS").is_some(),
                 watch: None,
                 pending_pc: 0,
+                pending_regs: [0; 4],
+                pending_lr: 0,
+                pending_sp: 0,
+                previous_pc: 0,
+                previous_lr: 0,
                 watch_log: Vec::new(),
             },
             metadata: image.metadata,
@@ -885,6 +901,28 @@ impl Eapp {
 
         // Present (separate borrow from live_gl)
         if let Some(completed) = completed {
+            if let Some(dir) = std::env::var_os("CLICKY_EAPP_DMA_DUMP_DIR") {
+                let dir = PathBuf::from(dir);
+                let _ = fs::create_dir_all(&dir);
+                let path = dir.join(format!("dma_frame_{:06}.rgb565", completed.index));
+                if !path.exists() {
+                    if let Err(err) = fs::write(&path, &dma_data) {
+                        warn!(
+                            target: "EAPP_HW",
+                            "DMA raw dump failed path={} error={}",
+                            path.display(),
+                            err
+                        );
+                    } else {
+                        info!(
+                            target: "EAPP_HW",
+                            "DMA raw dump path={} bytes={}",
+                            path.display(),
+                            dma_data.len()
+                        );
+                    }
+                }
+            }
             self.live_log_completed_frame(&completed, true);
             self.live_log_signature_detail(&completed);
             // DMA-only PopCap presents do not pass through the ordinary
@@ -1446,7 +1484,15 @@ impl Eapp {
         // Surface the current PC to the bus so write-watchpoint hits can be
         // tagged with the writer's PC. Set before `cpu.step`, which may emit
         // memory writes for the instruction at `pc`.
+        self.bus.previous_pc = self.bus.pending_pc;
+        self.bus.previous_lr = self.bus.pending_lr;
         self.bus.pending_pc = pc;
+        let mode = self.cpu.mode();
+        for idx in 0..4 {
+            self.bus.pending_regs[idx] = self.cpu.reg_get(mode, idx as u8);
+        }
+        self.bus.pending_lr = self.cpu.reg_get(mode, reg::LR);
+        self.bus.pending_sp = self.cpu.reg_get(mode, reg::SP);
         if pc == BOOTSTRAP_RETURN_PC || (pc == 0 && self.bootstrap_phase != BootstrapPhase::Done) {
             self.handle_bootstrap_return();
             return Ok(());
@@ -8320,15 +8366,31 @@ impl EappBus {
         } else {
             format!("framebuf+{:#08x}", rel - 0x20000)
         };
+        let regs = if self.hw_trace_regs {
+            format!(
+                " r0={:#010x} r1={:#010x} r2={:#010x} r3={:#010x} lr={:#010x} sp={:#010x} prev_pc={:#010x} prev_lr={:#010x}",
+                self.pending_regs[0],
+                self.pending_regs[1],
+                self.pending_regs[2],
+                self.pending_regs[3],
+                self.pending_lr,
+                self.pending_sp,
+                self.previous_pc,
+                self.previous_lr,
+            )
+        } else {
+            String::new()
+        };
         info!(
             target: "EAPP_HW",
-            "hw r{} addr={:#010x} {} val={:#010x} pc={:#010x} remaining={}",
+            "hw r{} addr={:#010x} {} val={:#010x} pc={:#010x} remaining={}{}",
             width,
             offset,
             kind,
             value,
             self.pending_pc,
             remaining,
+            regs,
         );
     }
 
@@ -8343,15 +8405,31 @@ impl EappBus {
         } else {
             format!("framebuf+{:#08x}", rel - 0x20000)
         };
+        let regs = if self.hw_trace_regs {
+            format!(
+                " r0={:#010x} r1={:#010x} r2={:#010x} r3={:#010x} lr={:#010x} sp={:#010x} prev_pc={:#010x} prev_lr={:#010x}",
+                self.pending_regs[0],
+                self.pending_regs[1],
+                self.pending_regs[2],
+                self.pending_regs[3],
+                self.pending_lr,
+                self.pending_sp,
+                self.previous_pc,
+                self.previous_lr,
+            )
+        } else {
+            String::new()
+        };
         info!(
             target: "EAPP_HW",
-            "hw w{} addr={:#010x} {} val={:#010x} pc={:#010x} remaining={}",
+            "hw w{} addr={:#010x} {} val={:#010x} pc={:#010x} remaining={}{}",
             width,
             offset,
             kind,
             value,
             self.pending_pc,
             self.hw_trace_remaining,
+            regs,
         );
     }
 }

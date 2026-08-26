@@ -46,6 +46,46 @@ The current HLE therefore has two important facts and one unresolved model:
 3. the control/data semantics and PopCap composition contract are still not
    understood well enough to claim RGB565 display parity.
 
+## Raw-buffer provenance
+
+The runner can now preserve the exact completed DMA payload before the HLE
+composites it into a presented frame:
+
+```text
+CLICKY_EAPP_DMA_DUMP_DIR=/tmp/fliwheel_popcap_raw \
+  target/release/eapp '<game-dir>' --headless --cycles 50000000
+```
+
+Each `dma_frame_NNNNNN.rgb565` file is 153,600 bytes. The 2026-08-26 raw
+receipts are:
+
+```text
+/tmp/fliwheel_bejeweled_dma_raw_20260826/dma_frame_000007.rgb565
+/tmp/fliwheel_zuma_dma_raw_20260826/dma_frame_000008.rgb565
+```
+
+The native little-endian RGB565 interpretation is materially more plausible
+than byte-swapped variants, but Bejeweled still has a geometrically wrapped
+title/background and Zuma remains a partial/noisy buffer. A diagnostic
+half-width row rotation improves Bejeweled's title alignment, yet does not
+repair the rest of the scene and is not enabled: the firmware reference's
+ordinary 320x240 RGB565 path is linear, so this visual clue is not sufficient
+evidence for a hardware presentation transform.
+
+For source/destination attribution, add the bounded hardware trace and register
+state:
+
+```text
+CLICKY_EAPP_HW_TRACE=32780 CLICKY_EAPP_HW_TRACE_REGS=1 \
+  target/release/eapp '<game-dir>' --headless --cycles 50000000
+```
+
+The first real Bejeweled pixel write is guest-authored: `r0=0x14020000` is the
+aperture destination and `r1=0x13d9df8c` is the work-RAM source. The earlier
+zero-fill uses the same transfer shape with destination `0x14000000`. This
+rules out treating `0x1402000c` as a completion register and keeps the next
+investigation focused on the guest-produced buffer and aperture semantics.
+
 ## SDRAM-alias A/B
 
 The firmware reference model in `~/Developer/ipod-emulator` documents
