@@ -26,6 +26,9 @@ RUN_ROOT=/tmp/fliwheel_interactive_corrected_20260826 \
 The earlier family reports are in `/tmp/fliwheel_interactive_full_{a,b,c,d}`;
 they predate the title-scoped completion correction. The canonical corrected
 report is `/tmp/fliwheel_interactive_corrected_20260826/interactive_matrix.md`.
+The post-PopCap checkpoint regression at the same 30M-cycle budget is
+`/tmp/fliwheel_postpopcap_matrix_20260826/interactive_matrix.md`; all 20
+bundles exited cleanly with zero fatal signatures.
 It includes a per-title log and PPM captures. The run used:
 
 ```text
