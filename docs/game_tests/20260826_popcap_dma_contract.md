@@ -112,6 +112,31 @@ This is negative evidence against the current control-read value being the
 source of the PopCap visual corruption. The override remains diagnostic only;
 the default remains `1`.
 
+## Source-buffer A/B
+
+The first aperture store occurs inside the optimized ARM copy after its first
+16-byte load, so `r1 - 16` is the start of the source buffer at that store.
+`CLICKY_EAPP_DMA_SOURCE_DUMP_DIR=<dir>` preserves that work-RAM range before
+the HLE writes the aperture. The paired source and DMA payloads are identical:
+
+| Title | Source address | Source SHA-256 | DMA SHA-256 |
+| --- | --- | --- | --- |
+| Bejeweled (`55555`) | `0x13d9df7c` | `f6f31a7874104f7b26479a71a150083b0ba469a22faf1e52ae9c3180a057a3df` | identical |
+| Zuma (`44444`) | `0x13e99fbc` | `b84eb7639995bc2d1305e7417cfd04823e851de3ec9c2545d7b3ff351005a7c4` | identical |
+
+The raw source receipts are under:
+
+```text
+/tmp/fliwheel_bejeweled_source_probe_src_20260826/
+/tmp/fliwheel_zuma_source_probe_src_20260826/
+```
+
+This moves the fault boundary upstream: the observed wrap/partial scene is
+present in the guest-produced work-RAM buffer before the synthetic aperture is
+visited. The next PopCap gate should inspect the software-renderer composition
+and its guest-visible memory contract, rather than changing RGB565 byte order
+or aperture write packing.
+
 ## SDRAM-alias A/B
 
 The firmware reference model in `~/Developer/ipod-emulator` documents

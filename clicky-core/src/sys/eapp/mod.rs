@@ -563,6 +563,10 @@ struct EappBus {
     /// useful for bounded contract A/B runs without changing the framebuffer
     /// write path.
     hw_control_value: u32,
+    /// Optional one-shot dump of the work-RAM source surrounding the first
+    /// DMA framebuffer store. This is diagnostic because the optimized ARM
+    /// copy has already advanced r1 by one 16-byte load at the store PC.
+    dma_source_dump_dir: Option<PathBuf>,
     /// Track range of DMA FB writes
     hw_fb_write_count: usize,
     hw_fb_write_min: u32,
@@ -693,6 +697,8 @@ impl Eapp {
                 dma_framebuf: Ram::new(320 * 240 * 2), // RGB565 320×240
                 uncached_sdram_alias: std::env::var_os("CLICKY_EAPP_UNCACHED_ALIAS").is_some(),
                 hw_control_value: Self::parse_hw_control_value_env(),
+                dma_source_dump_dir: std::env::var_os("CLICKY_EAPP_DMA_SOURCE_DUMP_DIR")
+                    .map(PathBuf::from),
                 hw_fb_write_count: 0,
                 hw_fb_write_min: u32::MAX,
                 hw_fb_write_max: 0,
@@ -8452,6 +8458,49 @@ impl EappBus {
             regs,
         );
     }
+
+    fn dump_dma_source(&self) {
+        let Some(dir) = self.dma_source_dump_dir.as_ref() else {
+            return;
+        };
+        let source_start = self.pending_regs[1].wrapping_sub(16);
+        let work_end = WORK_RAM_BASE + WORK_RAM_SIZE as u32;
+        if source_start < WORK_RAM_BASE
+            || source_start.saturating_add(DMA_FB_SIZE as u32) > work_end
+        {
+            warn!(
+                target: "EAPP_HW",
+                "DMA source dump skipped source={:#010x} len={:#x}",
+                source_start,
+                DMA_FB_SIZE
+            );
+            return;
+        }
+        let _ = fs::create_dir_all(dir);
+        let path = dir.join(format!("dma_source_{source_start:#010x}.rgb565"));
+        if path.exists() {
+            return;
+        }
+        let mut data = vec![0u8; DMA_FB_SIZE];
+        self.work_ram
+            .bulk_read(source_start - WORK_RAM_BASE, &mut data);
+        if let Err(err) = fs::write(&path, &data) {
+            warn!(
+                target: "EAPP_HW",
+                "DMA source dump failed path={} error={}",
+                path.display(),
+                err
+            );
+        } else {
+            info!(
+                target: "EAPP_HW",
+                "DMA source dump path={} source={:#010x} bytes={}",
+                path.display(),
+                source_start,
+                data.len()
+            );
+        }
+    }
 }
 
 impl TakeControls for Eapp {
@@ -8578,6 +8627,9 @@ impl Memory for EappBus {
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
                 self.trace_hw_write(4, offset, val);
                 let rel = offset - HW_STUB_BASE;
+                if rel == 0x20000 && self.hw_fb_write_count == 0 {
+                    self.dump_dma_source();
+                }
                 if self.uncached_sdram_alias {
                     self.work_ram.w32(rel, val)?;
                     if rel >= 0x20000 {
