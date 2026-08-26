@@ -169,6 +169,10 @@ const STRING_TRACE_PCS: &[u32] = &[
     0x1801_8f70, // name-entry: copy decorative/sample text
     0x1801_90ac, // name-entry: calls 0x18007b0c for Enter your name leaf
     0x1801_90cc, // name-entry constructor tail / return
+    0x1801_8c18, // shared screen constructor: profile/state branch entry
+    0x1801_8cb8, // shared screen constructor: compare profile/state result
+    0x1801_c580, // profile/state getter used by the screen constructor
+    0x1800_6170, // profile/state object field getter ([object+8])
     0x1801_95a8, // options/settings object constructor (compare with name-entry)
     0x1801_c940, // vtable constructor that builds menu/options objects
     // Scene root pointer and UI object activators
@@ -3483,11 +3487,42 @@ impl Eapp {
             };
         let pointer_handle =
             (WORK_RAM_BASE..WORK_RAM_BASE + WORK_RAM_SIZE as u32).contains(&handle);
+        // Decode the generated UVs before positions are translated.  Tetris
+        // and sibling runtimes keep one base cursor translation on the first
+        // glyph, then emit only the per-glyph delta (usually 8 or 16 pixels)
+        // while keeping the same font texture bound.  The old HLE accumulated
+        // this only for pointer-backed materials, so the ordinary small
+        // texture handle used by Tetris collapsed every glyph after the first
+        // back to the origin.
+        let generated = if quad_groups == 1 {
+            self.live_decode_generated_uvs(state_ptr)
+        } else {
+            None
+        };
+        let generated_text_material = generated.as_ref().is_some_and(|(uvs, has_generated_uv)| {
+            *has_generated_uv
+                && self
+                    .live_gl
+                    .as_ref()
+                    .is_some_and(|lg| lg.is_font_atlas_for(handle, uvs))
+        });
         let effective_translation = if pointer_handle {
             self.live_gl
                 .as_ref()
                 .and_then(|lg| {
                     (lg.pointer_text_carry_handle == Some(handle)).then_some((
+                        lg.pointer_text_carry.0 + translation.0,
+                        lg.pointer_text_carry.1 + translation.1,
+                    ))
+                })
+                .unwrap_or(translation)
+        } else if generated_text_material {
+            self.live_gl
+                .as_ref()
+                .and_then(|lg| {
+                    let same_handle = lg.pointer_text_carry_handle == Some(handle);
+                    let small_delta = translation.0.abs() <= 24.0 && translation.1.abs() <= 24.0;
+                    (same_handle && small_delta).then_some((
                         lg.pointer_text_carry.0 + translation.0,
                         lg.pointer_text_carry.1 + translation.1,
                     ))
@@ -3541,11 +3576,6 @@ impl Eapp {
             }
         };
 
-        let generated = if quad_groups == 1 {
-            self.live_decode_generated_uvs(state_ptr)
-        } else {
-            None
-        };
         // Vertex arrays are independent GL state that persists across texture
         // (material) binds — already established for `mode=5` triangle strips
         // (Texas Hold'em) where arrays are defined at one `159` epoch and the
@@ -3645,7 +3675,7 @@ impl Eapp {
         }
 
         if let Some(lg) = self.live_gl.as_mut() {
-            if pointer_handle && quad_groups == 1 {
+            if (pointer_handle || generated_text_material) && quad_groups == 1 {
                 lg.pointer_text_carry_handle = Some(handle);
                 lg.pointer_text_carry = effective_translation;
             } else {
@@ -6729,6 +6759,36 @@ impl Eapp {
                         self.read_guest_u32(child).unwrap_or(0)
                     ));
                 }
+            }
+            0x1801_8c18 | 0x1801_8cb8 | 0x1801_c580 | 0x1800_6170 => {
+                // The name-entry scene is selected by a small guest-side
+                // profile/state query before the generic scene leaves are
+                // built.  0x1801c580 loads the profile object from +0xe8 and
+                // 0x18006170 returns its +8 field; 0x18018cb8 compares that
+                // result with 1.  Keep the probe value-oriented so it remains
+                // useful across allocator layouts and does not alter the
+                // selector.
+                let object = if pc == 0x1801_8cb8 { regs[4] } else { regs[0] };
+                let profile = self.read_guest_u32(object.wrapping_add(0xe8)).unwrap_or(0);
+                let profile_value = if pc == 0x1800_6170 {
+                    self.read_guest_u32(object.wrapping_add(8)).unwrap_or(0)
+                } else if profile != 0 {
+                    self.read_guest_u32(profile.wrapping_add(8)).unwrap_or(0)
+                } else {
+                    0
+                };
+                details.push(format!(
+                    "PROFILE_SELECTOR pc={:#010x} object={:#010x} result_r0={:#010x} object+e8={:#010x} profile+8={:#010x} object+34={:#010x} object+c0={:#010x} object+c8={:#010x} object+cc={:#010x}",
+                    pc,
+                    object,
+                    regs[0],
+                    profile,
+                    profile_value,
+                    self.read_guest_u32(object.wrapping_add(0x34)).unwrap_or(0),
+                    self.read_guest_u32(object.wrapping_add(0xc0)).unwrap_or(0),
+                    self.read_guest_u32(object.wrapping_add(0xc8)).unwrap_or(0),
+                    self.read_guest_u32(object.wrapping_add(0xcc)).unwrap_or(0)
+                ));
             }
             0x1801_62e4 | 0x1801_6320 => {
                 // Generic text-object draw wrapper. It receives the same

@@ -1,4 +1,11 @@
-# Tetris Text Rendering (and general clickwheel text/texgen)
+# Tetris Text Rendering (historical RE log)
+
+> Current status (2026-08-25): the shared glyph-cursor and localized A8 atlas
+> fixes are verified in [`20260825_tetris_text_and_name_entry.md`](game_tests/20260825_tetris_text_and_name_entry.md).
+> Tetris reaches readable first-run name entry and accepts wheel/Select input,
+> but gameplay and the post-profile menu transition are still open. The notes
+> below are dated historical investigations; any older `COMPLETE` wording is
+> not a current project status.
 
 Fix the pointer-backed text rendering in Tetris (and, where general, all
 clickwheel eapp games). Run **headed** so the user can see the window and
@@ -4664,8 +4671,6 @@ state machine / profile / save state issue, NOT a text rendering bug.
 The text rendering mechanism is PROVEN CORRECT. The missing menu labels are
 constructed correctly but the wrong scene graph is active. This requires
 investigating the guest's state machine / profile logic, not the text decoder.
-
-<promise>COMPLETE</promise>
 
 ---
 

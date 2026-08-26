@@ -1,5 +1,11 @@
 # iPod Games bring-up plan
 
+> Current status (2026-08-25): this is a historical bring-up and ABI research
+> log. Use [`20260825_full_matrix.md`](game_tests/20260825_full_matrix.md)
+> for the current decrypted-corpus smoke result and the per-game pages for
+> current claims. Tetris now has readable text and verified first-run name
+> entry, but gameplay, profile/menu transition, and host audio remain open.
+
 This branch is focused on **running clickwheel games on a Mac host** with the
 smallest viable amount of emulated iPod machinery.
 

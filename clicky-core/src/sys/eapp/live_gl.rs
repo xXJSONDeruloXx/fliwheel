@@ -742,31 +742,60 @@ impl LiveGlState {
     }
 
     /// Generated text UVs describe one glyph cell inside a font atlas. Prefer
-    /// A8 uploads whose dimensions are exact multiples of that cell size before
-    /// falling back to the generic "smallest containing texture" rule. This
-    /// keeps Tetris text glyphs on f10x12/f16x16 font atlases instead of small
-    /// unrelated A8 UI strips that merely contain the same UV extents.
+    /// A8 uploads whose dimensions are exact multiples of that cell size. A
+    /// few guest font streams use half-texel coordinates whose measured span
+    /// is one pixel short, so try both the measured cell and the +1 form. Do
+    /// not fall back here: callers need to distinguish a font atlas from an
+    /// unrelated texture that merely contains the same UV extents.
     fn select_upload_for_generated_text_uvs(&self, uvs: &[(f32, f32); 4]) -> Option<usize> {
         let (_min_u, _min_v, max_u, max_v) = uv_extents(uvs);
         let (span_w, span_h) = infer_dims_from_uvs(uvs);
-        let cell_w = span_w.saturating_add(1).max(1);
-        let cell_h = span_h.saturating_add(1).max(1);
         let need_w = max_u.ceil().max(1.0) as usize;
         let need_h = max_v.ceil().max(1.0) as usize;
-        self.uploads
-            .iter()
-            .filter(|u| {
+        let cell_sizes = [
+            (span_w.max(1), span_h.max(1)),
+            (
+                span_w.saturating_add(1).max(1),
+                span_h.saturating_add(1).max(1),
+            ),
+        ];
+
+        cell_sizes.iter().copied().find_map(|(cell_w, cell_h)| {
+            self.uploads
+                .iter()
+                .filter(|u| {
+                    u.texture.is_some()
+                        && u.format == Some(TextureFormat::A8)
+                        && u.width >= need_w
+                        && u.height >= need_h
+                        && u.width % cell_w == 0
+                        && u.height % cell_h == 0
+                        && (u.width / cell_w) >= 32
+                })
+                .min_by_key(|u| (u.width * u.height, u.index))
+                .map(|u| u.index)
+        })
+    }
+
+    /// Identify a generated-glyph draw before rasterization.  The guest keeps
+    /// the glyph cursor in OpenGLES:169 translations, while the texture bind
+    /// remains fixed on the font atlas.  A decoded A8 atlas that is much wider
+    /// than one glyph is a conservative marker for that stream; ordinary
+    /// image quads use the RGB/RGBA uploads and do not opt into text-cursor
+    /// accumulation.
+    pub fn is_font_atlas_for(&self, tex_name: u32, uvs: &[(f32, f32); 4]) -> bool {
+        let upload = self
+            .select_upload_for_generated_text_uvs(uvs)
+            .or_else(|| self.select_upload_by_tex_name_containing(tex_name, uvs))
+            .or_else(|| self.select_upload_for_uv_slice_with_tex_name(tex_name, uvs));
+        upload
+            .and_then(|idx| self.uploads.get(idx))
+            .is_some_and(|u| {
                 u.texture.is_some()
                     && u.format == Some(TextureFormat::A8)
-                    && u.width >= need_w
-                    && u.height >= need_h
-                    && u.width % cell_w == 0
-                    && u.height % cell_h == 0
-                    && (u.width / cell_w) >= 32
+                    && u.width >= 64
+                    && u.height <= 64
             })
-            .min_by_key(|u| (u.width * u.height, u.index))
-            .map(|u| u.index)
-            .or_else(|| self.select_smallest_containing_upload(max_u, max_v))
     }
 
     fn select_smallest_containing_upload(&self, max_u: f32, max_v: f32) -> Option<usize> {
@@ -822,9 +851,27 @@ impl LiveGlState {
             None
         };
 
-        let selected_upload = if has_uv && used_generated_uvs && (0x1000_0000..0x1080_0000).contains(&handle) {
-            self.select_upload_by_tex_name_containing(handle, &uvs)
-                .or_else(|| self.select_upload_for_generated_text_uvs(&uvs))
+        let selected_upload = if has_uv && used_generated_uvs {
+            // Generated glyph UVs are the one draw family where dimensions
+            // alone are not enough: several localized A8 atlases share the
+            // same small GL/material handle. Prefer the cell-compatible atlas
+            // before the generic handle association, then retain the normal
+            // UV fallbacks for non-font generated quads such as spinners and
+            // menu strips.
+            self.select_upload_for_generated_text_uvs(&uvs)
+                .or_else(|| self.select_upload_by_tex_name_containing(handle, &uvs))
+                .or_else(|| self.select_upload_for_uv_slice_with_tex_name(handle, &uvs))
+                .or_else(|| self.select_upload_for_uvs(&uvs))
+                .or_else(|| {
+                    if state_ptr != 0
+                        && state_ptr < 0x1000_0000
+                        && state_ptr != handle
+                    {
+                        self.select_upload_for_uv_slice_with_tex_name(state_ptr, &uvs)
+                    } else {
+                        None
+                    }
+                })
         } else if has_uv {
             self.select_upload_by_tex_name_containing(handle, &uvs)
                 .or_else(|| self.select_upload_for_uv_slice_with_tex_name(handle, &uvs))
@@ -1442,6 +1489,59 @@ mod tests {
             lg.select_upload_for_generated_text_uvs(&glyph_16_uvs),
             Some(3)
         );
+    }
+
+    #[test]
+    fn generated_text_uvs_prefer_exact_measured_cell_over_later_font_atlas() {
+        let mut lg = LiveGlState::new(true, false, false, "test".to_string());
+        // The three localized f8x10 sheets and the larger menu sheet share the
+        // same guest texture handle in Tetris. The measured 8x10 UV span must
+        // select the text sheet instead of the later 16x16 sheet.
+        lg.uploads.push(LiveGlState::build_upload(
+            0,
+            0x0de1,
+            784,
+            20,
+            0x1906,
+            0x1401,
+            0x1000_0000,
+            &vec![0xff; 784 * 20],
+            Some(0x8),
+        ));
+        lg.uploads.push(LiveGlState::build_upload(
+            1,
+            0x0de1,
+            1568,
+            32,
+            0x1906,
+            0x1401,
+            0x1000_0010,
+            &vec![0xff; 1568 * 32],
+            Some(0x8),
+        ));
+        let glyph_8x10_uvs = [(416.5, 9.5), (416.5, -0.5), (424.5, -0.5), (424.5, 9.5)];
+        assert_eq!(
+            lg.select_upload_for_generated_text_uvs(&glyph_8x10_uvs),
+            Some(0)
+        );
+        assert!(lg.is_font_atlas_for(0x8, &glyph_8x10_uvs));
+
+        // The same small guest handle also carries generated UI quads. Their
+        // A8 uploads must keep the normal UV fallback and must not inherit the
+        // font-cursor accumulation path.
+        lg.uploads.push(LiveGlState::build_upload(
+            2,
+            0x0de1,
+            172,
+            170,
+            0x1906,
+            0x1401,
+            0x1000_0020,
+            &vec![0xff; 172 * 170],
+            Some(0x8),
+        ));
+        let spinner_uvs = [(0.5, 169.5), (0.5, -0.5), (172.5, -0.5), (172.5, 169.5)];
+        assert!(!lg.is_font_atlas_for(0x8, &spinner_uvs));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 # Tetris (Bundle 66666)
 
-**Status:** 🟡 SPLASH/BOOT VERIFIED | **Draws:** 10,572 (8s) | **Engine:** Tetris Runtime (reference)
+**Status:** 🟡 TEXT + NAME ENTRY VERIFIED | **Gameplay:** not yet verified | **Engine:** Tetris Runtime
 
 ## Quick Start
 ```bash
@@ -29,6 +29,17 @@ Loaded from `.clicky-saves/` in the bundle directory:
 - `prefs.sav` (127 bytes) — RPCT header: settings/preferences
 
 Save files from physical iPod are stored in `data/tetris_saves/`.
+
+## Current evidence
+
+The live renderer now produces readable credits and the real first-run
+`PLAYER NAME / ENTER YOUR NAME` screen. Positive wheel input moves the selected
+character and Select commits it to the name field. The next boundary is the
+guest's first-run profile/menu transition: it reaches `frame_state` 5 then 6
+and stops issuing normal GL frames before Play/gameplay can be selected.
+
+See [`20260825_tetris_text_and_name_entry.md`](../game_tests/20260825_tetris_text_and_name_entry.md)
+for the exact commands and capture artifacts.
 
 ## Texture Details
 | File | Format | Dimensions | Notes |
@@ -65,4 +76,5 @@ CLICKY_STARTUP_PROGRESS_TRACE=1
 - GL trace fixture: `clicky-core/tests/fixtures/eapp/tetris_gl_trace.json`
 - Tetris-specific code paths in `eapp/mod.rs` gated by bundle ID "66666"
 - Clickwheel ingress evidence: [`20260825_clickwheel_input.md`](../game_tests/20260825_clickwheel_input.md)
+- Text/name-entry evidence: [`20260825_tetris_text_and_name_entry.md`](../game_tests/20260825_tetris_text_and_name_entry.md)
 - Frame capture produces PPM files visible with `open /tmp/tetris_capture_*.ppm`
