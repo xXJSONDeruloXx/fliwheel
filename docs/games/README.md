@@ -99,12 +99,13 @@ All games require the experimental GL HLE renderer:
 export CLICKY_EXPERIMENTAL_GL_HLE=1
 export CLICKY_GL_GATE_B=1
 export CLICKY_GL_LIVE_CONTINUOUS=1
-export CLICKY_GL_PRESENT_VFLIP=1
 ```
 
-Vflip is **auto-suppressed** for the currently identified normalized-coordinate
-engines (Sims Bowling/Pool, Sudoku, and Solitaire). Launch scripts set these
-automatically where they are current.
+Presentation orientation is selected by the title-aware default where the
+guest screen origin is known. Set `CLICKY_GL_PRESENT_VFLIP=0|1` explicitly for
+an orientation A/B experiment. The normalized-coordinate engines (Sims
+Bowling/Pool, Sudoku, and Solitaire) and PopCap titles have title-specific
+defaults.
 
 ### Bundle Directory
 
@@ -126,7 +127,7 @@ For a portable corpus-wide probe, pass the root explicitly:
 | Sims/Rserver Runtime | Sims Bowling, Sims Pool | **NDC observed** | Yes | ordinal-158 | .rlb + rserver |
 | Hold'em Runtime | Texas Hold'em | Pixel | Yes | ordinal-158 | .ipd/.blob |
 | Sudoku/SS Engine | Sudoku, Solitaire | **NDC** | **No** | **Auto** | Minimal |
-| PopCap Engine | Zuma, Bejeweled | Pixel | Yes | ordinal-158 | **DMA** + .ipd |
+| PopCap Engine | Zuma, Bejeweled | Pixel | Title default | ordinal-158 | **DMA** + .ipd |
 | iQuiz Engine | TWA/iQuiz | Pixel | Yes | ordinal-158 | .ipd (AsyncFileIO:7) |
 | Lost Engine | Lost | Pixel | Yes | ordinal-158 | rserver.bin (shaders) |
 

@@ -157,7 +157,8 @@ fi
 export CLICKY_EXPERIMENTAL_GL_HLE="${CLICKY_EXPERIMENTAL_GL_HLE:-1}"
 export CLICKY_GL_GATE_B="${CLICKY_GL_GATE_B:-1}"
 export CLICKY_GL_LIVE_CONTINUOUS="${CLICKY_GL_LIVE_CONTINUOUS:-1}"
-export CLICKY_GL_PRESENT_VFLIP="${CLICKY_GL_PRESENT_VFLIP:-1}"
+# The core selects the PopCap screen origin by title. Set
+# CLICKY_GL_PRESENT_VFLIP explicitly when comparing orientations.
 
 # Startup progress trace — shows frame lifecycle, splash phases, time API.
 export CLICKY_STARTUP_PROGRESS_TRACE="${CLICKY_STARTUP_PROGRESS_TRACE:-1}"

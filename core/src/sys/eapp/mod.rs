@@ -2171,7 +2171,7 @@ impl Eapp {
         let present_vflip = std::env::var_os("CLICKY_GL_PRESENT_VFLIP")
             .and_then(|v| v.to_string_lossy().parse::<u32>().ok())
             .map(|n| n != 0)
-            .unwrap_or(true);
+            .unwrap_or_else(|| live_gl_default_present_vflip(&game_id));
         let gate_b = std::env::var_os("CLICKY_GL_GATE_B")
             .map(|v| v.to_string_lossy() == "1")
             .unwrap_or(false);
@@ -2395,6 +2395,12 @@ impl Eapp {
             // can be associated with it (instead of / in addition to ordinal-45).
             4 => {
                 let tex_name = args[1];
+                if let Some(lg) = self.live_gl.as_mut() {
+                    // Keep the bind live after the upload. `pending_tex_name`
+                    // is consumed by the next TexImage2D, while this state
+                    // identifies the texture sampled by the next draw.
+                    lg.bound_tex_name = (tex_name != 0).then_some(tex_name);
+                }
                 if tex_name != 0 {
                     if let Some(lg) = self.live_gl.as_mut() {
                         // Only set if not already captured by ordinal 45
@@ -3566,6 +3572,7 @@ impl Eapp {
         let (
             handle,
             state_ptr,
+            bound_tex_name,
             translation,
             pos_def,
             pos_enabled,
@@ -3595,6 +3602,7 @@ impl Eapp {
                 (
                     lg.current_handle,
                     lg.current_state_ptr,
+                    lg.bound_tex_name,
                     lg.translation,
                     lg.arrays.get(&0).cloned(),
                     lg.enabled_arrays.contains(&0),
@@ -3640,6 +3648,7 @@ impl Eapp {
                 draw_index,
                 handle,
                 state_ptr,
+                bound_tex_name,
                 translation,
                 &positions,
                 explicit.as_deref(),
@@ -3726,6 +3735,7 @@ impl Eapp {
         let (
             handle,
             state_ptr,
+            bound_tex_name,
             translation,
             pos_def,
             pos_enabled,
@@ -3754,6 +3764,7 @@ impl Eapp {
                 (
                     lg.current_handle,
                     lg.current_state_ptr,
+                    lg.bound_tex_name,
                     lg.translation,
                     lg.arrays.get(&0).cloned(),
                     lg.enabled_arrays.contains(&0),
@@ -3794,6 +3805,7 @@ impl Eapp {
                 draw_index,
                 handle,
                 state_ptr,
+                bound_tex_name,
                 translation,
                 &positions,
                 explicit.as_deref(),
@@ -3854,6 +3866,7 @@ impl Eapp {
         let (
             handle,
             state_ptr,
+            bound_tex_name,
             translation,
             pos_def,
             pos_enabled,
@@ -3883,6 +3896,7 @@ impl Eapp {
                 (
                     lg.current_handle,
                     lg.current_state_ptr,
+                    lg.bound_tex_name,
                     lg.translation,
                     lg.arrays.get(&0).cloned(),
                     lg.enabled_arrays.contains(&0),
@@ -3957,6 +3971,7 @@ impl Eapp {
                     draw_index,
                     handle,
                     state_ptr,
+                    bound_tex_name,
                     translation: effective_translation,
                     positions: [(0.0, 0.0); 4],
                     uvs: [(0.0, 0.0); 4],
@@ -4064,6 +4079,7 @@ impl Eapp {
                     draw_index + quad_idx,
                     handle,
                     state_ptr,
+                    bound_tex_name,
                     effective_translation,
                     positions,
                     uvs,
@@ -4975,11 +4991,12 @@ impl Eapp {
             );
             info!(
                 target: "EAPP_GL",
-                "draw_detail guest_frame={} draw={} handle={:#x} state_ptr={:#010x} enabled={:?} pos_arr={} uv_arr={} translation=({:.2},{:.2}) bounds=({:.1},{:.1})-({:.1},{:.1}) uvs=[{}] inferred_dim={:?} {} {} {} coverage={} status={} state_words=[{}]",
+                "draw_detail guest_frame={} draw={} handle={:#x} state_ptr={:#010x} bound_tex={:?} enabled={:?} pos_arr={} uv_arr={} translation=({:.2},{:.2}) bounds=({:.1},{:.1})-({:.1},{:.1}) uvs=[{}] inferred_dim={:?} {} {} {} coverage={} status={} state_words=[{}]",
                 self.frame_counter,
                 draw.draw_index + 1,
                 draw.handle,
                 draw.state_ptr,
+                draw.bound_tex_name,
                 draw.enabled_arrays,
                 pos,
                 uv,
@@ -9182,6 +9199,15 @@ fn find_game_executable(bundle_dir: &Path) -> Result<PathBuf, EappBuildError> {
         .ok_or_else(|| EappBuildError::MissingExecutable(bundle_dir.display().to_string()))
 }
 
+/// Pixel-coordinate titles do not all share the same screen origin. The
+/// PopCap pair submits screen-space geometry in top-to-bottom order, while
+/// the Tetris-style runtime presents its framebuffer bottom-to-top. Keep the
+/// established Tetris default, but make the evidence-backed PopCap choice
+/// automatic; `CLICKY_GL_PRESENT_VFLIP` remains an explicit override.
+fn live_gl_default_present_vflip(game_id: &str) -> bool {
+    !matches!(game_id, "44444" | "55555")
+}
+
 fn parse_eapp_header(image: &[u8]) -> Result<EappHeader, EappBuildError> {
     if image.len() < EAPP_HEADER_SIZE {
         return Err(EappBuildError::InvalidImage(
@@ -9276,7 +9302,7 @@ fn vma_to_offset(addr: u32) -> Result<u32, EappBuildError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_palette8_rgba8, Eapp};
+    use super::{decode_palette8_rgba8, live_gl_default_present_vflip, Eapp};
 
     #[test]
     fn palette8_rgba8_decodes_palette_then_indices() {
@@ -9317,5 +9343,12 @@ mod tests {
 
         assert_eq!(Eapp::wheel_frame_bits(&mut position, 0.0), 0);
         assert_eq!(position, 17);
+    }
+
+    #[test]
+    fn popcap_live_gl_default_uses_guest_screen_origin() {
+        assert!(!live_gl_default_present_vflip("44444"));
+        assert!(!live_gl_default_present_vflip("55555"));
+        assert!(live_gl_default_present_vflip("66666"));
     }
 }

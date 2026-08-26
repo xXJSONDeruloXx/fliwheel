@@ -107,6 +107,9 @@ pub struct LiveDrawRecord {
     pub draw_index: usize,
     pub handle: u32,
     pub state_ptr: u32,
+    /// Texture name selected by the guest's most recent OpenGLES:4 bind.
+    /// This is separate from the material handle passed to OpenGLES:159.
+    pub bound_tex_name: Option<u32>,
     pub translation: (f32, f32),
     pub positions: [(f32, f32); 4],
     pub uvs: [(f32, f32); 4],
@@ -155,6 +158,10 @@ pub struct LiveGlState {
     /// `glTexImage2D` so its upload can be associated with the GL texture
     /// name later bound by ordinal 159 at draw time.
     pub pending_tex_name: Option<u32>,
+    /// GL texture name from the most recent OpenGLES:4 bind. Unlike
+    /// `pending_tex_name`, this remains live after an upload and identifies
+    /// the texture sampled by subsequent draws.
+    pub bound_tex_name: Option<u32>,
     pub arrays: HashMap<u32, LiveArrayDef>,
     pub enabled_arrays: HashSet<u32>,
     pub current_handle: u32,
@@ -264,6 +271,7 @@ impl LiveGlState {
             uploads: Vec::new(),
             resource_uploads_by_handle: HashMap::new(),
             pending_tex_name: None,
+            bound_tex_name: None,
             arrays: HashMap::new(),
             enabled_arrays: HashSet::new(),
             current_handle: 0,
@@ -941,6 +949,7 @@ impl LiveGlState {
         draw_index: usize,
         handle: u32,
         state_ptr: u32,
+        bound_tex_name: Option<u32>,
         translation: (f32, f32),
         positions: [(f32, f32); 4],
         uvs: [(f32, f32); 4],
@@ -979,7 +988,13 @@ impl LiveGlState {
                     }
                 })
         } else if has_uv {
-            self.select_upload_by_tex_name_containing(handle, &uvs)
+            // OpenGLES:4 is the guest's actual texture bind. Prefer it over
+            // the material handle and dimension-only inference; PopCap reuses
+            // material 0x10 for several unrelated atlases whose UV ranges
+            // overlap (frog/HUD/menu artwork).
+            bound_tex_name
+                .and_then(|name| self.select_upload_for_uv_slice_with_tex_name(name, &uvs))
+                .or_else(|| self.select_upload_by_tex_name_containing(handle, &uvs))
                 .or_else(|| self.select_upload_for_uv_slice_with_tex_name(handle, &uvs))
                 .or_else(|| self.select_upload_for_uvs(&uvs))
                 .or_else(|| self.select_popcap_surface_upload(handle, &uvs))
@@ -991,13 +1006,16 @@ impl LiveGlState {
                     }
                 })
         } else {
-            self.select_upload_by_tex_name(handle)
+            bound_tex_name
+                .and_then(|name| self.select_upload_by_tex_name(name))
+                .or_else(|| self.select_upload_by_tex_name(handle))
         };
 
         let mut record = LiveDrawRecord {
             draw_index,
             handle,
             state_ptr,
+            bound_tex_name,
             translation,
             positions,
             uvs,
@@ -1079,6 +1097,7 @@ impl LiveGlState {
         draw_index: usize,
         handle: u32,
         state_ptr: u32,
+        bound_tex_name: Option<u32>,
         translation: (f32, f32),
         positions: &[(f32, f32)],
         uvs: Option<&[(f32, f32)]>,
@@ -1088,7 +1107,11 @@ impl LiveGlState {
         let uvs4 = uvs.map(first_four_uvs).unwrap_or([(0.0, 0.0); 4]);
         let inferred_dim = uvs.map(infer_dims_from_uv_slice);
         let selected_upload = uvs
-            .and_then(|uvs| self.select_upload_by_tex_name_containing_slice(handle, uvs))
+            .and_then(|uvs| {
+                bound_tex_name
+                    .and_then(|name| self.select_upload_for_uv_slice_with_tex_name(name, uvs))
+            })
+            .or_else(|| uvs.and_then(|uvs| self.select_upload_by_tex_name_containing_slice(handle, uvs)))
             .or_else(|| uvs.and_then(|uvs| self.select_upload_for_uv_slice_with_tex_name(handle, uvs)))
             .or_else(|| uvs.and_then(|uvs| self.select_upload_for_uv_slice(uvs)))
             // 4th fallback: some engines (e.g. Solitaire) put the GL texture
@@ -1104,6 +1127,7 @@ impl LiveGlState {
             draw_index,
             handle,
             state_ptr,
+            bound_tex_name,
             translation,
             positions: positions4,
             uvs: uvs4,
@@ -1373,6 +1397,65 @@ mod tests {
             Some(0x13),
         ));
         assert_eq!(lg.select_upload_by_tex_name(0x13), Some(2));
+    }
+
+    #[test]
+    fn draw_uses_bound_texture_when_uv_ranges_overlap() {
+        let mut lg = LiveGlState::new(true, false, false, "44444".to_string());
+        lg.uploads.push(LiveGlState::build_upload(
+            0,
+            0x0de1,
+            202,
+            44,
+            0x1908,
+            0x8033,
+            0x1000_0000,
+            &vec![0; 202 * 44 * 2],
+            Some(0x7),
+        ));
+        lg.uploads.push(LiveGlState::build_upload(
+            1,
+            0x0de1,
+            488,
+            135,
+            0x1908,
+            0x8033,
+            0x1000_0010,
+            &vec![0; 488 * 135 * 2],
+            Some(0x6),
+        ));
+        let positions = [(0.0, 0.0), (120.0, 0.0), (120.0, 36.0), (0.0, 36.0)];
+        let uvs = [(1.4, 1.4), (120.6, 1.4), (120.6, 37.6), (1.4, 37.6)];
+
+        let menu = lg.rasterize_draw(
+            0,
+            0x10,
+            0x16,
+            Some(0x6),
+            (0.0, 0.0),
+            positions,
+            uvs,
+            true,
+            None,
+            Rgba8::rgba(255, 255, 255, 255),
+            false,
+        );
+        assert_eq!(menu.selected_upload, Some(1));
+
+        let frog = lg.rasterize_draw(
+            1,
+            0x10,
+            0x16,
+            Some(0x7),
+            (0.0, 0.0),
+            positions,
+            uvs,
+            true,
+            None,
+            Rgba8::rgba(255, 255, 255, 255),
+            false,
+        );
+        assert_eq!(frog.selected_upload, Some(0));
     }
 
     #[test]

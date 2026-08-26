@@ -54,7 +54,6 @@ EOF
 export CLICKY_EXPERIMENTAL_GL_HLE=1
 export CLICKY_GL_GATE_B=1
 export CLICKY_GL_LIVE_CONTINUOUS=1
-export CLICKY_GL_PRESENT_VFLIP=1
 export RUST_LOG=${RUST_LOG:-'EAPP_GL=info,EAPP=warn,EAPP_IMPORT=info,EAPP_HW=info'}
 
 for bundle in "$games_root"/*; do

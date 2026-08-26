@@ -309,3 +309,42 @@ resource each material handle owns, validate the RGBA4444 row/orientation
 contract, and follow the first board-composition operation. Any shared
 renderer change must be paired against both titles without hiding GL draws or
 reintroducing the old fatal memory error.
+
+## Bound texture selection and screen origin
+
+The next focused 30,000,000-cycle run used the interactive probe with the
+title-aware orientation default. Both bundles exited with code 0 and no fatal
+signature. Zuma's frame-8 draw details now preserve the guest's live
+OpenGLES:4 texture bind instead of inferring the sampled image from the shared
+material handle:
+
+| Draw | Material | Bound texture | Upload | Size | Role |
+| ---: | ---: | ---: | ---: | ---: | --- |
+| 2 | `0x10` | `7` | `7` | 202x44 RGBA4444 | small title/menu strip |
+| 3-9 | `0x10` | `6` | `6` | 488x135 RGBA4444 | board/menu overlay atlas |
+| 10-11 | `0x10` | `5` | `5` | 510x212 RGBA4444 | text/decorative atlas |
+
+The material handle `0x10` is reused across these unrelated atlases. Using
+the live bind removes that ambiguity; it is covered by a unit test that gives
+two overlapping UV ranges different bound texture names. The focused receipts
+are:
+
+```text
+/tmp/fliwheel_popcap_boundtex_20260826/
+/tmp/fliwheel_popcap_default_20260826/
+```
+
+The corresponding upright Zuma capture shows the stone-framed board,
+`PRESS SELECT TO ENTER THE TEMPLE`, `STAGE 1`, and `TEMPLE OF ZUKULKAN`.
+This is a verified renderer boundary, not a playable-game claim: the marble
+track, launcher interaction, and some overlay artwork remain incomplete.
+Bejeweled still presents its loading spinner and does not reach the board.
+
+The orientation A/B control run with `CLICKY_GL_PRESENT_VFLIP=0` produced the
+same upright Zuma screen. The HLE therefore defaults PopCap bundles `44444`
+and `55555` to the guest screen origin; the environment variable remains
+available for explicit comparisons. Visual references used to sanity-check
+the expected upright device presentation include [a Bejeweled iPod image](https://www.cultofmac.com/news/an-illustrated-history-of-the-ipod-and-its-massive-impact-ipod-10th-anniversary),
+[a Zuma-like iPod preservation image](https://i.blogs.es/2aae01/juegos-ipod/840_560.jpeg),
+[a Zuma review video](https://www.youtube.com/watch?v=jU-YUGcqtMU), and
+[the Bejeweled iPod reference page](https://bejeweled.wiki.gg/wiki/Bejeweled_%28iPod%29).
