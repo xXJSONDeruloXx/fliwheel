@@ -90,10 +90,12 @@ const STRING_TRACE_PCS: &[u32] = &[
     0x1800_3d40, // state 4 tail: register wav descriptor callback
     0x1800_3d60, // state 5: request prefs.sav
     0x1800_3da8, // state 6: request game.sav
+    0x1800_3eb8, // audio table consumer: resolve type/index into a handle
     0x1800_4fac, // Strings.dta second-stage callback / progress updater
     0x1800_5400, // state-4 wav descriptor callback/scanner
     0x1800_5468, // state-4 scanner tail-calls 0x15c30 for next wav desc
     0x1800_5480, // state-4 complete: set boot state 5 and re-enter 0x03bd0
+    0x1800_5498, // audio resource registration wrapper before Audio:0
     0x1800_7b0c, // scene leaf factory: chooses text slot + string object
     0x1800_7b6c, // scene leaf factory variant with embedded flag
     0x1800_c7a0, // generic scene/list node initializer (binds +0x10/+0x14)
@@ -433,6 +435,12 @@ pub struct Eapp {
     /// into the caller's file object.
     async_open_files: HashMap<u32, PathBuf>,
     next_async_file_handle: u32,
+    /// Synthetic Audio:0 source handles. The guest treats a non-negative
+    /// return as an allocated source and later passes the same value to
+    /// Audio:23/Audio:1 during teardown. Keep identity state even before the
+    /// host PCM sink is wired so the ABI does not collapse every source to 0.
+    audio_handles: HashMap<u32, AudioHandle>,
+    next_audio_handle: u32,
     /// Directory entries from most recent AsyncFileIO:7 directory enumeration.
     /// Stored so the game can query pack names via subsequent calls.
     async_dir_entries: Vec<String>,
@@ -465,6 +473,12 @@ struct StagedFile {
     offset: usize,
     /// Host path the bytes came from.
     host_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct AudioHandle {
+    slot_index: u32,
+    table_base: u32,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -657,6 +671,8 @@ impl Eapp {
             async_pending_requests: HashSet::new(),
             async_open_files: HashMap::new(),
             next_async_file_handle: 1,
+            audio_handles: HashMap::new(),
+            next_audio_handle: 1,
             async_dir_entries: Vec::new(),
             gl_trace_frames: None,
             gl_capture: None,
@@ -1789,26 +1805,7 @@ impl Eapp {
             "Settings" => self.handle_settings_import(import.ordinal, args),
             "Metadata" => 0,
             "miscTBD" => self.handle_misc_import(import.ordinal, args),
-            "Audio" => {
-                self.trace_audio_call(import.ordinal, pc, lr, args);
-                // Audio:52 (r0=rserver base) and Audio:51 (r0=prev_ret, r3=shared_ptr)
-                // are part of Lost's render server init. The game divides:
-                //   result = -Audio51_ret / Audio52_ret
-                // We need non-zero from both to avoid 0/0 and get a useful result.
-                // Audio:51 is called with r0 = Audio:52's return value (1 after our fix)
-                // and r3 = shared data pointer (0x1001208C).
-                let r3 = args[3];
-                if import.ordinal == 52 && args[0] >= 0x10000000 {
-                    info!(target: "EAPP_GL", "audio_52_rserver: r0={:#010x} ret=1", args[0]);
-                    1u32
-                } else if import.ordinal == 51 && r3 >= 0x10000000 {
-                    // r3 is the same shared data pointer as Audio:52's r3
-                    info!(target: "EAPP_GL", "audio_51_rserver: r0={:#010x} ret=1", args[0]);
-                    1u32
-                } else {
-                    0
-                }
-            }
+            "Audio" => self.handle_audio_import(import.ordinal, pc, lr, args),
             "AsyncFileIO" => self.handle_async_file_io_import(import.ordinal, args),
             "Filesytem" => self.handle_filesystem_import(import.ordinal, args),
             other => {
@@ -1820,6 +1817,17 @@ impl Eapp {
 
         if import.module == "OpenGLES" {
             self.capture_open_gl_import(import.ordinal, pc, lr, args, ret);
+        }
+
+        if import.module == "Audio" && std::env::var_os("CLICKY_AUDIO_TRACE").is_some() {
+            info!(
+                target: "EAPP_AUDIO",
+                "AudioRet:{} frame={} lr={:#010x} ret={:#010x}",
+                import.ordinal,
+                self.frame_counter,
+                lr,
+                ret
+            );
         }
 
         // Env-gated (`CLICKY_ALLOC_TRACE=1`) allocator-return log. `miscTBD:0`
@@ -5267,6 +5275,79 @@ impl Eapp {
         }
     }
 
+    fn handle_audio_import(
+        &mut self,
+        ordinal: u32,
+        pc: u32,
+        lr: u32,
+        args: [u32; 4],
+    ) -> u32 {
+        self.trace_audio_call(ordinal, pc, lr, args);
+
+        // Audio:52 (r0=rserver base) and Audio:51 (r0=prev_ret, r3=shared_ptr)
+        // are part of Lost's render-server init. The game divides:
+        //   result = -Audio51_ret / Audio52_ret
+        // Keep the measured non-zero returns for those two init shapes.
+        if ordinal == 52 && args[0] >= 0x1000_0000 {
+            info!(
+                target: "EAPP_GL",
+                "audio_52_rserver: r0={:#010x} ret=1",
+                args[0]
+            );
+            return 1;
+        }
+        if ordinal == 51 && args[3] >= 0x1000_0000 {
+            info!(
+                target: "EAPP_GL",
+                "audio_51_rserver: r0={:#010x} ret=1",
+                args[0]
+            );
+            return 1;
+        }
+
+        match ordinal {
+            0 => {
+                // Tetris calls Audio:0 as (active_channel, slot_index,
+                // table_base, 0), then stores the returned source handle in
+                // table_base + type*0x100 + slot_index*4. The guest later
+                // passes that exact handle to Audio:23 and Audio:1. A
+                // non-negative synthetic identity is enough for this first
+                // ABI layer; staged PCM binding remains a separate step.
+                let handle = self.next_audio_handle.max(1);
+                self.next_audio_handle = self.next_audio_handle.wrapping_add(1).max(1);
+                let source = AudioHandle {
+                    slot_index: args[1],
+                    table_base: args[2],
+                };
+                self.audio_handles.insert(handle, source);
+                if std::env::var_os("CLICKY_AUDIO_TRACE").is_some() {
+                    info!(
+                        target: "EAPP_AUDIO",
+                        "AudioAlloc:0 handle={:#010x} slot={} table={:#010x}",
+                        handle,
+                        source.slot_index,
+                        source.table_base
+                    );
+                }
+                handle
+            }
+            1 | 23 => {
+                let removed = self.audio_handles.remove(&args[0]);
+                if std::env::var_os("CLICKY_AUDIO_TRACE").is_some() {
+                    info!(
+                        target: "EAPP_AUDIO",
+                        "AudioRelease:{} handle={:#010x} known={}",
+                        ordinal,
+                        args[0],
+                        removed.is_some()
+                    );
+                }
+                0
+            }
+            _ => 0,
+        }
+    }
+
     /// Env-gated (`CLICKY_AUDIO_TRACE=1`) diagnostic that dumps, for each
     /// `Audio:*` import call, the register args plus a short byte preview of
     /// any arg that looks like a guest pointer (work-RAM or file VMA). When
@@ -6963,6 +7044,31 @@ impl Eapp {
                 }
                 details.push(format!("lr={:#010x}", lr));
             }
+            0x1800_5498 => {
+                // Audio resource registration validates (type, index), then
+                // calls Audio:0 and stores its return in the corresponding
+                // 0x18025ec8 table row. Capture the exact slot before the
+                // import so the ABI trace can be reconciled with bus writes
+                // and later Audio:13/14/15/2 consumers.
+                let kind = regs[0];
+                let index = regs[1];
+                let status_addr = 0x1802_400c_u32.wrapping_add(kind);
+                let table_row = 0x1802_5ec8u32.wrapping_add(kind.wrapping_mul(0x100));
+                let slot = table_row.wrapping_add(index.wrapping_mul(4));
+                details.push(format!(
+                    "AUDIO_RESOURCE_REGISTER type={} index={} r2={:#010x} r3={:#010x} status_addr={:#010x} status={:#04x} table_row={:#010x} slot={:#010x} pre_handle={:#010x} lr={:#010x}",
+                    kind,
+                    index,
+                    regs[2],
+                    regs[3],
+                    status_addr,
+                    self.read_guest_u8(status_addr).unwrap_or(0),
+                    table_row,
+                    slot,
+                    self.read_guest_u32(slot).unwrap_or(0),
+                    lr
+                ));
+            }
             0x1801_c940 => {
                 let obj = regs[0];
                 details.push(format!("lr={:#010x} parent={:#010x}", lr, obj));
@@ -7154,6 +7260,21 @@ impl Eapp {
                 details.push(format!(
                     "AUDIO_MANAGER pc={:#010x} mgr={:#010x} entry={:#010x} r0={:#010x} r4={:#010x} r5={:#010x} r6={:#010x}{}",
                     pc, manager, entry, regs[0], regs[4], regs[5], regs[6], state
+                ));
+            }
+            0x1800_3eb8 => {
+                let kind = regs[0];
+                let index = regs[1];
+                let table_row = 0x1802_5ec8u32.wrapping_add(kind.wrapping_mul(0x100));
+                let handle = self
+                    .read_guest_u32(table_row.wrapping_add(index.wrapping_mul(4)))
+                    .unwrap_or(0);
+                let status = self
+                    .read_guest_u8(0x1802_400c_u32.wrapping_add(kind))
+                    .unwrap_or(0);
+                details.push(format!(
+                    "AUDIO_TABLE_CONSUMER type={} index={} status={:#04x} handle={:#010x} r2={:#010x} r3={:#010x} lr={:#010x}",
+                    kind, index, status, handle, regs[2], regs[3], lr
                 ));
             }
             0x1801_d1b4 => {
