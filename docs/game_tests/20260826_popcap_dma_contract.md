@@ -258,6 +258,38 @@ change. The paired receipts are:
 /tmp/fliwheel_zuma_startup_default_20260826/
 ```
 
+## PopCap near-surface full-screen draw
+
+The first Zuma draw after the corrected resource loads uses material handle
+`0x16` with a 320x240 screen-space quad and texel-centered UVs from
+`(1,1)` through `(321,241)`. The decoded board upload is 322x222 RGBA4444,
+so the existing full-containment selector rejected it because the submitted
+V extent is 19 pixels taller than the upload. This was a selector problem,
+not a short or malformed texture: the raw upload is a valid stone-framed
+board surface.
+
+The live GL selector now has a title- and material-scoped near-surface
+fallback for PopCap handles `0x16`. It accepts the observed 320x240 span,
+chooses the closest decoded upload large enough for the framebuffer, and
+prefers RGB565 when a title also has a screen-sized RGB565 surface. The
+fallback is covered by the live GL unit test and is not used by other game
+families.
+
+A fresh 8,000,000-cycle Zuma capture confirmed the change:
+
+| Check | Result |
+| --- | --- |
+| First full-screen draw | upload `3`, 322x222 RGBA4444 |
+| Raster coverage | 76,800 / 76,800 framebuffer pixels |
+| Presented scene | complete stone-framed board visible |
+| Run result | exit 0, no fatal signature, no DMA framebuffer writes |
+
+The receipt is `/tmp/fliwheel_zuma_surface_20260826/`. The board is now a
+useful regression boundary. The remaining defect is in the title/menu overlay
+composition: text and decorative elements are still sparse, displaced, or
+associated with the wrong atlas region. The next step is to trace those
+overlay material/UV pairs and then drive a board-entry input sequence.
+
 ## SDRAM-alias A/B
 
 The firmware reference model in `~/Developer/ipod-emulator` documents

@@ -69,7 +69,7 @@ manifest. They measure visual activity, not correctness.
 | `1B200` | LOST | 700 frames, zero GL draws, blank framebuffer; rserver loads but no shader output | Shader/render-server blocked | Parse or emulate the `rserver.bin` programmable path |
 | `1C300` | musika | One captured frame with the Musika logo; no fatal | Splash only | Reverse the animation/packet/sound-bank runtime after the first scene |
 | `33333` | Texas Hold'em | Corrected run completes 30,000,000 cycles / 700 captured frames with 3 visual hashes, 34 draws per steady-state frame, and no fatal; the stabilized capture is the `LOADING` screen | Loading screen only; playable state not reached | Reverse the title-specific resource completion/transition path, then verify poker-table controls and sound |
-| `44444` | Zuma | Default byte-count-corrected run loads all three `.ro` resources and reaches a stable 11-draw resource-backed GL scene without a fatal or DMA write; the menu remains sparse/incomplete | PopCap resource/texture partial | Validate RGBA4444 texture association/orientation, then reach and exercise the board |
+| `44444` | Zuma | Default byte-count-corrected run loads all three `.ro` resources and reaches a stable 11-draw resource-backed GL scene without a fatal or DMA write; the scoped full-surface fallback now renders the complete 320x240 stone-framed board, while the menu overlay remains sparse/incomplete | Board surface rendered; overlay/material composition partial | Trace overlay atlas association/placement, then exercise board entry and gameplay |
 | `50513` | Sudoku | Recognizable title screen; reversed-register event heads now drain cleanly, and Menu enters the save/settings teardown loop. An opt-in full RLB completion runs its callback chain but adds no board draws | Input lifecycle and Menu/exit path verified; board not reached | Derive the puzzle-start/select contract and render the puzzle grid |
 | `50514` | Royal Solitaire | 700 frames, 26 hashes and 59 changes; the character splash is spatially coherent, scripted event nodes are consumed, and the savefile request completes | Coherent splash; readiness/object contract unresolved and board not reached | Reconstruct the manager readiness callback, then validate card/selection interaction |
 | `55555` | Bejeweled | Default byte-count-corrected run loads both `.ro` resources and reaches a 174-draw steady resource-backed GL scene (176 peak) without a fatal or DMA write; the background/UI is present but text/material association is garbled | PopCap resource/texture partial | Validate RGBA4444 texture association/orientation, then repair board composition and test wheel selection/moves |
@@ -144,6 +144,11 @@ Evidence is retained at `/tmp/fliwheel_holdem_ok_sweep_20260826/` and
   scenes. The scenes are still visually partial; the new target is texture
   association/orientation and board composition. See [the PopCap DMA contract
   probe](20260826_popcap_dma_contract.md).
+- The PopCap full-surface selector now accepts Zuma's measured 320x240 UV span
+  against its valid 322x222 RGBA4444 board upload. The first 8M-cycle capture
+  covers all 76,800 framebuffer pixels and visibly restores the stone-framed
+  board; title/menu atlas placement remains unresolved. See the [PopCap DMA
+  contract probe](20260826_popcap_dma_contract.md).
 - Royal Solitaire's readiness investigation confirmed that its event list is
   delivered and consumed and that its savefile request completes; the guest
   manager gate at `0x180cfa5c` remains at `2`. A diagnostic clear only tears

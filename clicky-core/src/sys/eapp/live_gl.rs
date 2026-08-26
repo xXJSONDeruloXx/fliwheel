@@ -893,6 +893,47 @@ impl LiveGlState {
             .map(|u| u.index)
     }
 
+    /// PopCap's board/background material submits a 320x240 UV span, but
+    /// Zuma's board texture is 322x222. The guest relies on the GL sampler's
+    /// edge behavior for the extra V range, so requiring the upload to fully
+    /// contain the UV extents incorrectly drops the entire board. Keep this
+    /// relaxation narrow: only the observed PopCap full-surface material may
+    /// choose the closest sufficiently large upload, with RGB565 preferred
+    /// when the title has both a screen surface and RGBA artwork.
+    fn select_popcap_surface_upload(
+        &self,
+        handle: u32,
+        uvs: &[(f32, f32); 4],
+    ) -> Option<usize> {
+        if !matches!(self.game_id.as_str(), "44444" | "55555") || handle != 0x16 {
+            return None;
+        }
+        let (min_u, min_v, max_u, max_v) = uv_extents(uvs);
+        let span_w = (max_u - min_u).round().max(1.0) as usize;
+        let span_h = (max_v - min_v).round().max(1.0) as usize;
+        if span_w != FB_WIDTH || span_h != FB_HEIGHT {
+            return None;
+        }
+
+        self.uploads
+            .iter()
+            .filter(|u| {
+                u.texture.is_some()
+                    && u.width >= FB_WIDTH.saturating_sub(64)
+                    && u.height >= FB_HEIGHT.saturating_sub(64)
+            })
+            .min_by_key(|u| {
+                let format_penalty = (u.format != Some(TextureFormat::Rgb565)) as u8;
+                (
+                    format_penalty,
+                    u.width.abs_diff(FB_WIDTH) + u.height.abs_diff(FB_HEIGHT),
+                    u.width.saturating_mul(u.height),
+                    u.index,
+                )
+            })
+            .map(|u| u.index)
+    }
+
     /// Rasterize one draw into the internal framebuffer using the existing
     /// rasterizer. Returns the produced `LiveDrawRecord`.
     pub fn rasterize_draw(
@@ -941,6 +982,7 @@ impl LiveGlState {
             self.select_upload_by_tex_name_containing(handle, &uvs)
                 .or_else(|| self.select_upload_for_uv_slice_with_tex_name(handle, &uvs))
                 .or_else(|| self.select_upload_for_uvs(&uvs))
+                .or_else(|| self.select_popcap_surface_upload(handle, &uvs))
                 .or_else(|| {
                     if state_ptr != 0 && state_ptr < 0x1000_0000 && state_ptr != handle {
                         self.select_upload_for_uv_slice_with_tex_name(state_ptr, &uvs)
@@ -1390,6 +1432,68 @@ mod tests {
         ));
         let menu_strip_uvs = [(0.5, 37.5), (0.5, 3.5), (308.5, 3.5), (308.5, 37.5)];
         assert_eq!(lg.select_upload_for_uvs(&menu_strip_uvs), Some(1));
+    }
+
+    #[test]
+    fn popcap_surface_upload_allows_zuma_edge_clamp_and_prefers_rgb565() {
+        let full_surface_uvs = [(1.0, 1.0), (1.0, 241.0), (321.0, 241.0), (321.0, 1.0)];
+
+        let mut zuma = LiveGlState::new(true, false, false, "44444".to_string());
+        zuma.uploads.push(LiveGlState::build_upload(
+            0,
+            0x0de1,
+            322,
+            222,
+            0x1908,
+            0x8033,
+            0x1000_0000,
+            &vec![0; 322 * 222 * 2],
+            Some(0x2),
+        ));
+        zuma.uploads.push(LiveGlState::build_upload(
+            1,
+            0x0de1,
+            510,
+            212,
+            0x1908,
+            0x8033,
+            0x1000_0010,
+            &vec![0; 510 * 212 * 2],
+            Some(0x5),
+        ));
+        assert_eq!(zuma.select_popcap_surface_upload(0x16, &full_surface_uvs), Some(0));
+        assert_eq!(zuma.select_popcap_surface_upload(0x10, &full_surface_uvs), None);
+
+        let mut bejeweled = LiveGlState::new(true, false, false, "55555".to_string());
+        bejeweled.uploads.push(LiveGlState::build_upload(
+            0,
+            0x0de1,
+            509,
+            340,
+            0x1908,
+            0x8033,
+            0x1000_0000,
+            &vec![0; 509 * 340 * 2],
+            Some(0x1),
+        ));
+        bejeweled.uploads.push(LiveGlState::build_upload(
+            1,
+            0x0de1,
+            322,
+            242,
+            0x1907,
+            0x8363,
+            0x1000_0010,
+            &vec![0; 322 * 242 * 2],
+            Some(0x7),
+        ));
+        assert_eq!(
+            bejeweled.select_popcap_surface_upload(0x16, &full_surface_uvs),
+            Some(1)
+        );
+
+        let almost_full = [(1.0, 1.0), (1.0, 240.0), (321.0, 240.0), (321.0, 1.0)];
+        assert_eq!(zuma.select_popcap_surface_upload(0x16, &almost_full), None);
     }
 
     #[test]
