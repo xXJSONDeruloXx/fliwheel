@@ -349,3 +349,18 @@ the expected upright device presentation include [a Bejeweled iPod image](https:
 [a Zuma-like iPod preservation image](https://i.blogs.es/2aae01/juegos-ipod/840_560.jpeg),
 [a Zuma review video](https://www.youtube.com/watch?v=jU-YUGcqtMU), and
 [the Bejeweled iPod reference page](https://bejeweled.wiki.gg/wiki/Bejeweled_%28iPod%29).
+
+## Manifest-title default regression
+
+The automatic orientation selector receives the manifest title from the EAPP
+loader, not the numeric bundle directory name. The selector now recognizes
+both forms, so PopCap's guest screen origin is selected when
+`CLICKY_GL_PRESENT_VFLIP` is unset. The post-fix 30,000,000-cycle pair was:
+
+```text
+/tmp/fliwheel_reorg_popcap_20260826/interactive_matrix.md
+```
+
+Both titles logged `present_vflip=false`, exited with code `0`, and had no
+fatal signature. The run produced 93 unique hashes for Zuma and 69 for
+Bejeweled; this is a default-selection regression, not a new gameplay claim.
