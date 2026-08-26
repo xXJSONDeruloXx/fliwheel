@@ -5340,8 +5340,16 @@ impl Eapp {
         }
         info!(
             target: "EAPP_AUDIO",
-            "Audio:{} pc={:#010x} lr={:#010x} r0={:#010x} r1={:#010x} r2={:#010x} r3={:#010x} {}",
-            ordinal, pc, lr, args[0], args[1], args[2], args[3], detail
+            "Audio:{} frame={} pc={:#010x} lr={:#010x} r0={:#010x} r1={:#010x} r2={:#010x} r3={:#010x} {}",
+            ordinal,
+            self.frame_counter,
+            pc,
+            lr,
+            args[0],
+            args[1],
+            args[2],
+            args[3],
+            detail
         );
     }
 
