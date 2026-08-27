@@ -49,10 +49,11 @@ The play-controls manifest records these useful boundaries:
 | 360 | wheel packet `0x4000002a` | packet delivered; displacement still open |
 | 400 | down press | hard-drop/lock transition begins |
 
-The later isolated sweep uses `wheel=4:300-305` followed by
-`wheel=-4:330-335`. The dominant red active-piece component moves from
-`x=138..168` to `x=182..212`, then back to `x=127..157`; see the dedicated
-receipt for the exact capture paths and metrics.
+The later centered-board isolation uses `wheel=4:240-245` followed by
+`wheel=-4:270-275`. The dominant red active-piece component moves from
+`x=149..168` to `x=193..212`, then back to `x=127..157`; see the dedicated
+receipt for the exact capture paths and metrics. The pause/resume and hard-drop
+transitions remain separate visual gates.
 
 The external [iLounge Tetris review](https://www.ilounge.com/index.php/reviews/entry/electronic-arts-tetris)
 describes the same clickwheel-oriented control family: wheel sweeps for
