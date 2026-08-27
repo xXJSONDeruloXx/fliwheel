@@ -7659,6 +7659,48 @@ impl Eapp {
         self.drain_watch_log();
     }
 
+    /// The Sims frame loop waits for the input-manager status byte at
+    /// `0x1807380c` to become zero before it leaves its resource-loading state.
+    /// The retail image initializes that byte to 2, while the currently
+    /// emulated input path does not produce the observed completion write.
+    /// Keep a one-shot override behind an explicit, Sims-only probe flag so
+    /// default execution remains unchanged while the next scene contract is
+    /// investigated.
+    fn maybe_apply_sims_input_ready(&mut self) {
+        let is_sims = self
+            .metadata
+            .bundle_dir
+            .to_str()
+            .map_or(false, |p| p.contains("1500C") || p.contains("1500E"));
+        let enabled = is_sims
+            && fliwheel_var("EAPP_SIMS_INPUT_READY")
+                .map(|v| v == "1" || v == "true")
+                .unwrap_or(false);
+        if !enabled {
+            return;
+        }
+
+        let start_frame = fliwheel_var("EAPP_SIMS_INPUT_READY_FRAME")
+            .ok()
+            .and_then(|value| value.trim().parse::<u64>().ok())
+            .unwrap_or(0);
+        if self.frame_counter < start_frame {
+            return;
+        }
+
+        const INPUT_STATUS: u32 = 0x1807_380c;
+        let before = self.read_guest_u8(INPUT_STATUS).unwrap_or(0xff);
+        if before == 2 {
+            let wrote = self.write_guest_bytes(INPUT_STATUS, &[0]);
+            info!(
+                target: "EAPP",
+                "Sims input readiness probe status={:#04x} -> 0 wrote={}",
+                before,
+                wrote
+            );
+        }
+    }
+
     fn render_state_hash(&self) -> u64 {
         let frame = self.render_state.lock().unwrap();
         let mut hasher = DefaultHasher::new();
@@ -7806,6 +7848,7 @@ impl Eapp {
                         self.cpu.reg_get(self.cpu.mode(), 0)
                     );
                 }
+                self.maybe_apply_sims_input_ready();
                 self.maybe_log_startup_progress();
                 self.frame_import_counts.clear();
                 if !self.dispatch_pending_guest_call() {

@@ -60,6 +60,27 @@ menu and gameplay scene are still absent. The next target is the resource
 object/material handoff that follows these successful reads, plus the exact
 secondary async status/byte contract.
 
+## Input-readiness gate probe
+
+The Bowling frame loop also reads the input-manager status byte at guest
+address `0x1807380c` while it is in its resource-loading state. A separate
+Sims-only diagnostic can write `0` after a chosen frame:
+
+```text
+FLIWHEEL_EAPP_SIMS_INPUT_READY=1
+FLIWHEEL_EAPP_SIMS_INPUT_READY_FRAME=60
+```
+
+In the controlled Bowling run, the write was observed at frame 60 and the
+guest advanced its frame state from `1` through `5` to `6`, but it produced no
+new scene draws, menu, or gameplay. Injecting the existing input script at the
+same time did not change that result. This rules out the status byte as a
+sufficient content-handoff fix; it remains an opt-in diagnostic only.
+
+The Pool run exercised the same pointer-valued RLB path and completed 12
+staged reads in 15 seconds, but did not emit the readiness-probe write before
+the run ended. No success is inferred from that absence.
+
 Useful receipts from the focused Bowling run:
 
 - `/tmp/fliwheel_sims_async123_63527_20260827.log`
