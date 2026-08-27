@@ -537,6 +537,10 @@ pub struct Eapp {
     /// host PCM sink is wired so the ABI does not collapse every source to 0.
     audio_handles: HashMap<u32, AudioHandle>,
     next_audio_handle: u32,
+    /// Zuma registers each sound source immediately before its async WAV
+    /// header read. Keep the most recent source until that read supplies the
+    /// host path, then bind the path to the synthetic handle.
+    audio_pending_asset_handle: Option<u32>,
     /// Resource-indexed audio assets retained after the guest releases its
     /// startup table handles. Gameplay uses the resource index again later,
     /// so this shadow catalog is what lets the host sink resolve a sound.
@@ -585,10 +589,12 @@ struct FilesystemFile {
     offset: usize,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct AudioHandle {
+    source_type: u32,
     slot_index: u32,
     table_base: u32,
+    host_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -868,6 +874,7 @@ impl Eapp {
             next_filesystem_handle: 1,
             audio_handles: HashMap::new(),
             next_audio_handle: 1,
+            audio_pending_asset_handle: None,
             audio_resource_paths: HashMap::new(),
             audio_last_registration: None,
             audio_events: Arc::new(Mutex::new(VecDeque::new())),
@@ -6101,10 +6108,15 @@ impl Eapp {
                 let handle = self.next_audio_handle.max(1);
                 self.next_audio_handle = self.next_audio_handle.wrapping_add(1).max(1);
                 let source = AudioHandle {
+                    source_type: args[0],
                     slot_index: args[1],
                     table_base: args[2],
+                    host_path: None,
                 };
-                self.audio_handles.insert(handle, source);
+                self.audio_handles.insert(handle, source.clone());
+                if self.metadata.title == "44444" {
+                    self.audio_pending_asset_handle = Some(handle);
+                }
                 if fliwheel_var_os("AUDIO_TRACE").is_some() {
                     info!(
                         target: "EAPP_AUDIO",
@@ -6115,6 +6127,24 @@ impl Eapp {
                     );
                 }
                 handle
+            }
+            2 => {
+                // Zuma configures a source with Audio:13/14/15 and commits
+                // the trigger with Audio:2. Its source handle is the value
+                // returned by Audio:0, so resolve the previously bound WAV
+                // only at this final trigger point.
+                if self.metadata.title == "44444" {
+                    if let Some(source) = self.audio_handles.get(&args[0]).cloned() {
+                        if let Some(host_path) = source.host_path {
+                            self.queue_audio_event(
+                                source.source_type,
+                                source.slot_index,
+                                Some(host_path),
+                            );
+                        }
+                    }
+                }
+                0
             }
             1 | 23 => {
                 let removed = self.audio_handles.remove(&args[0]);
@@ -8114,41 +8144,54 @@ impl Eapp {
                     .audio_resource_paths
                     .get(&(resource_type, resource_index))
                     .cloned();
-                let event = EappAudioEvent {
-                    frame: self.frame_counter,
-                    resource_type,
-                    resource_index,
-                    host_path: host_path.clone(),
-                };
-                if let Ok(mut queue) = self.audio_events.lock() {
-                    // A headless run may never drain the frontend queue. Keep
-                    // the latest bounded window rather than allowing a long
-                    // attract-mode run to grow without limit.
-                    const AUDIO_EVENT_QUEUE_LIMIT: usize = 1024;
-                    if queue.len() >= AUDIO_EVENT_QUEUE_LIMIT {
-                        queue.pop_front();
-                    }
-                    queue.push_back(event);
-                }
-                if std::env::var_os("EAPP_AUDIO_EVENT_TRACE").is_some() {
-                    info!(
-                        target: "EAPP_AUDIO",
-                        "AudioEvent frame={} type={} index={} path={}",
-                        self.frame_counter,
-                        resource_type,
-                        resource_index,
-                        host_path
-                            .as_deref()
-                            .map(|path| path.display().to_string())
-                            .unwrap_or_else(|| "<unmapped>".to_string())
-                    );
-                }
+                self.queue_audio_event(resource_type, resource_index, host_path);
             }
             _ => {}
         }
     }
 
+    fn queue_audio_event(
+        &mut self,
+        resource_type: u32,
+        resource_index: u32,
+        host_path: Option<PathBuf>,
+    ) {
+        let event = EappAudioEvent {
+            frame: self.frame_counter,
+            resource_type,
+            resource_index,
+            host_path: host_path.clone(),
+        };
+        if let Ok(mut queue) = self.audio_events.lock() {
+            // A headless run may never drain the frontend queue. Keep the
+            // latest bounded window rather than allowing a long attract-mode
+            // run to grow without limit.
+            const AUDIO_EVENT_QUEUE_LIMIT: usize = 1024;
+            if queue.len() >= AUDIO_EVENT_QUEUE_LIMIT {
+                queue.pop_front();
+            }
+            queue.push_back(event);
+        }
+        if std::env::var_os("EAPP_AUDIO_EVENT_TRACE").is_some() {
+            info!(
+                target: "EAPP_AUDIO",
+                "AudioEvent frame={} type={} index={} path={}",
+                self.frame_counter,
+                resource_type,
+                resource_index,
+                host_path
+                    .as_deref()
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_else(|| "<unmapped>".to_string())
+            );
+        }
+    }
+
     fn note_audio_asset_path(&mut self, host_path: &Path) {
+        if self.metadata.title == "44444" {
+            self.note_zuma_audio_asset_path(host_path);
+            return;
+        }
         // Keep the provisional Tetris-only resource catalog honest until the
         // other title families have their own Audio ABI derived.
         if self.metadata.title != "66666" {
@@ -8178,6 +8221,34 @@ impl Eapp {
                 "AudioResourceMap type={} index={} path={}",
                 resource.0,
                 resource.1,
+                host_path.display()
+            );
+        }
+    }
+
+    fn note_zuma_audio_asset_path(&mut self, host_path: &Path) {
+        let is_wav = host_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("wav"))
+            .unwrap_or(false);
+        if !is_wav {
+            return;
+        }
+        let Some(handle) = self.audio_pending_asset_handle.take() else {
+            return;
+        };
+        let Some(source) = self.audio_handles.get_mut(&handle) else {
+            return;
+        };
+        source.host_path = Some(host_path.to_path_buf());
+        if std::env::var_os("EAPP_AUDIO_EVENT_TRACE").is_some() {
+            info!(
+                target: "EAPP_AUDIO",
+                "AudioSourceMap handle={:#010x} type={} slot={} path={}",
+                handle,
+                source.source_type,
+                source.slot_index,
                 host_path.display()
             );
         }
