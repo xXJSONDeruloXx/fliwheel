@@ -1,6 +1,6 @@
 # Bejeweled (Bundle 55555)
 
-**Status:** 🟡 SINGLE-MATCH VERIFIED / WAV EVENTS PARTIAL | **Evidence:** the legacy filesystem contract reaches the menu, 8×8 board, and built-in tutorial; normalized wheel input reaches the guest; a scripted live-board swap produces “EXCELLENT!” and a score overlay; the title-specific WAV ABI now maps all 27 sources, routes swap/rejected-swap events, and reaches the headed desktop sink | **Engine:** PopCap Engine
+**Status:** 🟡 SINGLE-MATCH VERIFIED / WAV EVENTS PARTIAL | **Evidence:** the legacy filesystem contract reaches the menu, 8×8 board, and built-in tutorial; normalized wheel input reaches the guest; a scripted live-board swap changes/refills the board and now emits `combo2.wav`; the title-specific WAV ABI maps all 27 sources and reaches the headed desktop sink | **Engine:** PopCap Engine
 
 ## Quick Start
 ```bash
@@ -66,7 +66,7 @@ sweep delivers changing, normalized positions to the guest input object and
 moves the guest cursor. Event 2 is the title's action/select edge and event 1
 is menu/back. See the [wheel normalization receipt](../game_tests/20260826_bejeweled_wheel_normalization.md).
 
-The live-match receipt is:
+The original live-match receipt is:
 
 ```text
 /tmp/fliwheel_bejeweled_match_candidate_right_20260826_capture/
@@ -85,13 +85,15 @@ selected visual frames are in:
 
 This is a verified playable core path under the deterministic input script,
 and the desktop runner now exposes the same directional tap mapping through
-the arrow keys. A headed visual confirmation, mode coverage, audio path, and
-save path are still open.
+the arrow keys. A fresh current-tree replay also reproduces an accepted swap
+and `combo2.wav`; see the [current match replay](../game_tests/20260827_bejeweled_current_match_replay.md).
+A headed visual confirmation, mode coverage, save path, and broader audio
+coverage are still open.
 
 The title-specific audio receipt is in the [Bejeweled WAV ABI report](../game_tests/20260827_bejeweled_audio_abi.md).
-The current exact replay maps 27/27 startup WAV sources and emits
+The earlier exact replay maps 27/27 startup WAV sources and emits
 `audio/swap.wav` followed by `audio/bad.wav` for the observed accepted and
-rejected swap attempts. The headed run produced matching `played sound`
-receipts, so host decode/sink dispatch is verified; combo/excellent audio has
-not yet been reproduced on the current board state and physical mixer parity
-is unverified.
+rejected swap attempts. The newer current-tree replay reaches match
+resolution and emits `audio/combo2.wav`; combo3/excellent audio and physical
+mixer parity remain unverified. The headed run produced matching `played
+sound` receipts, so host decode/sink dispatch is verified.

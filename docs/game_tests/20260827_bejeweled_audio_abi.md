@@ -65,6 +65,19 @@ different deterministic board cell than the older `[8,6]` visual receipt, so
 the combo/excellent trigger was not reproduced in this run. Match-specific
 combo/excellent audio and physical mixer parity remain open.
 
+## Current-tree match replay
+
+A fresh replay of the same deterministic script on the current tree reached
+the accepted swap at frame 1172 and emitted `audio/combo2.wav` at frame 1224
+during the resulting board refill. The run completed 1,350 guest frames with
+372 unique presented hashes, 755 hash changes, a 185-draw peak, two zero-draw
+frames, and no fatal signature. The full receipt and selected captures are in
+the [current match replay](20260827_bejeweled_current_match_replay.md).
+
+This updates the current evidence from "swap plus rejected swap" to a live
+match-resolution path with combo audio. `combo3.wav`, excellent-mode audio,
+save persistence, and physical mixer parity remain open.
+
 ## Headed sink replay
 
 The same input was replayed through the headed desktop runner with the sink
