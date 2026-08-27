@@ -1,6 +1,6 @@
 # Sudoku (Bundle 50513)
 
-**Status:** 🟡 RLB RESOURCE + SETUP FLOW PARTIAL | **Board:** Not reached | **Engine:** Sudoku/Solitaire (NDC)
+**Status:** 🟡 PUZZLE BOARD + INPUT PARTIAL | **Board:** Reached | **Engine:** Sudoku/Solitaire (NDC)
 
 ## Quick Start
 ```bash
@@ -12,10 +12,10 @@
 # cross-title contract.
 EAPP_SUDOKU_ASYNC0_COMPLETE=1 EAPP_SUDOKU_ASYNC1_COMPLETE=1 \
   EAPP_SUDOKU_ASYNC2_COMPLETE=1 FLIWHEEL_EAPP_ASYNC0_RESULT=length \
-  FLIWHEEL_EAPP_INPUT_SCRIPT='action:8200-8230,action:8500-8505' \
+  FLIWHEEL_EAPP_INPUT_SCRIPT='action:8200-8201,action:8500-8501,action:9450-9510,wheel=-4:9700-9701,wheel=-4:9750-9751,wheel=-4:9800-9801,action:9900-9901,action:10300-10301' \
   FLIWHEEL_EXPERIMENTAL_GL_HLE=1 FLIWHEEL_GL_GATE_B=1 \
   FLIWHEEL_GL_LIVE_CONTINUOUS=1 FLIWHEEL_GL_PRESENT_VFLIP=1 \
-  ./target/release/eapp /path/to/Games_RO/50513 --headless
+  ./target/release/eapp /path/to/Games_RO/50513 --headless --cycles 70000000
 ```
 
 ## What Renders
@@ -26,8 +26,10 @@ EAPP_SUDOKU_ASYNC0_COMPLETE=1 EAPP_SUDOKU_ASYNC1_COMPLETE=1 \
   panel, title, cursor, letter row, and validation instructions coherently
 - **Game Setup**: holding Center validates the name and reaches the `Play!`,
   difficulty, and error-checking screen
-- **Puzzle board**: not reached; activating `Play!` currently performs an
-  animated transition and returns to the name/setup flow
+- **Tutorial**: completing the name entry and selecting `Play!` reaches the
+  built-in tutorial screen
+- **Puzzle board**: dismissing the tutorial reaches a populated 9×9 board with
+  the side controls, a visible cursor, and the numbered entry palette
 
 ## Bundle Info
 - **Executable:** `Sudoku_1_1_2703081.bin` (eapp format)
@@ -47,6 +49,7 @@ EAPP_SUDOKU_ASYNC0_COMPLETE=1 EAPP_SUDOKU_ASYNC1_COMPLETE=1 \
 4. ✅ 0-draw frame preservation (idle input-wait loop)
 5. ✅ Title-scoped RLB seek/read completion probe (opt-in)
 6. ✅ Half-texel UV containment for centered atlas/full-surface edges
+7. ✅ Name → setup → tutorial → populated puzzle-board transition (opt-in)
 
 ## Input status
 
@@ -64,17 +67,20 @@ not the puzzle-start control: it clears the title runtime object and leaves
 the guest alternating its save/settings states while waiting for that object.
 The current title-scoped resource probe stages the complete RLB, honors the
 guest's second seek (`0x8d381`) before its 153,884-byte payload read, and
-executes the callback chain. It reaches coherent `PLAYER NAME` and `GAME
-SETUP` scenes, but `Play!` still returns to the name/setup flow and the puzzle
-board is not verified. The evidence and remaining gap are recorded in
-[`20260827_sudoku_rlb_seek_and_setup.md`](../game_tests/20260827_sudoku_rlb_seek_and_setup.md).
+executes the callback chain. The verified interactive route is now `PLAYER
+NAME` → `GAME SETUP` → `TUTORIAL` → populated puzzle board. The board cursor and
+number palette render, but a legal user-entered digit, full cursor movement,
+pen mode, audio, and save behavior remain unverified. The evidence is recorded
+in [`20260827_sudoku_rlb_seek_and_setup.md`](../game_tests/20260827_sudoku_rlb_seek_and_setup.md)
+and [`20260827_sudoku_puzzle_board_and_input.md`](../game_tests/20260827_sudoku_puzzle_board_and_input.md).
 
 See the dated evidence in
 [`20260825_sudoku_input.md`](../game_tests/20260825_sudoku_input.md).
 
 The compact scripted event path is proven for the Menu transition and the
-experimental name/setup path. The full game-start contract, puzzle board,
-raw hardware-packet mapping, sound, and persistence still need work.
+experimental name/setup/tutorial/board path. The default resource completion
+contract, raw hardware-packet mapping, legal cell entry, sound, and persistence
+still need work.
 
 ## Environment
 ```bash
