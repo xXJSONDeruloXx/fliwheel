@@ -62,20 +62,44 @@ Observed scenes:
 - the built-in `TUTORIAL` screen;
 - a populated 9×9 clue board with the side controls and red cell cursor;
 - Center opens the numbered entry palette with `1` selected;
-- a larger wheel packet moves the palette highlight, confirming that the
-  palette is an active consumer rather than a static texture.
+- the current canonical replay keeps the visible palette highlight on `1`
+  through several valid filtered wheel events.
 
 The shared half-texel containment fix produces both board-side full-surface
 draws without a skipped-draw diagnostic. The bounded replay exits with status
 0 and retains the same late invalid-surface loop after the captured input
 window.
 
+## Latest input-boundary retest
+
+The board-state retest appended the following to the verified setup sequence:
+
+```text
+action:10800-10801
+wheel=-4:10900-10905
+```
+
+The host emitted the expected two-packet wheel ABI: the second packet carried
+the signed movement delta, and the shared guest filter generated the retail
+filtered event `-0x6e`. A detail trace at
+`/tmp/fliwheel_sudoku_boardtrace.cFlnCZ/run.log` shows that, after the board
+transition, the active input chain contains the generic nodes and the root
+delegate, but not the name-entry selector node (`vtable 0x1805a5e0`, callback
+`0x1802a760`). The visible palette therefore does not advance even though the
+wheel event reaches the guest dispatcher. This makes the present boundary a
+title-state/list-registration issue, not evidence of a bad host wheel scale.
+
+The registration trace is retained at
+`/tmp/fliwheel_sudoku_registration_20260827.log`. The earlier statement that a
+larger packet selected `4` is not reproducible under this canonical board
+route and is treated as unconfirmed rather than as a working input result.
+
 ## What is not yet proven
 
 The first entry probe selected `1`, which is illegal for the highlighted cell,
-so the board correctly remained unchanged. A larger wheel packet selected `4`,
-which is also illegal for that cell; a small packet was below the title's
-selection threshold. Therefore the following remain open:
+so the board correctly remained unchanged. The latest larger wheel packets did
+not visibly change the palette selection, so no legal digit selection or entry
+has been proven. Therefore the following remain open:
 
 - calibrated legal digit selection and cell-entry confirmation;
 - complete board cursor movement and the game's pen-mode toggle;

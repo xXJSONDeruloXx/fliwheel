@@ -29,7 +29,9 @@ EAPP_SUDOKU_ASYNC0_COMPLETE=1 EAPP_SUDOKU_ASYNC1_COMPLETE=1 \
 - **Tutorial**: completing the name entry and selecting `Play!` reaches the
   built-in tutorial screen
 - **Puzzle board**: dismissing the tutorial reaches a populated 9×9 board with
-  the side controls, a visible cursor, and the numbered entry palette
+  the side controls, a visible cursor, and the numbered entry palette; the
+  latest wheel retest leaves the palette on `1` while the filtered event still
+  reaches the guest dispatcher
 
 ## Bundle Info
 - **Executable:** `Sudoku_1_1_2703081.bin` (eapp format)
@@ -69,9 +71,12 @@ The current title-scoped resource probe stages the complete RLB, honors the
 guest's second seek (`0x8d381`) before its 153,884-byte payload read, and
 executes the callback chain. The verified interactive route is now `PLAYER
 NAME` → `GAME SETUP` → `TUTORIAL` → populated puzzle board. The board cursor and
-number palette render, but a legal user-entered digit, full cursor movement,
-pen mode, audio, and save behavior remain unverified. The evidence is recorded
-in [`20260827_sudoku_rlb_seek_and_setup.md`](../game_tests/20260827_sudoku_rlb_seek_and_setup.md)
+number palette render. The latest retest produces the expected filtered wheel
+event, but the board-state listener chain lacks the selector object that is
+present during name entry, so the visible palette remains on `1`. A legal
+user-entered digit, full cursor movement, pen mode, audio, and save behavior
+remain unverified. The evidence is recorded in
+[`20260827_sudoku_rlb_seek_and_setup.md`](../game_tests/20260827_sudoku_rlb_seek_and_setup.md)
 and [`20260827_sudoku_puzzle_board_and_input.md`](../game_tests/20260827_sudoku_puzzle_board_and_input.md).
 
 See the dated evidence in
