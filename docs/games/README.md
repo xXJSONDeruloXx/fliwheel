@@ -194,6 +194,15 @@ For a portable corpus-wide probe, pass the root explicitly:
   unverified
 - Evidence: [Sims NDC casing-fix probe](../game_tests/20260827_sims_ndc_casing_fix.md)
 
+### 2026-08-27: Sims rectangle-target paletted upload
+- OpenGLES:19 now accepts the Sims `GL_TEXTURE_RECTANGLE` target (`0x84f5`)
+  for `GL_PALETTE8_RGBA8_OES` uploads
+- Bowling decodes its `354x25` text atlas in the default live-GL path; Pool's
+  ordinary `297x75` atlas path remains stable
+- Both titles now have a small post-title text draw, but neither reaches menu
+  or gameplay
+- Evidence: [Sims rectangle-target texture probe](../game_tests/20260827_sims_paletted_texture_target.md)
+
 ### 2026-06-26: Sudoku works, PopCap DMA, 12/16 games rendering
 - Sudoku: auto-begin, NDC scaling, auto-vflip, 0-draw preservation
 - Bejeweled/Zuma: DMA framebuffer overlay injection + alpha blending
@@ -210,6 +219,7 @@ For a portable corpus-wide probe, pass the root explicitly:
 - [2026-08-25 Sudoku input regression](../game_tests/20260825_sudoku_input.md)
 - [2026-08-26 Sudoku event lifecycle](../game_tests/20260826_sudoku_event_lifecycle.md)
 - [2026-08-26 normalized-coordinate projection](../game_tests/20260826_ndc_projection.md)
+- [2026-08-27 Sims rectangle-target texture](../game_tests/20260827_sims_paletted_texture_target.md)
 - [Compatibility Report](../archive/reports/20260625_compatibility_report.md) — historical metrics
 - [Debug Analysis](../archive/reports/debug_analysis.md) — historical root cause analysis
 - [EAPP Format Specification](../EAPP_FORMAT_SPECIFICATION.md)

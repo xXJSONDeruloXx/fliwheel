@@ -1,6 +1,6 @@
 # Sims Pool (Bundle 1500E)
 
-**Status:** 🟡 TITLE SCREEN RENDERED | **Evidence:** shared NDC projection now rasterizes a coherent title screen; gameplay/menu transition is not yet reached | **Engine:** Sims Engine
+**Status:** 🟡 TITLE SCREEN + PARTIAL FOLLOW-UP | **Evidence:** shared NDC projection rasterizes the title and the ordinary atlas path now shows a small `The` follow-up text element; gameplay/menu transition is not yet reached | **Engine:** Sims Engine
 
 ## Quick Start
 ```bash
@@ -21,12 +21,14 @@
 - Sister game to Sims Bowling, shares gameLib.rlb
 - Similar draw count and asset structure
 - Sims engine variant
-- The title screen is now spatially coherent after fixing the lowercase runtime
+- The title screen is spatially coherent after fixing the lowercase runtime
   bundle ID (`1500e`) in the shared NDC projection matcher. The follow-up
-  one-draw state remains incomplete.
+  one-draw state now shows a small colored `The` text element through Pool's
+  ordinary `297x75` atlas upload, but remains incomplete.
 
 See the [2026-08-27 NDC casing-fix probe](../game_tests/20260827_sims_ndc_casing_fix.md)
-for the exact command, coverage, hashes, and captures.
+and [rectangle-target texture probe](../game_tests/20260827_sims_paletted_texture_target.md)
+for the exact commands, coverage, hashes, and captures.
 
 ## Environment
 ```bash
@@ -35,3 +37,7 @@ FLIWHEEL_GL_GATE_B=1
 FLIWHEEL_GL_LIVE_CONTINUOUS=1
 FLIWHEEL_GL_PRESENT_VFLIP=1
 ```
+
+The optional `FLIWHEEL_EAPP_SIMS_ASYNC0_COMPLETE=1` flag is a diagnostic RLB
+completion experiment only; it is not required for the current default
+follow-up draw and does not yet reach gameplay.

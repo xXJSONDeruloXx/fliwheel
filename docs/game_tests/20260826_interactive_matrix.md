@@ -46,6 +46,11 @@ wheel=3:180-182, left:230-232, right:280-282,
 up:330-332, down:380-382, action:430-432
 ```
 
+The focused release checkpoint for the Sims texture-target change is
+`/tmp/fliwheel_checkpoint_20260827/interactive_matrix.md`; its Sims rows are
+the current evidence below, while the other rows retain the corpus-wide
+triage values from the earlier 20-bundle run.
+
 After the title-specific audio guard and Sims geometry classification were
 committed, the focused regression was rerun at 10,000,000 cycles for
 `1500C`, `1500E`, `33333`, `50514`, and `66666`. That earlier report is
@@ -68,8 +73,8 @@ manifest. They measure visual activity, not correctness.
 | `11052` | SAT Prep Mathematics | Same two-resource loader and coherent splash/spinner path as `11050`; clean bounded exit | Coherent splash/loading only; content handoff open | Share the SAT handoff investigation |
 | `12345` | Vortex | 700 frames and continuously changing hashes; recognizable Vortex title art, but no content scene | Animated splash/title only | Decode the VBO/vertex indirection around ordinals 175/125 |
 | `14004` | Ms. PAC-MAN | 700 frames, 2 hashes, up to 12 draws; recognizable Namco loading art, with visible text/texture artifacts | Loading screen only | Validate texture atlas selection and advance past loading |
-| `1500C` | The Sims Bowling | 700 frames, 2 hashes, at most two draws; framebuffer is effectively black. The current HLE recognizes its normalized geometry family, but useful coverage remains absent | Renderer/asset decode blocked | Decode the `gameLib.rlb`/rserver texture path and verify NDC coverage |
-| `1500E` | The Sims Pool | 700 frames, 2 hashes, at most two draws; same black/zero-coverage shape as Bowling | Renderer/asset decode blocked | Share the Bowling fix, then exercise wheel aim/power/spin |
+| `1500C` | The Sims Bowling | Focused 2026-08-27 release checkpoint: 700 guest frames, 39 hashes/changes, up to two draws, two zero-draw rows, and no fatal signatures; the default path decodes `GL_TEXTURE_RECTANGLE`/`GL_PALETTE8_RGBA8_OES` and shows a small legible `The` follow-up element, but menu/gameplay is not reached | Title + partial follow-up | Decode the `gameLib.rlb`/scene handoff, then exercise bowling controls |
+| `1500E` | The Sims Pool | Focused 2026-08-27 release checkpoint: 700 guest frames, 31 hashes/changes, up to two draws, one zero-draw row, and no fatal signatures; the default path shows a small colored `The` follow-up element through the ordinary `297x75` atlas, but menu/gameplay is not reached | Title + partial follow-up | Decode the `gameLib.rlb`/scene handoff, then exercise aim/power/spin |
 | `1B200` | LOST | 700 frames, zero GL draws, blank framebuffer; rserver loads but no shader output | Shader/render-server blocked | Parse or emulate the `rserver.bin` programmable path |
 | `1C300` | musika | One captured frame with the Musika logo; no fatal | Splash only | Reverse the animation/packet/sound-bank runtime after the first scene |
 | `33333` | Texas Hold'em | Corrected run completes 30,000,000 cycles / 700 captured frames with 3 visual hashes, 34 draws per steady-state frame, and no fatal; the stabilized capture is the `LOADING` screen | Loading screen only; playable state not reached | Reverse the title-specific resource completion/transition path, then verify poker-table controls and sound |
@@ -109,7 +114,14 @@ Evidence is retained at `/tmp/fliwheel_holdem_ok_sweep_20260826/` and
 
 - The NDC detector now includes the empirically matching Sims Bowling/Pool
   family (`1500C`/`1500E`) in addition to Sudoku/Solitaire. A targeted rerun
-  confirms the titles remain stable, but does not yet show useful coverage.
+  confirms coherent title screens and the shared post-title draw family.
+- OpenGLES:19 now recognizes the Sims rectangle-texture target (`0x84f5`) for
+  `GL_PALETTE8_RGBA8_OES` uploads. Bowling's default post-title path now
+  decodes its `354x25` text atlas; Pool's ordinary atlas path remains stable.
+- A title-scoped `FLIWHEEL_EAPP_SIMS_ASYNC0_COMPLETE=1` probe stages each Sims
+  `gameLib.rlb` and completes its guest callback chain, but still produces no
+  menu transition. It remains diagnostic-only and is excluded from the default
+  matrix.
 - The resource-indexed audio observer is now scoped to Tetris (`66666`). The
   first corpus run showed that the same virtual addresses are unrelated code
   in other binaries and produced fabricated event IDs; those counts are not

@@ -1,6 +1,6 @@
 # Sims Bowling (Bundle 1500C)
 
-**Status:** 🟡 TITLE SCREEN + PARTIAL FOLLOW-UP | **Evidence:** shared NDC projection now rasterizes the title screen; gameplay/menu transition is not yet reached | **Engine:** Sims Engine
+**Status:** 🟡 TITLE SCREEN + PARTIAL FOLLOW-UP | **Evidence:** shared NDC projection and rectangle-target paletted upload now rasterize the title and a small `The` follow-up text element; gameplay/menu transition is not yet reached | **Engine:** Sims Engine
 
 ## Quick Start
 ```bash
@@ -21,12 +21,15 @@
 - Sims engine variant with different asset loading
 - Uses `.rlb` resource library format
 - Lower draw count — simpler UI than other games
-- The title screen is now spatially coherent after fixing the lowercase runtime
-  bundle ID (`1500c`) in the shared NDC projection matcher. Bowling then enters
-  a one-draw follow-up state that is currently only partially rendered.
+- The title screen is spatially coherent after fixing the lowercase runtime
+  bundle ID (`1500c`) in the shared NDC projection matcher. The live GL HLE
+  also accepts Bowling's `GL_TEXTURE_RECTANGLE` paletted upload, so the
+  one-draw follow-up now includes a small legible `The` text element. The menu
+  and game scene are still not reached.
 
 See the [2026-08-27 NDC casing-fix probe](../game_tests/20260827_sims_ndc_casing_fix.md)
-for the exact command, coverage, hashes, and captures.
+and [rectangle-target texture probe](../game_tests/20260827_sims_paletted_texture_target.md)
+for the exact commands, coverage, hashes, and captures.
 
 ## Environment
 ```bash
@@ -35,3 +38,7 @@ FLIWHEEL_GL_GATE_B=1
 FLIWHEEL_GL_LIVE_CONTINUOUS=1
 FLIWHEEL_GL_PRESENT_VFLIP=1
 ```
+
+The optional `FLIWHEEL_EAPP_SIMS_ASYNC0_COMPLETE=1` flag is a diagnostic RLB
+completion experiment only; it is not required for the current default
+follow-up draw and does not yet reach gameplay.

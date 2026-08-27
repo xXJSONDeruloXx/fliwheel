@@ -228,6 +228,9 @@ const DEFAULT_FRAMEBUFFER: u32 = 0xff101820;
 const HLE_INFO_FRAMEBUFFER: u32 = 0xff203040;
 const HLE_WARN_FRAMEBUFFER: u32 = 0xff604020;
 const HLE_OPENGL_FRAMEBUFFER: u32 = 0xff205020;
+const GL_TEXTURE_2D: u32 = 0x0de1;
+const GL_TEXTURE_RECTANGLE: u32 = 0x84f5;
+const GL_PALETTE8_RGBA8_OES: u32 = 0x8b96;
 
 fn ordinal45_resource_format(format: u32) -> Option<TextureFormat> {
     match format {
@@ -255,6 +258,11 @@ fn decode_palette8_rgba8(raw: &[u8], width: usize, height: usize) -> Option<Vec<
             })
             .collect(),
     )
+}
+
+fn is_palette8_compressed_upload_call(args: [u32; 4]) -> bool {
+    matches!(args[0], GL_TEXTURE_2D | GL_TEXTURE_RECTANGLE)
+        && args[2] == GL_PALETTE8_RGBA8_OES
 }
 
 fn quad_from_slice(pts: &[(f32, f32)]) -> [(f32, f32); 4] {
@@ -2464,11 +2472,13 @@ impl Eapp {
                 0
             }
             // Ordinal 19 is glCompressedTexImage2D for the clickwheel titles
-            // that use paletted artwork. Keep the old render-server diagnostic
-            // fallback for non-texture calls until that alternate ABI is
-            // proven, but decode the observed GL_PALETTE8_RGBA8_OES shape.
+            // that use paletted artwork. Sims uses the rectangle-texture
+            // target (0x84f5) rather than GL_TEXTURE_2D, but the payload is
+            // the same GL_PALETTE8_RGBA8_OES shape. Keep the old render-server
+            // diagnostic fallback for non-texture calls until that alternate
+            // ABI is proven.
             19 => {
-                if args[0] == 0x0de1 && args[2] == 0x8b96 {
+                if is_palette8_compressed_upload_call(args) {
                     self.live_handle_compressed_upload(args);
                 } else {
                     if let Some(program) = self.usse_program.as_ref() {
@@ -6566,9 +6576,9 @@ impl Eapp {
                 // fixed address because every EAPP binary has its own code
                 // layout. Keep whole-file completion title-scoped and
                 // opt-in: Tetris and Texas Hold'em have separate proven
-                // probes, while Sudoku's RLB completion remains a diagnostic
-                // experiment until its post-callback scene contract is
-                // understood.
+                // probes, while Sudoku's and The Sims' RLB completion remain
+                // diagnostic experiments until their post-callback scene
+                // contracts are understood.
                 let owner = args[3];
                 let is_tetris = self
                     .metadata
@@ -6585,6 +6595,11 @@ impl Eapp {
                     .bundle_dir
                     .to_str()
                     .map_or(false, |p| p.contains("50513"));
+                let is_sims = self
+                    .metadata
+                    .bundle_dir
+                    .to_str()
+                    .map_or(false, |p| p.contains("1500C") || p.contains("1500E"));
                 let tetris_complete = is_tetris
                     && fliwheel_var("EAPP_ASYNC3_COMPLETE")
                         .map(|v| v == "1" || v == "true")
@@ -6597,7 +6612,11 @@ impl Eapp {
                     && std::env::var("EAPP_SUDOKU_ASYNC0_COMPLETE")
                         .map(|v| v == "1" || v == "true")
                         .unwrap_or(false);
-                let complete = tetris_complete || texas_complete || sudoku_complete;
+                let sims_complete = is_sims
+                    && fliwheel_var("EAPP_SIMS_ASYNC0_COMPLETE")
+                        .map(|v| v == "1" || v == "true")
+                        .unwrap_or(false);
+                let complete = tetris_complete || texas_complete || sudoku_complete || sims_complete;
                 let callback_pc = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
                 if let Some(host_path) = self.resolve_or_create_host_path(&path) {
                     self.note_audio_asset_path(&host_path);
@@ -9763,7 +9782,9 @@ fn vma_to_offset(addr: u32) -> Result<u32, EappBuildError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        decode_palette8_rgba8, live_gl_default_present_vflip, Eapp, EappInputState,
+        decode_palette8_rgba8, is_palette8_compressed_upload_call,
+        live_gl_default_present_vflip, Eapp, EappInputState, GL_PALETTE8_RGBA8_OES,
+        GL_TEXTURE_2D, GL_TEXTURE_RECTANGLE,
     };
 
     #[test]
@@ -9787,6 +9808,23 @@ mod tests {
     #[test]
     fn palette8_rgba8_rejects_short_data() {
         assert_eq!(decode_palette8_rgba8(&[0; 1024], 1, 1), None);
+    }
+
+    #[test]
+    fn palette8_compressed_upload_accepts_rectangle_and_2d_targets() {
+        assert!(is_palette8_compressed_upload_call([
+            GL_TEXTURE_2D,
+            0,
+            GL_PALETTE8_RGBA8_OES,
+            1,
+        ]));
+        assert!(is_palette8_compressed_upload_call([
+            GL_TEXTURE_RECTANGLE,
+            0,
+            GL_PALETTE8_RGBA8_OES,
+            1,
+        ]));
+        assert!(!is_palette8_compressed_upload_call([0x84f5, 0, 0x1908, 1]));
     }
 
     #[test]
