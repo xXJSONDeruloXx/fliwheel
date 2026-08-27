@@ -6181,6 +6181,11 @@ impl Eapp {
                 .bundle_dir
                 .to_str()
                 .map_or(false, |p| p.contains("33333"));
+            let is_sudoku = self
+                .metadata
+                .bundle_dir
+                .to_str()
+                .map_or(false, |p| p.contains("50513"));
             let owner = args[0];
             let req = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
             let req_cb = self.read_guest_u32(req.wrapping_add(0x0c)).unwrap_or(0);
@@ -6191,8 +6196,12 @@ impl Eapp {
             let owner_internal_ctx = self.read_guest_u32(owner.wrapping_add(0x38)).unwrap_or(0);
             let texas_complete = is_texas
                 && std::env::var("EAPP_TEXAS_ASYNC1_COMPLETE")
-                .map(|v| v == "1" || v == "true")
-                .unwrap_or(false);
+                    .map(|v| v == "1" || v == "true")
+                    .unwrap_or(false);
+            let sudoku_complete = is_sudoku
+                && std::env::var("EAPP_SUDOKU_ASYNC1_COMPLETE")
+                    .map(|v| v == "1" || v == "true")
+                    .unwrap_or(false);
             info!(
                 target: "EAPP_IMPORT",
                 "AsyncFileIO:1 owner={:#010x} req={:#010x} req_cb={:#010x} req_ctx={:#010x} owner_cb={:#010x} owner_ctx={:#010x} internal_cb={:#010x} internal_ctx={:#010x} complete={}",
@@ -6204,7 +6213,7 @@ impl Eapp {
                 owner_ctx,
                 owner_internal_cb,
                 owner_internal_ctx,
-                (complete && is_tetris || texas_complete) as u8
+                (complete && is_tetris || texas_complete || sudoku_complete) as u8
             );
             if complete && is_tetris && owner != 0 && req != 0 {
                 // Ordinal 1 is a no-path/control completion used by initiator C
@@ -6240,6 +6249,36 @@ impl Eapp {
                         self.async_pending_requests.len()
                     );
                 }
+            }
+            if sudoku_complete && owner != 0 && owner_internal_cb != 0 {
+                let status = std::env::var("EAPP_SUDOKU_ASYNC1_STATUS")
+                    .ok()
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .unwrap_or(0);
+                let byte_count = std::env::var("EAPP_SUDOKU_ASYNC1_BYTES")
+                    .ok()
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .unwrap_or(0);
+                self.write_guest_u32(owner.wrapping_add(0x20), status);
+                self.write_guest_u32(owner.wrapping_add(0x24), byte_count);
+                let _ = self.write_guest_bytes(owner.wrapping_add(0x1c), &[0]);
+                self.async_callback_queued_count =
+                    self.async_callback_queued_count.wrapping_add(1);
+                self.pending_guest_calls.push_back(PendingGuestCall {
+                    pc: owner_internal_cb,
+                    arg0: owner,
+                    arg1: owner_internal_ctx,
+                    arg2: 0,
+                    arg3: 0,
+                });
+                info!(
+                    target: "EAPP_IMPORT",
+                    "AsyncFileIO:1 Sudoku completion owner={:#010x} cb_pc={:#010x} status={} bytes={}",
+                    owner,
+                    owner_internal_cb,
+                    status,
+                    byte_count
+                );
             }
             if texas_complete && owner != 0 && req != 0 && req_cb != 0 {
                 // 0x1802c2d0 stores the request callback/context at
@@ -6302,16 +6341,29 @@ impl Eapp {
                 .bundle_dir
                 .to_str()
                 .map_or(false, |p| p.contains("33333"));
+            let is_sudoku = self
+                .metadata
+                .bundle_dir
+                .to_str()
+                .map_or(false, |p| p.contains("50513"));
             let owner = args[0];
             let callback_pc = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
             let callback_ctx = self.read_guest_u32(owner.wrapping_add(0x38)).unwrap_or(0);
+            let texas_complete = is_texas
+                && std::env::var("EAPP_TEXAS_ASYNC2_COMPLETE")
+                    .map(|v| v == "1" || v == "true")
+                    .unwrap_or(false);
+            let sudoku_complete = is_sudoku
+                && std::env::var("EAPP_SUDOKU_ASYNC2_COMPLETE")
+                    .map(|v| v == "1" || v == "true")
+                    .unwrap_or(false);
             info!(
                 target: "EAPP_IMPORT",
                 "AsyncFileIO:2 owner={:#010x} cb_pc={:#010x} cb_ctx={:#010x} complete={}",
                 owner,
                 callback_pc,
                 callback_ctx,
-                (complete && is_tetris) as u8
+                (complete && is_tetris || texas_complete || sudoku_complete) as u8
             );
             if complete && is_tetris && owner != 0 && callback_pc != 0 {
                 let _ = self.write_guest_bytes(owner.wrapping_add(0x1c), &[0]);
@@ -6337,16 +6389,35 @@ impl Eapp {
                     );
                 }
             }
-            let texas_complete = is_texas
-                && std::env::var("EAPP_TEXAS_ASYNC2_COMPLETE")
-                .map(|v| v == "1" || v == "true")
-                .unwrap_or(false);
-            if texas_complete && owner != 0 && callback_pc != 0 {
+            let title_async2_complete = texas_complete || sudoku_complete;
+            if title_async2_complete && owner != 0 && callback_pc != 0 {
                 // Hold'em's resource callback at 0x18004a14 is entered as
                 // (owner, entry). The two pointers are the same object for
                 // this AsyncFileIO:2 wrapper; it compares them and then
                 // consumes owner+0x20 as the completion status.
                 let owner_op = self.read_guest_u8(owner.wrapping_add(0x04)).unwrap_or(0);
+                if sudoku_complete && owner_op == 5 {
+                    // Sudoku's 0x1801b14c path is a seek before the following
+                    // type-3 payload read. The guest passes the absolute RLB
+                    // position in owner+0x0c; keep the staged host image at
+                    // that position so resource reads select the same bytes
+                    // as the retail stream manager.
+                    let req = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
+                    let handle = self.read_guest_u32(owner.wrapping_add(0x2c)).unwrap_or(0);
+                    let seek_offset = self.read_guest_u32(owner.wrapping_add(0x0c)).unwrap_or(0) as usize;
+                    if let Some(staged) = self.staged_files.get_mut(&req) {
+                        if staged.payload_addr == handle {
+                            staged.offset = seek_offset.min(staged.len as usize);
+                            info!(
+                                target: "EAPP_IMPORT",
+                                "AsyncFileIO:2 Sudoku seek owner={:#010x} handle={:#010x} offset={}",
+                                owner,
+                                handle,
+                                staged.offset
+                            );
+                        }
+                    }
+                }
                 if owner_op == 3 {
                     let destination = self.read_guest_u32(owner.wrapping_add(0x14)).unwrap_or(0);
                     let requested = self.read_guest_u32(owner.wrapping_add(0x18)).unwrap_or(0) as usize;
@@ -6406,7 +6477,8 @@ impl Eapp {
                 });
                 info!(
                     target: "EAPP_IMPORT",
-                    "AsyncFileIO:2 Texas completion owner={:#010x} cb_pc={:#010x}",
+                    "AsyncFileIO:2 {} completion owner={:#010x} cb_pc={:#010x}",
+                    if sudoku_complete { "Sudoku" } else { "Texas" },
                     owner,
                     callback_pc
                 );

@@ -763,8 +763,8 @@ impl LiveGlState {
         uvs: &[(f32, f32)],
     ) -> Option<usize> {
         let (_min_u, _min_v, max_u, max_v) = uv_extents_slice(uvs);
-        let need_w = max_u.ceil().max(1.0) as usize;
-        let need_h = max_v.ceil().max(1.0) as usize;
+        let need_w = needed_texture_extent_from_centered_uv(max_u);
+        let need_h = needed_texture_extent_from_centered_uv(max_v);
         self.select_upload_by_tex_name(tex_name).filter(|idx| {
             self.uploads
                 .get(*idx)
@@ -834,8 +834,8 @@ impl LiveGlState {
     fn select_upload_for_generated_text_uvs(&self, uvs: &[(f32, f32); 4]) -> Option<usize> {
         let (_min_u, _min_v, max_u, max_v) = uv_extents(uvs);
         let (span_w, span_h) = infer_dims_from_uvs(uvs);
-        let need_w = max_u.ceil().max(1.0) as usize;
-        let need_h = max_v.ceil().max(1.0) as usize;
+        let need_w = needed_texture_extent_from_centered_uv(max_u);
+        let need_h = needed_texture_extent_from_centered_uv(max_v);
         let cell_sizes = [
             (span_w.max(1), span_h.max(1)),
             (
@@ -883,8 +883,8 @@ impl LiveGlState {
     }
 
     fn select_smallest_containing_upload(&self, max_u: f32, max_v: f32) -> Option<usize> {
-        let need_w = max_u.ceil().max(1.0) as usize;
-        let need_h = max_v.ceil().max(1.0) as usize;
+        let need_w = needed_texture_extent_from_centered_uv(max_u);
+        let need_h = needed_texture_extent_from_centered_uv(max_v);
         self.uploads
             .iter()
             .filter(|u| u.texture.is_some() && u.width >= need_w && u.height >= need_h)
@@ -898,8 +898,8 @@ impl LiveGlState {
         max_u: f32,
         max_v: f32,
     ) -> Option<usize> {
-        let need_w = max_u.ceil().max(1.0) as usize;
-        let need_h = max_v.ceil().max(1.0) as usize;
+        let need_w = needed_texture_extent_from_centered_uv(max_u);
+        let need_h = needed_texture_extent_from_centered_uv(max_v);
         self.uploads
             .iter()
             .filter(|u| {
@@ -1312,6 +1312,17 @@ fn infer_dims_from_uv_slice(uvs: &[(f32, f32)]) -> (usize, usize) {
     (w, h)
 }
 
+/// Convert a texel-centered maximum UV into the required texture extent.
+///
+/// The guest uses half-texel coordinates for sub-rects: the right edge of a
+/// width-640 upload is represented as `640.5`. Rounding that edge upward to
+/// 641 rejects the upload even though the GL texture contains the complete
+/// requested span. Subtract the half-texel before taking the ceiling so both
+/// integer and half-integer edge forms select the same upload.
+fn needed_texture_extent_from_centered_uv(max_coord: f32) -> usize {
+    (max_coord - 0.5).ceil().max(1.0) as usize
+}
+
 /// Flip a framebuffer vertically in place. Used only for presentation output.
 pub fn flip_vertical_in_place(fb: &mut [Rgba8], width: usize, height: usize) {
     for y in 0..(height / 2) {
@@ -1362,6 +1373,14 @@ mod tests {
         let upload = LiveGlState::build_upload(0, 0x0de1, 2, 2, 0xdead, 0xbeef, 0x1000_0000, &[], None);
         assert!(upload.format.is_none());
         assert!(upload.texture.is_none());
+    }
+
+    #[test]
+    fn centered_uv_extent_accepts_half_texel_edges() {
+        assert_eq!(needed_texture_extent_from_centered_uv(640.5), 640);
+        assert_eq!(needed_texture_extent_from_centered_uv(425.5), 425);
+        assert_eq!(needed_texture_extent_from_centered_uv(640.51), 641);
+        assert_eq!(needed_texture_extent_from_centered_uv(0.5), 1);
     }
 
     #[test]

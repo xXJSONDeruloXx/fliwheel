@@ -18,7 +18,7 @@ older pages retain historical investigation notes and are not completion claims.
 | Mini Golf | 88888 | 🟡 Loading/progress only | [→](88888_minigolf.md) |
 | The Sims Bowling | 1500C | ❌ Renderer/asset decode blocked | [→](1500C_simsbowling.md) |
 | The Sims Pool | 1500E | ❌ Renderer/asset decode blocked | [→](1500E_simspool.md) |
-| Sudoku | 50513 | 🟡 Input lifecycle + menu/exit path verified; board not reached | [→](50513_sudoku.md) |
+| Sudoku | 50513 | 🟡 RLB/setup flow partial under opt-in gates; board not reached | [→](50513_sudoku.md) |
 | Royal Solitaire | 50514 | 🟡 Coherent splash; readiness contract unresolved | [→](50514_royal_solitaire.md) |
 | Bejeweled | 55555 | 🟡 PopCap partial | [→](55555_bejeweled.md) |
 | Zuma | 44444 | 🟡 PopCap partial | [→](44444_zuma.md) |

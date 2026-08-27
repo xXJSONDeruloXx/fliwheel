@@ -73,7 +73,7 @@ manifest. They measure visual activity, not correctness.
 | `1C300` | musika | One captured frame with the Musika logo; no fatal | Splash only | Reverse the animation/packet/sound-bank runtime after the first scene |
 | `33333` | Texas Hold'em | Corrected run completes 30,000,000 cycles / 700 captured frames with 3 visual hashes, 34 draws per steady-state frame, and no fatal; the stabilized capture is the `LOADING` screen | Loading screen only; playable state not reached | Reverse the title-specific resource completion/transition path, then verify poker-table controls and sound |
 | `44444` | Zuma | Deterministic entry reaches the Temple, all built-in instruction pages, tutorial close, and live `LEVEL 1-1: SPIRAL OF DOOM`; commit `b12cd60` renders the spiral path and colored marbles coherently, and a durable 400M-cycle probe shows repeated post-entry fire/result activity including `+80 SLOWDOWN BALL`, with no fatal signature | Repeated fire/result activity verified; aim-angle parity, audio, and save remain open | Repeat controlled wheel-to-aim/fire sequences, then verify audio and persistence |
-| `50513` | Sudoku | Recognizable title screen; reversed-register event heads now drain cleanly, and Menu enters the save/settings teardown loop. An opt-in full RLB completion runs its callback chain but adds no board draws | Input lifecycle and Menu/exit path verified; board not reached | Derive the puzzle-start/select contract and render the puzzle grid |
+| `50513` | Sudoku | Reversed-register event heads drain cleanly; an opt-in RLB completion now honors the late resource seek/read path and renders coherent `PLAYER NAME` and `GAME SETUP` scenes. `Play!` still transitions back to the name/setup flow, and the default path remains unchanged | Setup flow partial under title-scoped gates; puzzle board, audio, and save parity not verified | Resolve the Play/start-state contract and render the puzzle grid |
 | `50514` | Royal Solitaire | 700 frames, 26 hashes and 59 changes; the character splash is spatially coherent, scripted event nodes are consumed, and the savefile request completes | Coherent splash; readiness/object contract unresolved and board not reached | Reconstruct the manager readiness callback, then validate card/selection interaction |
 | `55555` | Bejeweled | Normalized wheel input reaches the tutorial and live 8×8 board; a deterministic `[8,6]` to `[8,7]` swap enters the guest swap path, displays “EXCELLENT!”, changes/refills tiles, and opens the score-bar overlay; the runner maps arrow keys to the four tap quadrants | Single live match verified; headed/mode/audio/save coverage remains | Confirm the arrow-key gesture in a headed run, then repeat across modes and verify audio/persistence |
 | `66666` | Tetris | Corrected run reaches frame 501 with 20 hashes and up to 382 draws; targeted schedules reach the board, pause/resume, left/right, signed wheel movement, hard drop, and indexed `Menu.wav`/`Move.wav`/`Drop.wav` events | Best current target; interactive partial, not complete | Finish rotation/line clears, persistence, long-run visual parity, and sound mixing |
@@ -187,6 +187,12 @@ Evidence is retained at `/tmp/fliwheel_holdem_ok_sweep_20260826/` and
   manager gate at `0x180cfa5c` remains at `2`. A diagnostic clear only tears
   down the manager and leaves the splash, so no unconditional gate patch was
   accepted. See [the readiness-contract probe](20260826_royal_readiness.md).
+- Sudoku's title-scoped RLB probe now applies the guest's absolute seek before
+  the late 153,884-byte resource read. Corrected centered half-texel UV
+  containment restores the two previously skipped setup-panel draws, producing
+  coherent `PLAYER NAME` and `GAME SETUP` captures. The probe remains opt-in;
+  `Play!` still falls back to the name/setup flow and no puzzle-board parity is
+  claimed. See the [Sudoku RLB/setup receipt](20260827_sudoku_rlb_seek_and_setup.md).
 
 ## External visual/control references
 
