@@ -383,7 +383,10 @@ impl LiveGlState {
         // submit tiny or partially off-screen quads (Tetris' board/mino path
         // does both), so a coordinate-only max<2 heuristic misclassifies
         // those quads and stretches them to the full viewport.
-        matches!(self.game_id.as_str(), "1500C" | "1500E" | "50513" | "50514")
+        (self.game_id.eq_ignore_ascii_case("1500c")
+            || self.game_id.eq_ignore_ascii_case("1500e")
+            || self.game_id == "50513"
+            || self.game_id == "50514")
             && positions
                 .iter()
                 .all(|(x, y)| *x >= 0.0 && *y >= 0.0 && *x < 2.0 && *y < 2.0)
@@ -1851,6 +1854,8 @@ mod tests {
 
         let bowling = LiveGlState::new(true, false, false, "1500C".to_string());
         assert!(bowling.uses_ndc_coordinates(&ndc_positions));
+        let bowling_runtime_id = LiveGlState::new(true, false, false, "1500c".to_string());
+        assert!(bowling_runtime_id.uses_ndc_coordinates(&ndc_positions));
 
         let pool = LiveGlState::new(true, false, false, "1500E".to_string());
         assert!(pool.uses_ndc_coordinates(&ndc_positions));

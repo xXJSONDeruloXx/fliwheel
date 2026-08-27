@@ -16,8 +16,8 @@ older pages retain historical investigation notes and are not completion claims.
 | PAC-MAN | AAAAA | 🟡 Loading screen only | [→](AAAAA_pacman.md) |
 | Mahjong | 77777 | 🟡 Texture/UV partial | [→](77777_mahjong.md) |
 | Mini Golf | 88888 | 🟡 Loading/progress only | [→](88888_minigolf.md) |
-| The Sims Bowling | 1500C | ❌ Renderer/asset decode blocked | [→](1500C_simsbowling.md) |
-| The Sims Pool | 1500E | ❌ Renderer/asset decode blocked | [→](1500E_simspool.md) |
+| The Sims Bowling | 1500C | 🟡 Coherent title screen; follow-up/gameplay open | [→](1500C_simsbowling.md) |
+| The Sims Pool | 1500E | 🟡 Coherent title screen; follow-up/gameplay open | [→](1500E_simspool.md) |
 | Sudoku | 50513 | 🟡 Populated puzzle board/input partial under opt-in gates | [→](50513_sudoku.md) |
 | Royal Solitaire | 50514 | 🟡 Coherent splash; RLB path diagnostic; readiness contract unresolved | [→](50514_royal_solitaire.md) |
 | Bejeweled | 55555 | 🟡 PopCap partial | [→](55555_bejeweled.md) |
@@ -185,6 +185,14 @@ For a portable corpus-wide probe, pass the root explicitly:
   event heads without changing Tetris's owner path
 - Sudoku's Menu edge is confirmed as teardown/exit; the puzzle-start event and
   post-RLB scene contract remain open
+
+### 2026-08-27: Sims normalized-coordinate casing fix
+- Runtime bundle IDs are normalized to lowercase before the shared GL HLE is
+  created
+- The Sims NDC matcher now accepts the actual lowercase IDs (`1500c`/`1500e`)
+- Both Sims titles render coherent title screens; menu/gameplay behavior remains
+  unverified
+- Evidence: [Sims NDC casing-fix probe](../game_tests/20260827_sims_ndc_casing_fix.md)
 
 ### 2026-06-26: Sudoku works, PopCap DMA, 12/16 games rendering
 - Sudoku: auto-begin, NDC scaling, auto-vflip, 0-draw preservation

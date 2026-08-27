@@ -5159,6 +5159,12 @@ impl Eapp {
                 .map(|(u, v)| format!("({:.1},{:.1})", u, v))
                 .collect::<Vec<_>>()
                 .join(",");
+            let positions = draw
+                .positions
+                .iter()
+                .map(|(x, y)| format!("({:.4},{:.4})", x, y))
+                .collect::<Vec<_>>()
+                .join(",");
             let color = draw
                 .solid_color
                 .map(|c| format!("solid=rgba({},{},{},{})", c.r, c.g, c.b, c.a))
@@ -5169,7 +5175,7 @@ impl Eapp {
             );
             info!(
                 target: "EAPP_GL",
-                "draw_detail guest_frame={} draw={} handle={:#x} state_ptr={:#010x} bound_tex={:?} enabled={:?} pos_arr={} uv_arr={} translation=({:.2},{:.2}) bounds=({:.1},{:.1})-({:.1},{:.1}) uvs=[{}] inferred_dim={:?} {} {} {} coverage={} status={} state_words=[{}]",
+                "draw_detail guest_frame={} draw={} handle={:#x} state_ptr={:#010x} bound_tex={:?} enabled={:?} pos_arr={} uv_arr={} translation=({:.2},{:.2}) bounds=({:.1},{:.1})-({:.1},{:.1}) positions=[{}] uvs=[{}] inferred_dim={:?} {} {} {} coverage={} status={} state_words=[{}]",
                 self.frame_counter,
                 draw.draw_index + 1,
                 draw.handle,
@@ -5184,6 +5190,7 @@ impl Eapp {
                 draw.bounds.1,
                 draw.bounds.2,
                 draw.bounds.3,
+                positions,
                 uvs,
                 draw.inferred_dim,
                 upload,
