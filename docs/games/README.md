@@ -115,9 +115,10 @@ defaults.
 
 ### Bundle Directory
 
-The current decrypted corpus used for regression is at:
+The current decrypted corpus used for regression is stored on the external
+volume at:
 ```
-/tmp/clicky_hle_eval.1i3DER/archive20/20 iPod games/Games_RO/<bundle_id>/
+/Volumes/NO NAME/fliwheel-decrypted-corpus-20260826/20 iPod games/Games_RO/<bundle_id>/
 ```
 
 For a portable corpus-wide probe, pass the root explicitly:

@@ -1,8 +1,8 @@
 # Decrypted clickwheel-game interactive matrix
 
-Date: 2026-08-26 UTC  
+Date: 2026-08-26 UTC; renderer checkpoint: 2026-08-27 UTC
 Repository: `fliwheel`  
-Corpus: `/tmp/clicky_hle_eval.1i3DER/archive20/20 iPod games/Games_RO`  
+Corpus: `/Volumes/NO NAME/fliwheel-decrypted-corpus-20260826/20 iPod games/Games_RO`
 Runner: `target/release/eapp` with experimental live GL HLE  
 
 This is the corrected corpus-wide scripted interaction pass. It is deliberately
@@ -20,7 +20,7 @@ The reusable harness is:
 CYCLES=30000000 \
 RUN_ROOT=/tmp/fliwheel_interactive_corrected_20260826 \
 ./scripts/test_decrypted_games_interactive.sh \
-  '/tmp/clicky_hle_eval.1i3DER/archive20/20 iPod games/Games_RO'
+  '/Volumes/NO NAME/fliwheel-decrypted-corpus-20260826/20 iPod games/Games_RO'
 ```
 
 The earlier family reports are in `/tmp/fliwheel_interactive_full_{a,b,c,d}`;
@@ -72,7 +72,7 @@ manifest. They measure visual activity, not correctness.
 | `1B200` | LOST | 700 frames, zero GL draws, blank framebuffer; rserver loads but no shader output | Shader/render-server blocked | Parse or emulate the `rserver.bin` programmable path |
 | `1C300` | musika | One captured frame with the Musika logo; no fatal | Splash only | Reverse the animation/packet/sound-bank runtime after the first scene |
 | `33333` | Texas Hold'em | Corrected run completes 30,000,000 cycles / 700 captured frames with 3 visual hashes, 34 draws per steady-state frame, and no fatal; the stabilized capture is the `LOADING` screen | Loading screen only; playable state not reached | Reverse the title-specific resource completion/transition path, then verify poker-table controls and sound |
-| `44444` | Zuma | Deterministic entry reaches the Temple, all built-in instruction pages, tutorial close, and live `LEVEL 1-1: SPIRAL OF DOOM`; HUD, frog, firing animation, and 52-79 draw live-board samples are present with no fatal | Live board reached; path/marble texture composition partial, not playable | Reconstruct texture name `0x8` upload/bind lifetime, then verify coherent track, aim, fire, collision, audio, and save |
+| `44444` | Zuma | Deterministic entry reaches the Temple, all built-in instruction pages, tutorial close, and live `LEVEL 1-1: SPIRAL OF DOOM`; commit `b12cd60` now renders the spiral path and colored marbles coherently, with no fatal in a 190M-cycle control replay | Live board visually coherent; shot/collision/audio/save parity not yet verified | Verify clickwheel aim, fired shot, collision chain, audio, and save |
 | `50513` | Sudoku | Recognizable title screen; reversed-register event heads now drain cleanly, and Menu enters the save/settings teardown loop. An opt-in full RLB completion runs its callback chain but adds no board draws | Input lifecycle and Menu/exit path verified; board not reached | Derive the puzzle-start/select contract and render the puzzle grid |
 | `50514` | Royal Solitaire | 700 frames, 26 hashes and 59 changes; the character splash is spatially coherent, scripted event nodes are consumed, and the savefile request completes | Coherent splash; readiness/object contract unresolved and board not reached | Reconstruct the manager readiness callback, then validate card/selection interaction |
 | `55555` | Bejeweled | Normalized wheel input reaches the tutorial and live 8×8 board; a deterministic `[8,6]` to `[8,7]` swap enters the guest swap path, displays “EXCELLENT!”, changes/refills tiles, and opens the score-bar overlay; the runner maps arrow keys to the four tap quadrants | Single live match verified; headed/mode/audio/save coverage remains | Confirm the arrow-key gesture in a headed run, then repeat across modes and verify audio/persistence |
@@ -158,6 +158,14 @@ Evidence is retained at `/tmp/fliwheel_holdem_ok_sweep_20260826/` and
   distinct overlay roles and presenting an upright board. PopCap bundles now
   default to the guest screen origin, with `FLIWHEEL_GL_PRESENT_VFLIP` retained
   for explicit A/B tests. See the [PopCap DMA contract probe](20260826_popcap_dma_contract.md).
+- PopCap upload association now replaces stale ordinal-45 metadata whenever a
+  real OpenGLES:4 bind arrives. This fixes the observed Zuma `0x8` marble-atlas
+  upload being incorrectly tagged as `0x7`; the corrected board capture and
+  control replay are recorded in the [Zuma board-entry receipt](20260826_zuma_board_entry.md).
+- Executable discovery ignores archive-generated AppleDouble `._*.bin`
+  sidecars. The durable corpus extracted from the external drive contains
+  those metadata files alongside the real plaintext eApp binaries, so this is
+  covered by every subsequent corpus run.
 - The legacy `Filesytem` ABI now has independent synthetic handles,
   sequential host-backed reads, and close semantics. Bejeweled reaches its
   menu, 8×8 board, and “Selecting Gems” tutorial; normalized wheel input now

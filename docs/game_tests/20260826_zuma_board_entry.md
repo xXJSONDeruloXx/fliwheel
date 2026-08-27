@@ -1,25 +1,27 @@
 # Zuma live-board entry receipt
 
-Date: 2026-08-26  
+Date: 2026-08-26; renderer update: 2026-08-27
 Bundle: `44444`  
 Purpose: drive the verified title/tutorial path through the first live Zuma
 board and separate input progress from renderer completeness.
 
 ## Result
 
-The HLE now reaches the live `LEVEL 1-1: SPIRAL OF DOOM` scene. The capture
-contains the HUD, the centered frog, the level transition, a marble/firing
-animation, and repeated Select edges after board entry. This is a real
-gameplay-state receipt, but not a playable-parity receipt: the spiral path and
-colored marbles are spatially scattered because the texture/material
-association for the board's repeated `0x10` draws is still incomplete.
+The HLE reaches the live `LEVEL 1-1: SPIRAL OF DOOM` scene. The original
+board-entry capture contains the HUD, centered frog, level transition,
+marble/firing animation, and repeated Select edges after board entry. The
+texture-name fix in commit `b12cd60` now associates each PopCap upload with the
+latest real `OpenGLES:4` bind, so the corrected replay renders the spiral path
+and colored marbles coherently. This is still a gameplay-state receipt, not a
+playable-parity receipt: aim, firing, collision, audio, and persistence remain
+to be verified.
 
 ## Reproduction
 
 Corpus executable:
 
 ```text
-/tmp/clicky_hle_eval.1i3DER/archive20/20 iPod games/Games_RO/44444/Executables/Zuma_1_1_2563298.bin
+/Volumes/NO NAME/fliwheel-decrypted-corpus-20260826/20 iPod games/Games_RO/44444/Executables/Zuma_1_1_2563298.bin
 ```
 
 Runner environment:
@@ -40,7 +42,7 @@ action:1400-1402, action:1500-1502, action:1600-1602,
 action:1700-1702, action:1900-1902, action:2100-2102
 ```
 
-The full capture and log are retained at:
+The original full capture and log are retained at:
 
 ```text
 /tmp/fliwheel_zuma_board_entry_20260826.95lN0i/capture/
@@ -66,15 +68,30 @@ reach 79 draws. No fatal signature was observed.
 
 The live board's first full-surface draw uses material handle `0x16` and the
 valid `322x222` RGBA4444 upload against the guest's `320x240` UV span. The
-repeated board-object draws use material `0x10`, but the guest binds texture
-name `0x8` while the captured uploads contain no corresponding `tex_name=0x8`
-upload. The current generic fallback therefore chooses unrelated containing
-uploads for many 17x17 UV slices. This explains the scattered path/ball
-artifacts and is the next narrow renderer target.
+repeated board-object draws use material `0x10` and the guest binds texture
+name `0x8`. The pre-fix bind trace at
+`/tmp/fliwheel_zuma_bindtrace.NfTiSu/run.log` showed a stale pending `0x7`
+surviving across that bind, tagging the `512x114` colored-marble atlas as
+`tex_name=0x7`. Commit `b12cd60` makes the latest nonzero `OpenGLES:4` bind the
+pending upload association, which removes that stale-name mismatch.
+
+## Corrected renderer verification
+
+The corrected capture at `/tmp/fliwheel_zuma_texturefix3.SDhEH4/` reached the
+live board with 2,742 guest-frame rows, 588 presented hashes, and a 340-draw
+peak. Frames 2500, 2600, 2700, and 2741 show a complete spiral track with
+colored marbles distributed along it, the centered frog, HUD, and animated
+next-ball state. The longer durable-corpus control replay at
+`/tmp/fliwheel_zuma_shot.HNTruP/` completed 190,000,000 cycles and 7,600 guest
+frames without a fatal signature; its tutorial close pulses were still
+timer-misaligned, so it is not counted as a shot/collision result.
+
+The same source build passed focused 30,000,000-cycle regressions for
+Bejeweled (`55555`) and Tetris (`66666`) with exit `0` and zero fatal
+signatures. Their report is at
+`/tmp/fliwheel_bindfix_regression_20260826/interactive_matrix.md`.
 
 ## Remaining gates
 
-Zuma still needs a faithful texture redefinition/bind lifetime model, coherent
-spiral-track and marble composition, clickwheel rotation/aim behavior, firing
-and collision verification, audio playback, and save/persistence coverage.
-
+Zuma still needs clickwheel rotation/aim behavior, a verified fired shot and
+collision chain, audio playback, and save/persistence coverage.
