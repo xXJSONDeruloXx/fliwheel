@@ -28,11 +28,11 @@ pub use gl_trace::{
     GlRegisterSnapshot, GlStackWordSnapshot, GlTraceFixture, GlTraceRecorder, GlValueClass,
 };
 use live_gl::LiveGlState;
-use usse::{UsseProgram, UsseVm};
 pub use rasterizer::{
     blend_src_over, decode_texture_pixels, framebuffer_hash, framebuffer_to_ppm, rasterize_quad,
     rasterize_triangle, sample_nearest, Rgba8, Texture, TextureFormat,
 };
+use usse::{UsseProgram, UsseVm};
 
 use crate::devices::generic::Ram;
 use crate::devices::{Device, Probe};
@@ -81,7 +81,7 @@ const WORK_RAM_SIZE: usize = 64 * 1024 * 1024;
 /// SDRAM alias; `FLIWHEEL_EAPP_UNCACHED_ALIAS=1` selects that A/B path.
 const HW_STUB_BASE: u32 = 0x1400_0000;
 const HW_STUB_SIZE: usize = 0x400_0000; // 64 MiB - covers entire 0x14000000..0x18000000 gap
-// (DMA channel register banks at 64KB strides: 0x14000000, 0x14010000, 0x14020000, etc.)
+                                        // (DMA channel register banks at 64KB strides: 0x14000000, 0x14010000, 0x14020000, etc.)
 
 /// PopCap engine DMA framebuffer base — the engine writes RGB565 pixels
 /// directly into this region for display via hardware DMA transfer.
@@ -261,8 +261,7 @@ fn decode_palette8_rgba8(raw: &[u8], width: usize, height: usize) -> Option<Vec<
 }
 
 fn is_palette8_compressed_upload_call(args: [u32; 4]) -> bool {
-    matches!(args[0], GL_TEXTURE_2D | GL_TEXTURE_RECTANGLE)
-        && args[2] == GL_PALETTE8_RGBA8_OES
+    matches!(args[0], GL_TEXTURE_2D | GL_TEXTURE_RECTANGLE) && args[2] == GL_PALETTE8_RGBA8_OES
 }
 
 fn quad_from_slice(pts: &[(f32, f32)]) -> [(f32, f32); 4] {
@@ -793,8 +792,7 @@ impl Eapp {
                 dma_framebuf: Ram::new(320 * 240 * 2), // RGB565 320×240
                 uncached_sdram_alias: fliwheel_var_os("EAPP_UNCACHED_ALIAS").is_some(),
                 hw_control_value: Self::parse_hw_control_value_env(),
-                dma_source_dump_dir: fliwheel_var_os("EAPP_DMA_SOURCE_DUMP_DIR")
-                    .map(PathBuf::from),
+                dma_source_dump_dir: fliwheel_var_os("EAPP_DMA_SOURCE_DUMP_DIR").map(PathBuf::from),
                 watch_source_dump_dir: fliwheel_var_os("EAPP_WATCH_SOURCE_DUMP_DIR")
                     .map(PathBuf::from),
                 watch_source_dumped: false,
@@ -1375,11 +1373,17 @@ impl Eapp {
         let size = WORK_RAM_SIZE;
         let mut buf = vec![0u8; size];
         self.bus.work_ram.bulk_read(0, &mut buf);
-        let labels = ["MENU", "PLAY", "VOLUME", "OPTIONS", "RECORDS", "HELP", "EXIT"];
+        let labels = [
+            "MENU", "PLAY", "VOLUME", "OPTIONS", "RECORDS", "HELP", "EXIT",
+        ];
         let encodings: [(&str, fn(&str) -> Vec<u8>); 3] = [
             ("ascii", |s| s.as_bytes().to_vec()),
-            ("utf16le", |s| s.encode_utf16().flat_map(|c| c.to_le_bytes()).collect()),
-            ("utf16be", |s| s.encode_utf16().flat_map(|c| c.to_be_bytes()).collect()),
+            ("utf16le", |s| {
+                s.encode_utf16().flat_map(|c| c.to_le_bytes()).collect()
+            }),
+            ("utf16be", |s| {
+                s.encode_utf16().flat_map(|c| c.to_be_bytes()).collect()
+            }),
         ];
         let find_hits = |pat: &[u8], limit: usize| -> Vec<u32> {
             let mut hits = Vec::new();
@@ -1416,9 +1420,8 @@ impl Eapp {
             }
         }
 
-        let utf16be = |s: &str| -> Vec<u8> {
-            s.encode_utf16().flat_map(|c| c.to_be_bytes()).collect()
-        };
+        let utf16be =
+            |s: &str| -> Vec<u8> { s.encode_utf16().flat_map(|c| c.to_be_bytes()).collect() };
         let decode_utf16be = |bytes: &[u8]| -> String {
             let words: Vec<u16> = bytes
                 .chunks_exact(2)
@@ -1450,7 +1453,11 @@ impl Eapp {
             for off in (0..buf.len().saturating_sub(3)).step_by(4) {
                 let val = u32::from_le_bytes([buf[off], buf[off + 1], buf[off + 2], buf[off + 3]]);
                 if (start..end).contains(&val) {
-                    refs.push(format!("{:#010x}->{:#010x}", WORK_RAM_BASE + off as u32, val));
+                    refs.push(format!(
+                        "{:#010x}->{:#010x}",
+                        WORK_RAM_BASE + off as u32,
+                        val
+                    ));
                     if refs.len() >= limit {
                         break;
                     }
@@ -1496,7 +1503,11 @@ impl Eapp {
             let value_addr = WORK_RAM_BASE + value_start as u32;
             let row_end_addr = WORK_RAM_BASE + row_end as u32;
             let row_refs = pointer_refs(id_addr, row_end_addr, 16);
-            let value_refs = pointer_refs(value_addr, value_addr + (value_end - value_start) as u32, 16);
+            let value_refs = pointer_refs(
+                value_addr,
+                value_addr + (value_end - value_start) as u32,
+                16,
+            );
             info!(
                 target: "EAPP",
                 "string_row id={} id_addr={:#010x} value_addr={:#010x} value={:?} row_end={:#010x} row_ptr_refs=[{}] value_ptr_refs=[{}]",
@@ -1519,8 +1530,11 @@ impl Eapp {
     /// manager / dispatcher without being throttled by the log cap.
     pub fn dump_string_trace_totals(&mut self) {
         if string_trace_enabled() && !self.string_trace_hits.is_empty() {
-            let mut entries: Vec<(u32, u32)> =
-                self.string_trace_hits.iter().map(|(k, v)| (*k, *v)).collect();
+            let mut entries: Vec<(u32, u32)> = self
+                .string_trace_hits
+                .iter()
+                .map(|(k, v)| (*k, *v))
+                .collect();
             entries.sort_by_key(|&(pc, _)| pc);
             let mut out = String::from("string_trace_totals:");
             for (pc, count) in entries {
@@ -1611,7 +1625,11 @@ impl Eapp {
         if self.bus.hw_dma_dirty
             && self.live_gl.is_some()
             && self.step_counter % 10000 == 0
-            && !self.live_gl.as_ref().map(|lg| lg.frame_active).unwrap_or(false)
+            && !self
+                .live_gl
+                .as_ref()
+                .map(|lg| lg.frame_active)
+                .unwrap_or(false)
         {
             self.maybe_present_dma_frame();
         }
@@ -1657,7 +1675,11 @@ impl Eapp {
             && fliwheel_var("EAPP_ASYNC3_COMPLETE")
                 .map(|v| v == "1" || v == "true")
                 .unwrap_or(false)
-            && self.metadata.bundle_dir.to_str().map_or(false, |p| p.contains("66666"))
+            && self
+                .metadata
+                .bundle_dir
+                .to_str()
+                .map_or(false, |p| p.contains("66666"))
         {
             let mode = self.cpu.mode();
             let req = self.cpu.reg_get(mode, 4);
@@ -1683,7 +1705,12 @@ impl Eapp {
         // Bootstrap preallocates work-RAM scratch structures for both cases.
         // This is intentionally gated by bundle id and exact PC/range so
         // working titles cannot observe it.
-        if self.metadata.bundle_dir.to_str().map_or(false, |p| p.contains("12345")) {
+        if self
+            .metadata
+            .bundle_dir
+            .to_str()
+            .map_or(false, |p| p.contains("12345"))
+        {
             if pc == 0x1801_4d54u32 || pc == 0x1801_1290u32 {
                 let mode = self.cpu.mode();
                 let current_r0 = self.cpu.reg_get(mode, 0);
@@ -1759,7 +1786,11 @@ impl Eapp {
         // at 0x1802fcc4 before the known null-owner fatal at 0x1802fd00.
         // Disabled by default; enable with EAPP_TEXAS_TRACE=1.
         if std::env::var_os("EAPP_TEXAS_TRACE").is_some()
-            && self.metadata.bundle_dir.to_str().map_or(false, |p| p.contains("33333"))
+            && self
+                .metadata
+                .bundle_dir
+                .to_str()
+                .map_or(false, |p| p.contains("33333"))
             && (pc == 0x1802_fcc4u32 || pc == 0x1802_fcf0u32 || pc == 0x1802_fd00u32)
         {
             let mode = self.cpu.mode();
@@ -1847,9 +1878,7 @@ impl Eapp {
         // Older RE (iter 20): downstream PC-hook injection retained for direct
         // comparison. Prefer `FLIWHEEL_EAPP_HOST_EVENT_FLAGS=0x18` now because it
         // uses the guest's real `0x50b0 -> 0x5aa4` event-copy path.
-        if fliwheel_var_os("EAPP_AUDIO_SLOT_BIT").is_some()
-            && pc == 0x1801_b630u32
-        {
+        if fliwheel_var_os("EAPP_AUDIO_SLOT_BIT").is_some() && pc == 0x1801_b630u32 {
             let bit: u32 = fliwheel_var("EAPP_AUDIO_SLOT_BIT_VAL")
                 .ok()
                 .and_then(|s| u32::from_str_radix(s.trim_start_matches("0x"), 16).ok())
@@ -1915,7 +1944,10 @@ impl Eapp {
             // surrounding header fields are visible at the fault. This is a
             // generic diagnostic, only fires on fatal, and is intentionally
             // bounded to avoid pulling huge regions into logs.
-            if let Some(obj) = self.read_guest_words(self.cpu.reg_get(mode, 0), 16).get(0..16) {
+            if let Some(obj) = self
+                .read_guest_words(self.cpu.reg_get(mode, 0), 16)
+                .get(0..16)
+            {
                 warn!(
                     target: "EAPP",
                     "fault object @r0 words=[{}]",
@@ -2097,7 +2129,10 @@ impl Eapp {
         // lets any faulting work-RAM object be attributed to the guest call
         // site that created it. Useful for null-vtable / null-deref teardown
         // investigations.
-        if import.module == "miscTBD" && import.ordinal == 0 && fliwheel_var_os("ALLOC_TRACE").is_some() {
+        if import.module == "miscTBD"
+            && import.ordinal == 0
+            && fliwheel_var_os("ALLOC_TRACE").is_some()
+        {
             info!(
                 target: "EAPP_ALLOC",
                 "miscTBD:0 alloc lr={:#010x} ret={:#010x} len={} r1={:#010x}",
@@ -2158,7 +2193,9 @@ impl Eapp {
         let len_str = parts.next().map(|s| s.trim()).unwrap_or("0x20");
         let parse_num = |s: &str| -> Option<u32> {
             let s = s.trim().trim_start_matches("0x").trim_start_matches("0X");
-            u32::from_str_radix(s, 16).ok().or_else(|| s.parse::<u32>().ok())
+            u32::from_str_radix(s, 16)
+                .ok()
+                .or_else(|| s.parse::<u32>().ok())
         };
         let addr = parse_num(addr_str)?;
         let len = parse_num(len_str).unwrap_or(0x20);
@@ -2200,7 +2237,9 @@ impl Eapp {
     fn parse_pc_trace_env() -> HashSet<u32> {
         let parse_num = |s: &str| -> Option<u32> {
             let s = s.trim().trim_start_matches("0x").trim_start_matches("0X");
-            u32::from_str_radix(s, 16).ok().or_else(|| s.parse::<u32>().ok())
+            u32::from_str_radix(s, 16)
+                .ok()
+                .or_else(|| s.parse::<u32>().ok())
         };
         fliwheel_var("EAPP_PC_TRACE")
             .ok()
@@ -2337,22 +2376,61 @@ impl Eapp {
         }
 
         let ret = match ordinal {
-            13 => { self.live_handle_clear_color(args); 0 }
-            12 => { self.live_handle_clear(args); 0 }
-            99 => { self.live_handle_upload(args); 0 }
-            137 => { self.live_handle_array_def(args); 0 }
-            40 => { self.live_handle_enable_array(args); 0 }
-            169 => { self.live_handle_translate(args); 0 }
-            159 => { self.live_handle_bind_material(args); 0 }
-            37 => { self.live_handle_draw(args); 0 }
-            38 => { self.live_handle_draw_elements(args); 0 }
-            45 => { self.live_handle_resource_upload(args); 0 }
+            13 => {
+                self.live_handle_clear_color(args);
+                0
+            }
+            12 => {
+                self.live_handle_clear(args);
+                0
+            }
+            99 => {
+                self.live_handle_upload(args);
+                0
+            }
+            137 => {
+                self.live_handle_array_def(args);
+                0
+            }
+            40 => {
+                self.live_handle_enable_array(args);
+                0
+            }
+            169 => {
+                self.live_handle_translate(args);
+                0
+            }
+            159 => {
+                self.live_handle_bind_material(args);
+                0
+            }
+            37 => {
+                self.live_handle_draw(args);
+                0
+            }
+            38 => {
+                self.live_handle_draw_elements(args);
+                0
+            }
+            45 => {
+                self.live_handle_resource_upload(args);
+                0
+            }
             // Candidate lifecycle from observed live ordering:
             // 158 always precedes all steady-state draws; 157 always follows.
             // Neutral names until exact ABI semantics are proven.
-            158 => { self.live_handle_candidate_begin(); 0 }
-            157 => { self.live_handle_candidate_present(); 0 }
-            165 => { self.live_handle_ordinal_165(args); 0 }
+            158 => {
+                self.live_handle_candidate_begin();
+                0
+            }
+            157 => {
+                self.live_handle_candidate_present();
+                0
+            }
+            165 => {
+                self.live_handle_ordinal_165(args);
+                0
+            }
             // Ordinal 164: shader program create/link. Takes pointer to shader
             // binary (rserver.bin), returns a program ID. Must return non-zero
             // so the game sees a valid program. Lost and TWA both use this.
@@ -2380,12 +2458,15 @@ impl Eapp {
                 if bin_addr >= 0x10000000 && bin_addr < 0x10800000 {
                     let header_start = bin_addr;
                     let header_words = self.read_guest_words(header_start, 0x80); // First 128 words (0x200 bytes)
-                    let non_zero: Vec<(String, u32)> = header_words.iter().enumerate()
+                    let non_zero: Vec<(String, u32)> = header_words
+                        .iter()
+                        .enumerate()
                         .filter(|(_, &w)| w != 0)
                         .map(|(i, w)| (format!("+0x{:03x}", i * 4), *w))
                         .collect();
                     if !non_zero.is_empty() {
-                        let summary: Vec<String> = non_zero.iter()
+                        let summary: Vec<String> = non_zero
+                            .iter()
                             .map(|(off, val)| format!("{}={:#010x}", off, val))
                             .collect();
                         info!(target: "EAPP_GL", "ordinal_164: rserver header non-zero: {}", summary.join(", "));
@@ -2410,7 +2491,7 @@ impl Eapp {
                         self.write_guest_u32(stub_base.wrapping_add(4), 0x47702001); // stub1: return 1
                         let stub0 = stub_base | 1; // Thumb mode bit
                         let stub1 = (stub_base.wrapping_add(4)) | 1; // Thumb mode bit
-                        // Fill header with stub1 pointers (return 1 = success)
+                                                                     // Fill header with stub1 pointers (return 1 = success)
                         for i in 0..0x80 {
                             self.write_guest_u32(header_start.wrapping_add(i * 4), stub1);
                         }
@@ -2496,7 +2577,10 @@ impl Eapp {
             // Ordinal 148 appears before pointer-backed material draws in the
             // menu phase. Evidence: r0=4, r1=1, r2=0x101029e8 (work RAM ptr).
             // Semantics not yet confirmed — capture args for analysis.
-            148 => { self.live_handle_ordinal_148(args); 0 }
+            148 => {
+                self.live_handle_ordinal_148(args);
+                0
+            }
             // Ordinal 4: glBindTexture(target, texture).
             // r0=target (e.g. 0xDE1=GL_TEXTURE_2D), r1=texture_name.
             // Capture the texture name so that the next ordinal-99 upload
@@ -2519,7 +2603,7 @@ impl Eapp {
                 }
                 0
             }
-            _ => 0
+            _ => 0,
         };
         ret
     }
@@ -2558,7 +2642,9 @@ impl Eapp {
             let handle = lg.current_handle;
             if handle < 0x1000_0000 && (state_ptr >= 0x1000_0000 && state_ptr < 0x2000_0000) {
                 let shader_state_off = 0x60;
-                let shader_state = self.read_guest_u32(state_ptr.wrapping_add(shader_state_off)).unwrap_or(0);
+                let shader_state = self
+                    .read_guest_u32(state_ptr.wrapping_add(shader_state_off))
+                    .unwrap_or(0);
                 if shader_state == 0xffffffff {
                     self.write_guest_u32(state_ptr.wrapping_add(shader_state_off), 0);
                     info!(target: "EAPP_GL", "present: patched shader state 0xffffffff -> 0 at {:#010x}+0x60", state_ptr);
@@ -2593,7 +2679,10 @@ impl Eapp {
                     }
                 }
                 if non_zero_count > 0 {
-                    if *name == "rserver_data_0x11000" || *name == "rserver_ptrs_0x10012700" || *name == "rserver_ptrs_0x1001F400" {
+                    if *name == "rserver_data_0x11000"
+                        || *name == "rserver_ptrs_0x10012700"
+                        || *name == "rserver_ptrs_0x1001F400"
+                    {
                         // Full dump for rserver data
                         let mut all_nz: Vec<String> = vec![];
                         for i in (0..0x8000).step_by(4) {
@@ -2602,7 +2691,9 @@ impl Eapp {
                                 Some(w) if w != 0 => Some(format!("+0x{:04x}={:#010x}", i, w)),
                                 _ => None,
                             };
-                            if let Some(s) = w { all_nz.push(s); }
+                            if let Some(s) = w {
+                                all_nz.push(s);
+                            }
                         }
                         info!(target: "EAPP_GL", "lost_memscan {} base={:#010x}: FULL DUMP:\n  {}",
                             name, base, all_nz.join(",\n  "));
@@ -2674,7 +2765,7 @@ impl Eapp {
                     // Zero the bottom rows
                     let bottom = vec![0u8; 320 * 24 * 2];
                     self.bus.dma_framebuf.bulk_write(320 * 216 * 2, &bottom);
-                    has_dma = true;  // Treat as DMA content
+                    has_dma = true; // Treat as DMA content
                     info!(target: "EAPP_GL", "lost_splash: wrote 320x216 RGB565 to DMA framebuffer from {:?}", splash_path);
                     // Re-read DMA for the overlay
                     dma_data = {
@@ -2953,7 +3044,10 @@ impl Eapp {
 
         let index = self.live_gl.as_ref().map(|l| l.uploads.len()).unwrap_or(0);
         let backing = self.file_backing_for_addr(source_ptr);
-        let tex_name = self.live_gl.as_mut().and_then(|l| l.pending_tex_name.take());
+        let tex_name = self
+            .live_gl
+            .as_mut()
+            .and_then(|l| l.pending_tex_name.take());
         let mut upload = LiveGlState::build_upload(
             index,
             target,
@@ -3054,7 +3148,10 @@ impl Eapp {
 
         let index = self.live_gl.as_ref().map(|l| l.uploads.len()).unwrap_or(0);
         let backing = self.file_backing_for_addr(source_ptr);
-        let tex_name = self.live_gl.as_mut().and_then(|l| l.pending_tex_name.take());
+        let tex_name = self
+            .live_gl
+            .as_mut()
+            .and_then(|l| l.pending_tex_name.take());
         let upload = live_gl::LiveGlUpload {
             index,
             target: args[0],
@@ -3122,15 +3219,25 @@ impl Eapp {
         if component_count > 32 {
             let inferred = if format == live_gl::GL_FIXED && stride > 0 && stride % 4 == 0 {
                 let total_comps = stride / 4; // total components across all arrays in this struct
-                // For the position array (idx=0), typically 4 comps (x,y,z,w)
-                // For UV array (idx=1), typically 2 comps (u,v)
-                // Use a conservative estimate based on array_index
-                if array_index == 0 { total_comps.min(4) }
-                else if array_index == 1 { 2 }
-                else { 4 }
+                                              // For the position array (idx=0), typically 4 comps (x,y,z,w)
+                                              // For UV array (idx=1), typically 2 comps (u,v)
+                                              // Use a conservative estimate based on array_index
+                if array_index == 0 {
+                    total_comps.min(4)
+                } else if array_index == 1 {
+                    2
+                } else {
+                    4
+                }
             } else {
                 // Fallback: use 4 for pos, 2 for UV
-                if array_index == 0 { 4 } else if array_index == 1 { 2 } else { 4 }
+                if array_index == 0 {
+                    4
+                } else if array_index == 1 {
+                    2
+                } else {
+                    4
+                }
             };
             info!(
                 target: "EAPP_GL",
@@ -3280,10 +3387,7 @@ impl Eapp {
                     lg.translation = lg.frame_base_translation;
                 }
                 lg.frame_material_bound = true;
-            } else if lg.game_id == "66666"
-                && handle == 0x19
-                && lg.board_base_translation_valid
-            {
+            } else if lg.game_id == "66666" && handle == 0x19 && lg.board_base_translation_valid {
                 // Non-incremental frames use the centered origin learned
                 // from the complete matrix draw.
                 lg.translation = lg.frame_base_translation;
@@ -3304,12 +3408,12 @@ impl Eapp {
         );
         // One-time dump of state_ptr object for shader-program materials
         // (small handle + high state_ptr = likely shader-bound resource)
-        if handle < 0x1000_0000
-            && (state_ptr >= 0x1000_0000 && state_ptr < 0x2000_0000)
-        {
+        if handle < 0x1000_0000 && (state_ptr >= 0x1000_0000 && state_ptr < 0x2000_0000) {
             if self.dumped_pointer_handles.insert(state_ptr) {
                 let words = self.read_guest_words(state_ptr, 32);
-                let shader_state = self.read_guest_u32(state_ptr.wrapping_add(0x60)).unwrap_or(0);
+                let shader_state = self
+                    .read_guest_u32(state_ptr.wrapping_add(0x60))
+                    .unwrap_or(0);
                 let hex: Vec<String> = words.iter().map(|w| format!("{:#010x}", w)).collect();
                 info!(target: "EAPP_GL", "bind_material handle={:#x} state_ptr={:#010x} shader_st={:#010x} words=[{}]", handle, state_ptr, shader_state, hex.join(","));
             }
@@ -3332,7 +3436,7 @@ impl Eapp {
     ///   +0x54: count (should be 1)
     ///   +0x5c: array_ptr -> object
     ///   +0x04: object_ptr -> buffer (via ldr r0, [r0, #4] at crash site)
-    /// 
+    ///
     /// The object at +0x04 needs:
     ///   +0x00: vtable
     ///   +0x04: buffer_ptr (this is what stmia writes to)
@@ -3344,54 +3448,62 @@ impl Eapp {
             "ordinal_165: state_ptr={:#010x} r1={:#010x} r2={:#010x} r3={:#010x}",
             state_ptr, r1, args[2], args[3]
         );
-        
+
         // Vortex-specific: container at 0x18063ebc needs full structure wiring
         if state_ptr == 0x18063ebc {
             // Check if already initialized (avoid double-alloc)
-            let current_array = self.read_guest_u32(state_ptr.wrapping_add(0x5c)).unwrap_or(0);
+            let current_array = self
+                .read_guest_u32(state_ptr.wrapping_add(0x5c))
+                .unwrap_or(0);
             if current_array != 0 {
                 info!(target: "EAPP_GL", "ordinal_165: Vortex container already initialized");
                 return;
             }
-            
+
             info!(target: "EAPP_GL", "ordinal_165: initializing Vortex surface structures");
-            
+
             // Read current container state before modification
-            let before_c4 = self.read_guest_u32(state_ptr.wrapping_add(4)).unwrap_or(0xdead);
-            let before_c54 = self.read_guest_u32(state_ptr.wrapping_add(0x54)).unwrap_or(0xdead);
-            let before_c5c = self.read_guest_u32(state_ptr.wrapping_add(0x5c)).unwrap_or(0xdead);
+            let before_c4 = self
+                .read_guest_u32(state_ptr.wrapping_add(4))
+                .unwrap_or(0xdead);
+            let before_c54 = self
+                .read_guest_u32(state_ptr.wrapping_add(0x54))
+                .unwrap_or(0xdead);
+            let before_c5c = self
+                .read_guest_u32(state_ptr.wrapping_add(0x5c))
+                .unwrap_or(0xdead);
             info!(target: "EAPP_GL", "ordinal_165: container BEFORE: +4={:#010x} +54={:#010x} +5c={:#010x}", 
                   before_c4, before_c54, before_c5c);
-            
+
             // Allocate work-RAM structures
             let surface_size = 320u32 * 240 * 2; // RGB565 framebuffer
             let surface_buf = self.alloc_zeroed(surface_size);
             let object = self.alloc_zeroed(0x40); // 64-byte object
-            let array = self.alloc_zeroed(0x4);   // 4-byte array (single pointer)
-            
+            let array = self.alloc_zeroed(0x4); // 4-byte array (single pointer)
+
             if surface_buf == 0 || object == 0 || array == 0 {
                 warn!(target: "EAPP_GL", "ordinal_165: Vortex allocation failed");
                 return;
             }
-            
+
             info!(target: "EAPP_GL", "ordinal_165: allocated object={:#010x} buffer={:#010x} array={:#010x}",
                   object, surface_buf, array);
-            
+
             // Wire up the structure chain
             // Object layout: +0=vtable, +4=buffer_ptr (for ldr r0, [r0, #4])
             let w1 = self.write_guest_u32(object.wrapping_add(0), WORK_RAM_BASE + 0x1000);
             let w2 = self.write_guest_u32(object.wrapping_add(4), surface_buf);
             let w3 = self.write_guest_u32(object.wrapping_add(8), 1);
             info!(target: "EAPP_GL", "ordinal_165: object writes: vtable@+0={} buf@+4={} ref@+8={}", w1, w2, w3);
-            
+
             // Array points to object
             let w4 = self.write_guest_u32(array, object);
             info!(target: "EAPP_GL", "ordinal_165: array[0] write: {}", w4);
-            
+
             // Container fields at +0x04 (object ptr), +0x54 (count), +0x5c (array)
             // The crash function does: ldr r0, [r4, #4] then stmia r0!, {...}
             // So [container+4] must point to an object whose +4 is the buffer
-            
+
             // For Vortex, the container at 0x18063ebc is in file-mapped region.
             // We need to check if writes actually succeed.
             let write_addrs = [
@@ -3399,27 +3511,37 @@ impl Eapp {
                 (state_ptr.wrapping_add(0x54), "+54", 1),
                 (state_ptr.wrapping_add(0x5c), "+5c", array),
             ];
-            
+
             for (addr, name, val) in &write_addrs {
-                let addr_in_image = *addr >= FILE_VMA_BASE && *addr - FILE_VMA_BASE < self.bus.image_len;
-                let addr_in_work = *addr >= WORK_RAM_BASE && *addr - WORK_RAM_BASE < WORK_RAM_SIZE as u32;
+                let addr_in_image =
+                    *addr >= FILE_VMA_BASE && *addr - FILE_VMA_BASE < self.bus.image_len;
+                let addr_in_work =
+                    *addr >= WORK_RAM_BASE && *addr - WORK_RAM_BASE < WORK_RAM_SIZE as u32;
                 info!(target: "EAPP_GL", "ordinal_165: write {} at {:#010x}: in_image={} in_work={}", 
                       name, addr, addr_in_image, addr_in_work);
                 let result = self.write_guest_u32(*addr, *val);
                 info!(target: "EAPP_GL", "ordinal_165: write {} result={}", name, result);
             }
-            
+
             // Verify all writes
-            let v_object = self.read_guest_u32(state_ptr.wrapping_add(4)).unwrap_or(0xdead);
-            let v_count = self.read_guest_u32(state_ptr.wrapping_add(0x54)).unwrap_or(0xdead);
-            let v_array = self.read_guest_u32(state_ptr.wrapping_add(0x5c)).unwrap_or(0xdead);
-            let v_buf = self.read_guest_u32(object.wrapping_add(4)).unwrap_or(0xdead);
+            let v_object = self
+                .read_guest_u32(state_ptr.wrapping_add(4))
+                .unwrap_or(0xdead);
+            let v_count = self
+                .read_guest_u32(state_ptr.wrapping_add(0x54))
+                .unwrap_or(0xdead);
+            let v_array = self
+                .read_guest_u32(state_ptr.wrapping_add(0x5c))
+                .unwrap_or(0xdead);
+            let v_buf = self
+                .read_guest_u32(object.wrapping_add(4))
+                .unwrap_or(0xdead);
             info!(target: "EAPP_GL", "ordinal_165: container AFTER: +4={:#010x} +54={:#010x} +5c={:#010x}", 
                   v_object, v_count, v_array);
             info!(target: "EAPP_GL", "ordinal_165: object buf@+4={:#010x}", v_buf);
             return;
         }
-        
+
         // Generic case: simple buffer allocation at +4
         if state_ptr != 0 {
             let current_val = self.read_guest_u32(state_ptr.wrapping_add(4)).unwrap_or(0);
@@ -3432,9 +3554,9 @@ impl Eapp {
             }
         }
     }
-    
+
     /// Vortex (12345) surface container fix.
-    /// 
+    ///
     /// The container at 0x18063ebc is in the file-mapped region with null object pointer.
     /// We redirect by patching all literal pool references to point to a work-RAM substitute.
     fn vortex_preallocate_surfaces(&mut self) {
@@ -3442,44 +3564,49 @@ impl Eapp {
         let work_container = self.alloc_zeroed(0x100); // 256 bytes for container + structures
         let surface_size = 320u32 * 240 * 2; // RGB565 framebuffer
         let surface_buf = self.alloc_zeroed(surface_size);
-        let object = self.alloc_zeroed(0x40); // 64-byte object  
-        let array = self.alloc_zeroed(0x4);   // 4-byte array
+        let object = self.alloc_zeroed(0x40); // 64-byte object
+        let array = self.alloc_zeroed(0x4); // 4-byte array
         let state_block = self.alloc_zeroed(0x200); // mutable GL/state block used by Vortex init helpers
-        
-        if work_container == 0 || surface_buf == 0 || object == 0 || array == 0 || state_block == 0 {
+
+        if work_container == 0 || surface_buf == 0 || object == 0 || array == 0 || state_block == 0
+        {
             warn!(target: "EAPP_GL", "VORTEX: allocation failed for surface structures");
             return;
         }
-        
+
         // Wire up structure chain at work_container
         self.write_guest_u32(object.wrapping_add(0), WORK_RAM_BASE + 0x1000); // vtable
         self.write_guest_u32(object.wrapping_add(4), surface_buf); // buffer pointer
         self.write_guest_u32(object.wrapping_add(8), 1); // refcount
         self.write_guest_u32(array, object);
-        
+
         // Container layout
         self.write_guest_u32(work_container.wrapping_add(0), 0x3f800000);
         self.write_guest_u32(work_container.wrapping_add(4), object);
         self.write_guest_u32(work_container.wrapping_add(0x54), 1);
         self.write_guest_u32(work_container.wrapping_add(0x5c), array);
-        
+
         info!(
             target: "EAPP_GL",
             "VORTEX: work_container={:#010x} object={:#010x} buffer={:#010x} state_block={:#010x}",
             work_container, object, surface_buf, state_block
         );
-        
+
         // Store addresses for the Vortex exact-PC shim and ordinal_165 handler.
         self.write_guest_u32(WORK_RAM_BASE + 0xff0, work_container);
         self.write_guest_u32(WORK_RAM_BASE + 0xff4, surface_buf);
         self.write_guest_u32(WORK_RAM_BASE + 0xff8, object);
         self.write_guest_u32(WORK_RAM_BASE + 0xffc, state_block);
     }
-    
+
     /// Helper to allocate a surface buffer of given size
     fn alloc_surface_buffer(&mut self, size: u32) -> Option<u32> {
         let addr = self.alloc_zeroed(size);
-        if addr != 0 { Some(addr) } else { None }
+        if addr != 0 {
+            Some(addr)
+        } else {
+            None
+        }
     }
 
     /// Ordinal 148: observed immediately before pointer-backed material
@@ -4176,18 +4303,16 @@ impl Eapp {
                         f32::NEG_INFINITY,
                         f32::NEG_INFINITY,
                     ),
-                    |acc, (u, v)| {
-                        (acc.0.min(*u), acc.1.min(*v), acc.2.max(*u), acc.3.max(*v))
-                    },
+                    |acc, (u, v)| (acc.0.min(*u), acc.1.min(*v), acc.2.max(*u), acc.3.max(*v)),
                 );
-                (max_u - min_u).round() as usize == 115
-                    && (max_v - min_v).round() as usize == 223
+                (max_u - min_u).round() as usize == 115 && (max_v - min_v).round() as usize == 223
             })
         {
-            let current_origin = positions.iter().fold(
-                (f32::INFINITY, f32::INFINITY),
-                |acc, (x, y)| (acc.0.min(*x), acc.1.min(*y)),
-            );
+            let current_origin = positions
+                .iter()
+                .fold((f32::INFINITY, f32::INFINITY), |acc, (x, y)| {
+                    (acc.0.min(*x), acc.1.min(*y))
+                });
             let expected_origin = (102.0, 7.0);
             let correction = (
                 expected_origin.0 - current_origin.0,
@@ -4400,14 +4525,12 @@ impl Eapp {
             .and_then(|lg| lg.take_text_char_for_draw(text_obj));
         // `text_ptr` is only used by the cursor-scan fallback; keep a
         // sentinel for logging when the recorded path is taken.
-        let text_ptr = recorded_ch
-            .map(|_| 0u32)
-            .or_else(|| {
-                self.live_find_texgen_text_cursor(text_obj).or_else(|| {
-                    self.read_guest_u32(sp.wrapping_add(0x10))
-                        .filter(|ptr| *ptr != 0)
-                })
-            })?;
+        let text_ptr = recorded_ch.map(|_| 0u32).or_else(|| {
+            self.live_find_texgen_text_cursor(text_obj).or_else(|| {
+                self.read_guest_u32(sp.wrapping_add(0x10))
+                    .filter(|ptr| *ptr != 0)
+            })
+        })?;
         let font_obj = match self.read_guest_u32(text_obj.wrapping_add(0x14)) {
             Some(ptr) if ptr != 0 => ptr,
             _ => {
@@ -4985,9 +5108,10 @@ impl Eapp {
         if let Some(lg) = self.live_gl.as_mut() {
             let increment = records.len().max(1);
             if lg.game_id == "66666" {
-                if let Some(matrix) = records.iter().find(|record| {
-                    record.handle == 0x13 && record.inferred_dim == Some((115, 223))
-                }) {
+                if let Some(matrix) = records
+                    .iter()
+                    .find(|record| record.handle == 0x13 && record.inferred_dim == Some((115, 223)))
+                {
                     lg.frame_base_translation = matrix.translation;
                     lg.board_base_translation_valid = true;
                 }
@@ -5690,8 +5814,7 @@ impl Eapp {
         if clicks == 0 {
             return 0;
         }
-        *position = ((*position as i16 + clicks)
-            .rem_euclid(Self::CLICKWHEEL_DETENTS as i16)) as u8;
+        *position = ((*position as i16 + clicks).rem_euclid(Self::CLICKWHEEL_DETENTS as i16)) as u8;
         (1 << 30) | Self::normalized_wheel_position(*position) as u32
     }
 
@@ -5943,13 +6066,7 @@ impl Eapp {
         }
     }
 
-    fn handle_audio_import(
-        &mut self,
-        ordinal: u32,
-        pc: u32,
-        lr: u32,
-        args: [u32; 4],
-    ) -> u32 {
+    fn handle_audio_import(&mut self, ordinal: u32, pc: u32, lr: u32, args: [u32; 4]) -> u32 {
         self.trace_audio_call(ordinal, pc, lr, args);
 
         // Audio:52 (r0=rserver base) and Audio:51 (r0=prev_ret, r3=shared_ptr)
@@ -6024,13 +6141,7 @@ impl Eapp {
     ///
     /// This is purely an investigation aid for deriving the Audio runtime
     /// ABI across titles. It does not change guest-visible behavior.
-    fn trace_audio_call(
-        &mut self,
-        ordinal: u32,
-        pc: u32,
-        lr: u32,
-        args: [u32; 4],
-    ) {
+    fn trace_audio_call(&mut self, ordinal: u32, pc: u32, lr: u32, args: [u32; 4]) {
         if fliwheel_var_os("AUDIO_TRACE").is_none() {
             return;
         }
@@ -6079,14 +6190,15 @@ impl Eapp {
                 continue;
             }
             // RIFF/WAVE sniff: "RIFF" <len:le32> "WAVE" "fmt " ...
-            let riff = preview.len() >= 12
-                && &preview[0..4] == b"RIFF"
-                && &preview[8..12] == b"WAVE";
+            let riff =
+                preview.len() >= 12 && &preview[0..4] == b"RIFF" && &preview[8..12] == b"WAVE";
             if riff {
                 let wav = self.describe_wav_at(arg);
                 detail.push_str(&format!(
                     "r{}={:#010x}->WAV[{}]",
-                    i, arg, wav.unwrap_or_else(|| "unparsed".to_string())
+                    i,
+                    arg,
+                    wav.unwrap_or_else(|| "unparsed".to_string())
                 ));
             } else {
                 detail.push_str(&format!("r{}={:#010x}->[{}]", i, arg, hex));
@@ -6123,8 +6235,12 @@ impl Eapp {
         while pos + 8 <= header.len() && guard < 8 {
             guard += 1;
             let chunk_id = &header[pos..pos + 4];
-            let chunk_len =
-                u32::from_le_bytes([header[pos + 4], header[pos + 5], header[pos + 6], header[pos + 7]]) as usize;
+            let chunk_len = u32::from_le_bytes([
+                header[pos + 4],
+                header[pos + 5],
+                header[pos + 6],
+                header[pos + 7],
+            ]) as usize;
             match chunk_id {
                 b"fmt " => {
                     // standard 16-byte PCM fmt chunk
@@ -6235,6 +6351,11 @@ impl Eapp {
                 .bundle_dir
                 .to_str()
                 .map_or(false, |p| p.contains("50513"));
+            let is_sims = self
+                .metadata
+                .bundle_dir
+                .to_str()
+                .map_or(false, |p| p.contains("1500C") || p.contains("1500E"));
             let owner = args[0];
             let req = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
             let req_cb = self.read_guest_u32(req.wrapping_add(0x0c)).unwrap_or(0);
@@ -6251,6 +6372,10 @@ impl Eapp {
                 && std::env::var("EAPP_SUDOKU_ASYNC1_COMPLETE")
                     .map(|v| v == "1" || v == "true")
                     .unwrap_or(false);
+            let sims_complete = is_sims
+                && fliwheel_var("EAPP_SIMS_ASYNC1_COMPLETE")
+                    .map(|v| v == "1" || v == "true")
+                    .unwrap_or(false);
             info!(
                 target: "EAPP_IMPORT",
                 "AsyncFileIO:1 owner={:#010x} req={:#010x} req_cb={:#010x} req_ctx={:#010x} owner_cb={:#010x} owner_ctx={:#010x} internal_cb={:#010x} internal_ctx={:#010x} complete={}",
@@ -6262,8 +6387,24 @@ impl Eapp {
                 owner_ctx,
                 owner_internal_cb,
                 owner_internal_ctx,
-                (complete && is_tetris || texas_complete || sudoku_complete) as u8
+                (complete && is_tetris || texas_complete || sudoku_complete || sims_complete) as u8
             );
+            if is_sims {
+                info!(
+                    target: "EAPP_IMPORT",
+                    "AsyncFileIO:1 Sims owner_fields owner={:#010x} op={} offset={:#010x} mode={:#010x} dest={:#010x} want={:#010x} status={:#010x} bytes={:#010x} result={:#010x} payload={:#010x}",
+                    owner,
+                    self.read_guest_u8(owner.wrapping_add(0x04)).unwrap_or(0),
+                    self.read_guest_u32(owner.wrapping_add(0x0c)).unwrap_or(0),
+                    self.read_guest_u32(owner.wrapping_add(0x10)).unwrap_or(0),
+                    self.read_guest_u32(owner.wrapping_add(0x14)).unwrap_or(0),
+                    self.read_guest_u32(owner.wrapping_add(0x18)).unwrap_or(0),
+                    self.read_guest_u32(owner.wrapping_add(0x20)).unwrap_or(0),
+                    self.read_guest_u32(owner.wrapping_add(0x24)).unwrap_or(0),
+                    self.read_guest_u32(owner.wrapping_add(0x28)).unwrap_or(0),
+                    self.read_guest_u32(owner.wrapping_add(0x2c)).unwrap_or(0),
+                );
+            }
             if complete && is_tetris && owner != 0 && req != 0 {
                 // Ordinal 1 is a no-path/control completion used by initiator C
                 // after the audio-stream secondary owner path. Unlike ordinal 0,
@@ -6277,8 +6418,7 @@ impl Eapp {
                 // reused. The downstream callback (0x1801d424) ignores r1/r2.
                 self.write_guest_u32(owner.wrapping_add(0x20), 1);
                 self.write_guest_u32(owner.wrapping_add(0x24), 0);
-                self.async_callback_queued_count =
-                    self.async_callback_queued_count.wrapping_add(1);
+                self.async_callback_queued_count = self.async_callback_queued_count.wrapping_add(1);
                 self.pending_guest_calls.push_back(PendingGuestCall {
                     pc: 0x1801_fbfc,
                     arg0: owner,
@@ -6311,8 +6451,7 @@ impl Eapp {
                 self.write_guest_u32(owner.wrapping_add(0x20), status);
                 self.write_guest_u32(owner.wrapping_add(0x24), byte_count);
                 let _ = self.write_guest_bytes(owner.wrapping_add(0x1c), &[0]);
-                self.async_callback_queued_count =
-                    self.async_callback_queued_count.wrapping_add(1);
+                self.async_callback_queued_count = self.async_callback_queued_count.wrapping_add(1);
                 self.pending_guest_calls.push_back(PendingGuestCall {
                     pc: owner_internal_cb,
                     arg0: owner,
@@ -6323,6 +6462,35 @@ impl Eapp {
                 info!(
                     target: "EAPP_IMPORT",
                     "AsyncFileIO:1 Sudoku completion owner={:#010x} cb_pc={:#010x} status={} bytes={}",
+                    owner,
+                    owner_internal_cb,
+                    status,
+                    byte_count
+                );
+            }
+            if sims_complete && owner != 0 && owner_internal_cb != 0 {
+                let status = fliwheel_var("EAPP_SIMS_ASYNC1_STATUS")
+                    .ok()
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .unwrap_or(1);
+                let byte_count = fliwheel_var("EAPP_SIMS_ASYNC1_BYTES")
+                    .ok()
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .unwrap_or(0);
+                self.write_guest_u32(owner.wrapping_add(0x20), status);
+                self.write_guest_u32(owner.wrapping_add(0x24), byte_count);
+                let _ = self.write_guest_bytes(owner.wrapping_add(0x1c), &[0]);
+                self.async_callback_queued_count = self.async_callback_queued_count.wrapping_add(1);
+                self.pending_guest_calls.push_back(PendingGuestCall {
+                    pc: owner_internal_cb,
+                    arg0: owner,
+                    arg1: owner_internal_ctx,
+                    arg2: 0,
+                    arg3: 0,
+                });
+                info!(
+                    target: "EAPP_IMPORT",
+                    "AsyncFileIO:1 Sims completion owner={:#010x} cb_pc={:#010x} status={} bytes={}",
                     owner,
                     owner_internal_cb,
                     status,
@@ -6344,8 +6512,7 @@ impl Eapp {
                     .ok()
                     .and_then(|v| v.parse::<u32>().ok())
                     .unwrap_or(0);
-                self.async_callback_queued_count =
-                    self.async_callback_queued_count.wrapping_add(1);
+                self.async_callback_queued_count = self.async_callback_queued_count.wrapping_add(1);
                 self.pending_guest_calls.push_back(PendingGuestCall {
                     pc: 0x1802_fcf0,
                     arg0: req,
@@ -6395,6 +6562,11 @@ impl Eapp {
                 .bundle_dir
                 .to_str()
                 .map_or(false, |p| p.contains("50513"));
+            let is_sims = self
+                .metadata
+                .bundle_dir
+                .to_str()
+                .map_or(false, |p| p.contains("1500C") || p.contains("1500E"));
             let owner = args[0];
             let callback_pc = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
             let callback_ctx = self.read_guest_u32(owner.wrapping_add(0x38)).unwrap_or(0);
@@ -6406,18 +6578,21 @@ impl Eapp {
                 && std::env::var("EAPP_SUDOKU_ASYNC2_COMPLETE")
                     .map(|v| v == "1" || v == "true")
                     .unwrap_or(false);
+            let sims_complete = is_sims
+                && fliwheel_var("EAPP_SIMS_ASYNC2_COMPLETE")
+                    .map(|v| v == "1" || v == "true")
+                    .unwrap_or(false);
             info!(
                 target: "EAPP_IMPORT",
                 "AsyncFileIO:2 owner={:#010x} cb_pc={:#010x} cb_ctx={:#010x} complete={}",
                 owner,
                 callback_pc,
                 callback_ctx,
-                (complete && is_tetris || texas_complete || sudoku_complete) as u8
+                (complete && is_tetris || texas_complete || sudoku_complete || sims_complete) as u8
             );
             if complete && is_tetris && owner != 0 && callback_pc != 0 {
                 let _ = self.write_guest_bytes(owner.wrapping_add(0x1c), &[0]);
-                self.async_callback_queued_count =
-                    self.async_callback_queued_count.wrapping_add(1);
+                self.async_callback_queued_count = self.async_callback_queued_count.wrapping_add(1);
                 self.pending_guest_calls.push_back(PendingGuestCall {
                     pc: callback_pc,
                     arg0: owner,
@@ -6438,14 +6613,14 @@ impl Eapp {
                     );
                 }
             }
-            let title_async2_complete = texas_complete || sudoku_complete;
+            let title_async2_complete = texas_complete || sudoku_complete || sims_complete;
             if title_async2_complete && owner != 0 && callback_pc != 0 {
                 // Hold'em's resource callback at 0x18004a14 is entered as
                 // (owner, entry). The two pointers are the same object for
                 // this AsyncFileIO:2 wrapper; it compares them and then
                 // consumes owner+0x20 as the completion status.
                 let owner_op = self.read_guest_u8(owner.wrapping_add(0x04)).unwrap_or(0);
-                if sudoku_complete && owner_op == 5 {
+                if (sudoku_complete || sims_complete) && owner_op == 5 {
                     // Sudoku's 0x1801b14c path is a seek before the following
                     // type-3 payload read. The guest passes the absolute RLB
                     // position in owner+0x0c; keep the staged host image at
@@ -6453,13 +6628,15 @@ impl Eapp {
                     // as the retail stream manager.
                     let req = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
                     let handle = self.read_guest_u32(owner.wrapping_add(0x2c)).unwrap_or(0);
-                    let seek_offset = self.read_guest_u32(owner.wrapping_add(0x0c)).unwrap_or(0) as usize;
+                    let seek_offset =
+                        self.read_guest_u32(owner.wrapping_add(0x0c)).unwrap_or(0) as usize;
                     if let Some(staged) = self.staged_files.get_mut(&req) {
                         if staged.payload_addr == handle {
                             staged.offset = seek_offset.min(staged.len as usize);
                             info!(
                                 target: "EAPP_IMPORT",
-                                "AsyncFileIO:2 Sudoku seek owner={:#010x} handle={:#010x} offset={}",
+                                "AsyncFileIO:2 {} seek owner={:#010x} handle={:#010x} offset={}",
+                                if sudoku_complete { "Sudoku" } else { "Sims" },
                                 owner,
                                 handle,
                                 staged.offset
@@ -6469,7 +6646,8 @@ impl Eapp {
                 }
                 if owner_op == 3 {
                     let destination = self.read_guest_u32(owner.wrapping_add(0x14)).unwrap_or(0);
-                    let requested = self.read_guest_u32(owner.wrapping_add(0x18)).unwrap_or(0) as usize;
+                    let requested =
+                        self.read_guest_u32(owner.wrapping_add(0x18)).unwrap_or(0) as usize;
                     let handle = self.read_guest_u32(owner.wrapping_add(0x2c)).unwrap_or(0);
                     let req = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
                     let staged_range = self.staged_files.get(&req).and_then(|staged| {
@@ -6483,7 +6661,9 @@ impl Eapp {
                         })
                     });
                     if destination != 0 && requested != 0 {
-                        if let Some((payload_addr, payload_len, file_offset, host_path)) = staged_range {
+                        if let Some((payload_addr, payload_len, file_offset, host_path)) =
+                            staged_range
+                        {
                             let source_offset = file_offset.min(payload_len as usize);
                             let source = payload_addr.wrapping_add(source_offset as u32);
                             let available = (payload_len as usize).saturating_sub(source_offset);
@@ -6497,7 +6677,10 @@ impl Eapp {
                                 if let Some(staged) = self.staged_files.get_mut(&req) {
                                     staged.offset = staged.offset.saturating_add(count);
                                 }
-                                self.write_guest_u32(callback_ctx.wrapping_add(0x14c), count as u32);
+                                self.write_guest_u32(
+                                    callback_ctx.wrapping_add(0x14c),
+                                    count as u32,
+                                );
                                 info!(
                                     target: "EAPP_IMPORT",
                                     "AsyncFileIO:2 staged read owner={:#010x} entry={:#010x} handle={:#010x} source={:#010x}+{} dest={:#010x} requested={} delivered={} path={}",
@@ -6515,8 +6698,7 @@ impl Eapp {
                         }
                     }
                 }
-                self.async_callback_queued_count =
-                    self.async_callback_queued_count.wrapping_add(1);
+                self.async_callback_queued_count = self.async_callback_queued_count.wrapping_add(1);
                 self.pending_guest_calls.push_back(PendingGuestCall {
                     pc: callback_pc,
                     arg0: owner,
@@ -6527,7 +6709,13 @@ impl Eapp {
                 info!(
                     target: "EAPP_IMPORT",
                     "AsyncFileIO:2 {} completion owner={:#010x} cb_pc={:#010x}",
-                    if sudoku_complete { "Sudoku" } else { "Texas" },
+                    if sudoku_complete {
+                        "Sudoku"
+                    } else if sims_complete {
+                        "Sims"
+                    } else {
+                        "Texas"
+                    },
                     owner,
                     callback_pc
                 );
@@ -6550,7 +6738,8 @@ impl Eapp {
                 // belongs in `*r2`, while the return value is a status code.
                 if let Some(host_path) = self.resolve_or_create_host_path(&path) {
                     let handle = self.next_async_file_handle;
-                    self.next_async_file_handle = self.next_async_file_handle.wrapping_add(1).max(1);
+                    self.next_async_file_handle =
+                        self.next_async_file_handle.wrapping_add(1).max(1);
                     if args[2] != 0 {
                         self.write_guest_u32(args[2], handle);
                     }
@@ -6606,8 +6795,8 @@ impl Eapp {
                         .unwrap_or(false);
                 let texas_complete = is_texas
                     && std::env::var("EAPP_TEXAS_ASYNC0_COMPLETE")
-                    .map(|v| v == "1" || v == "true")
-                    .unwrap_or(false);
+                        .map(|v| v == "1" || v == "true")
+                        .unwrap_or(false);
                 let sudoku_complete = is_sudoku
                     && std::env::var("EAPP_SUDOKU_ASYNC0_COMPLETE")
                         .map(|v| v == "1" || v == "true")
@@ -6616,7 +6805,8 @@ impl Eapp {
                     && fliwheel_var("EAPP_SIMS_ASYNC0_COMPLETE")
                         .map(|v| v == "1" || v == "true")
                         .unwrap_or(false);
-                let complete = tetris_complete || texas_complete || sudoku_complete || sims_complete;
+                let complete =
+                    tetris_complete || texas_complete || sudoku_complete || sims_complete;
                 let callback_pc = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
                 if let Some(host_path) = self.resolve_or_create_host_path(&path) {
                     self.note_audio_asset_path(&host_path);
@@ -6711,16 +6901,53 @@ impl Eapp {
                                 }
                             }
                         }
+                        // The Sims preload reuses the owner/context object that
+                        // handled the initial save-file probe. Retail clears most
+                        // of that object's request fields before opening
+                        // gameLib.rlb, but the observed callback reads +0x174 as
+                        // the resource result. Keep a title-scoped override for
+                        // testing the pointer-valued resource handle without
+                        // changing the default HLE path.
+                        if sims_complete {
+                            if let Some(result_spec) =
+                                fliwheel_var_os("EAPP_SIMS_ASYNC0_OWNER_RESULT")
+                            {
+                                let result_spec = result_spec.to_string_lossy();
+                                let result = if result_spec == "length" {
+                                    Some(n)
+                                } else if result_spec == "payload" {
+                                    Some(payload_addr)
+                                } else if let Some(hex) = result_spec.strip_prefix("0x") {
+                                    u32::from_str_radix(hex, 16).ok()
+                                } else {
+                                    result_spec.parse::<u32>().ok()
+                                };
+                                let request =
+                                    self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
+                                let resource_context = request.checked_sub(0x16c).unwrap_or(0);
+                                if let (Some(result), true) = (result, resource_context != 0) {
+                                    self.write_guest_u32(
+                                        resource_context.wrapping_add(0x174),
+                                        result,
+                                    );
+                                    info!(
+                                        target: "EAPP_IMPORT",
+                                        "AsyncFileIO:0 Sims owner result override owner={:#010x} context={:#010x} result={:#010x}",
+                                        owner,
+                                        resource_context,
+                                        result
+                                    );
+                                }
+                            }
+                        }
                         // Hold'em uses the same ordinal for its first-run save probe and
                         // ordinary resource loads.  A missing save should report an error,
                         // while a resource such as constant.blob must still report success;
                         // applying one status to every ordinal-0 request makes the latter
                         // look missing and leaves its object tables uninitialized.
-                        let texas_missing_save = host_path
-                            .to_str()
-                            .map_or(false, |p| {
-                                p.contains(SAVE_DIR) || p.contains(LEGACY_SAVE_DIR)
-                            });
+                        let texas_missing_save = host_path.to_str().map_or(false, |p| {
+                            p.contains(SAVE_DIR) || p.contains(LEGACY_SAVE_DIR)
+                        });
                         let status = if texas_complete && texas_missing_save {
                             std::env::var("EAPP_TEXAS_ASYNC0_STATUS")
                                 .ok()
@@ -6796,7 +7023,11 @@ impl Eapp {
                     }
                     match fs::read(&host_path) {
                         Ok(bytes) => {
-                            let requested_len = if want != 0 { want as usize } else { bytes.len() };
+                            let requested_len = if want != 0 {
+                                want as usize
+                            } else {
+                                bytes.len()
+                            };
                             let n = bytes.len().min(requested_len);
                             // Request-object reads provide a destination and a capacity; the
                             // firmware copies the bytes actually read and reports the byte count.
@@ -6808,11 +7039,15 @@ impl Eapp {
                                 // When set, skip loading rserver.bin so the game keeps its
                                 // original code at 0x10001038 (used by Lost to test if the
                                 // built-in fixed-function engine renders).
-                                !host_path.to_str().map_or(false, |p| p.contains("rserver.bin"))
+                                !host_path
+                                    .to_str()
+                                    .map_or(false, |p| p.contains("rserver.bin"))
                             } else {
                                 true
                             };
-                            let bytes_delivered = should_deliver && dest != 0 && self.write_guest_bytes(dest, &bytes[..n]);
+                            let bytes_delivered = should_deliver
+                                && dest != 0
+                                && self.write_guest_bytes(dest, &bytes[..n]);
                             let delivered = dest != 0 && (bytes_delivered || !should_deliver);
                             if delivered {
                                 // The async completion callback `0x1801fc68`
@@ -6846,11 +7081,10 @@ impl Eapp {
                                     .bundle_dir
                                     .to_str()
                                     .map_or(false, |p| p.contains("33333"));
-                                let is_popcap = self
-                                    .metadata
-                                    .bundle_dir
-                                    .to_str()
-                                    .map_or(false, |p| p.contains("44444") || p.contains("55555"));
+                                let is_popcap =
+                                    self.metadata.bundle_dir.to_str().map_or(false, |p| {
+                                        p.contains("44444") || p.contains("55555")
+                                    });
                                 let tetris_complete = is_tetris
                                     && fliwheel_var("EAPP_ASYNC3_COMPLETE")
                                         .map(|v| v == "1" || v == "true")
@@ -6869,7 +7103,8 @@ impl Eapp {
                                 // still use their separately proven contracts.
                                 let popcap_resource_read = is_popcap
                                     && host_path.extension().map_or(false, |ext| ext == "ro");
-                                let complete = tetris_complete || texas_complete || popcap_resource_read;
+                                let complete =
+                                    tetris_complete || texas_complete || popcap_resource_read;
                                 if complete {
                                     let status = if texas_complete {
                                         std::env::var("EAPP_TEXAS_ASYNC3_STATUS")
@@ -6978,7 +7213,8 @@ impl Eapp {
                         if let Ok(read_dir) = fs::read_dir(&host_path) {
                             for entry in read_dir.flatten() {
                                 let full = host_path.join(entry.file_name());
-                                let is_dir = fs::metadata(&full).map(|m| m.is_dir()).unwrap_or(false);
+                                let is_dir =
+                                    fs::metadata(&full).map(|m| m.is_dir()).unwrap_or(false);
                                 if is_dir {
                                     if let Some(name) = entry.file_name().to_str() {
                                         entries.push(name.to_string());
@@ -7104,8 +7340,13 @@ impl Eapp {
                 });
                 let start = file.offset.min(bytes.len());
                 let count = length.min(bytes.len().saturating_sub(start));
-                let delivered = buffer != 0 && self.write_guest_bytes(buffer, &bytes[start..start + count]);
-                let got = if delivered || count == 0 { count as u32 } else { 0 };
+                let delivered =
+                    buffer != 0 && self.write_guest_bytes(buffer, &bytes[start..start + count]);
+                let got = if delivered || count == 0 {
+                    count as u32
+                } else {
+                    0
+                };
                 if got != 0 {
                     if let Some(open) = self.filesystem_open_files.get_mut(&handle) {
                         open.offset = start + got as usize;
@@ -7352,12 +7593,17 @@ impl Eapp {
         }
         let import_summary = self.format_frame_import_counts(8);
         let trace_summary = if string_trace_enabled() && !self.string_trace_hits.is_empty() {
-            let mut entries: Vec<(u32, u32)> =
-                self.string_trace_hits.iter().map(|(k, v)| (*k, *v)).collect();
+            let mut entries: Vec<(u32, u32)> = self
+                .string_trace_hits
+                .iter()
+                .map(|(k, v)| (*k, *v))
+                .collect();
             entries.sort_by_key(|&(pc, _)| pc);
-            entries.iter()
+            entries
+                .iter()
                 .map(|(pc, c)| format!("{:#010x}={}", pc, c))
-                .collect::<Vec<_>>().join(",")
+                .collect::<Vec<_>>()
+                .join(",")
         } else {
             String::new()
         };
@@ -7519,10 +7765,8 @@ impl Eapp {
                     // entry vector's return registers are not the init vector's arguments.
                     let init_context0 = self.alloc_zeroed(0x400);
                     let init_context1 = self.alloc_zeroed(0x400);
-                    self.cpu
-                        .reg_set(self.cpu.mode(), 0, init_context0);
-                    self.cpu
-                        .reg_set(self.cpu.mode(), 1, init_context1);
+                    self.cpu.reg_set(self.cpu.mode(), 0, init_context0);
+                    self.cpu.reg_set(self.cpu.mode(), 1, init_context1);
                     self.cpu.reg_set(self.cpu.mode(), 2, 0);
                     self.cpu.reg_set(self.cpu.mode(), 3, 0);
                     self.bootstrap_phase = BootstrapPhase::Init;
@@ -7577,7 +7821,12 @@ impl Eapp {
     fn finish_bootstrap_entry(&mut self) {
         // Vortex-specific surface preallocation to prevent null pointer crashes.
         // Must run before first guest frame to set up container structures.
-        if self.metadata.bundle_dir.to_str().map_or(false, |p| p.contains("12345")) {
+        if self
+            .metadata
+            .bundle_dir
+            .to_str()
+            .map_or(false, |p| p.contains("12345"))
+        {
             info!(target: "EAPP", "VORTEX: detected bundle, running preallocation");
             self.vortex_preallocate_surfaces();
             // Verify the write.
@@ -7782,10 +8031,8 @@ impl Eapp {
                 // Keep this outside the diagnostic string trace so event
                 // routing works in normal desktop runs too.
                 let mode = self.cpu.mode();
-                self.audio_last_registration = Some((
-                    self.cpu.reg_get(mode, 0),
-                    self.cpu.reg_get(mode, 1),
-                ));
+                self.audio_last_registration =
+                    Some((self.cpu.reg_get(mode, 0), self.cpu.reg_get(mode, 1)));
             }
             0x1800_3eb8 => {
                 // This wrapper is the guest's resource-indexed consumer. It
@@ -8062,25 +8309,14 @@ impl Eapp {
                     self.read_guest_u32(obj.wrapping_add(0x0c)).unwrap_or(0)
                 ));
             }
-            0x1800_3bd0
-            | 0x1800_3c08
-            | 0x1800_3c68
-            | 0x1800_3c74
-            | 0x1800_3d40
-            | 0x1800_3d60
-            | 0x1800_3da8
-            | 0x1800_4fac
-            | 0x1800_5400
-            | 0x1800_5468
-            | 0x1800_5480 => {
+            0x1800_3bd0 | 0x1800_3c08 | 0x1800_3c68 | 0x1800_3c74 | 0x1800_3d40 | 0x1800_3d60
+            | 0x1800_3da8 | 0x1800_4fac | 0x1800_5400 | 0x1800_5468 | 0x1800_5480 => {
                 // Boot/resource-progress state struct. 0x18003bd0 dispatches
                 // on [base+4]; 0x18004fac is the Strings.dta 2nd-stage cb
                 // that writes selected byte-counts into this struct and bumps
                 // the progress state.
                 let base = 0x1802_5674;
-                for off in [
-                    0x00, 0x04, 0x08, 0x0c, 0x10, 0x14, 0x20, 0x24, 0x28, 0x2c,
-                ] {
+                for off in [0x00, 0x04, 0x08, 0x0c, 0x10, 0x14, 0x20, 0x24, 0x28, 0x2c] {
                     details.push(format!(
                         "boot+{:#04x}={:#010x}",
                         off,
@@ -8126,9 +8362,8 @@ impl Eapp {
                 let obj = regs[0];
                 details.push(format!("lr={:#010x} parent={:#010x}", lr, obj));
                 for off in [
-                    0x00, 0x04, 0x08, 0x0c, 0x10, 0x14, 0x18, 0x1c, 0x20, 0x24,
-                    0x28, 0x2c, 0x30, 0x38, 0x40, 0x44, 0x48, 0x4c, 0xbc, 0xc4,
-                    0xd4, 0xd8, 0xe4,
+                    0x00, 0x04, 0x08, 0x0c, 0x10, 0x14, 0x18, 0x1c, 0x20, 0x24, 0x28, 0x2c, 0x30,
+                    0x38, 0x40, 0x44, 0x48, 0x4c, 0xbc, 0xc4, 0xd4, 0xd8, 0xe4,
                 ] {
                     details.push(format!(
                         "parent+{:#04x}={:#010x}",
@@ -8140,42 +8375,45 @@ impl Eapp {
             0x1801_fc68 => {
                 let req = regs[0];
                 for off in [0x08, 0x14, 0x18, 0x20, 0x24, 0x34, 0x38] {
-                    details.push(format!("req+{:#04x}={:#010x}", off, self.read_guest_u32(req.wrapping_add(off)).unwrap_or(0)));
+                    details.push(format!(
+                        "req+{:#04x}={:#010x}",
+                        off,
+                        self.read_guest_u32(req.wrapping_add(off)).unwrap_or(0)
+                    ));
                 }
             }
             0x1801_fc94 | 0x1801_e0fc | 0x1801_e45c | 0x1801_e484 | 0x1801_e708 => {
                 let obj = regs[0];
-                for off in [0x00, 0x04, 0x08, 0x0c, 0x10, 0x14, 0x18, 0x20, 0x24, 0x2c, 0x124, 0x128, 0x12c, 0x130] {
-                    details.push(format!("obj+{:#04x}={:#010x}", off, self.read_guest_u32(obj.wrapping_add(off)).unwrap_or(0)));
+                for off in [
+                    0x00, 0x04, 0x08, 0x0c, 0x10, 0x14, 0x18, 0x20, 0x24, 0x2c, 0x124, 0x128,
+                    0x12c, 0x130,
+                ] {
+                    details.push(format!(
+                        "obj+{:#04x}={:#010x}",
+                        off,
+                        self.read_guest_u32(obj.wrapping_add(off)).unwrap_or(0)
+                    ));
                 }
             }
-            0x1801_eed8
-            | 0x1801_ef1c
-            | 0x1801_f000
-            | 0x1801_f068
-            | 0x1801_f1b4
-            | 0x1801_f250
-            | 0x1801_f394
-            | 0x1801_f474
-            | 0x1801_f4a8
-            | 0x1801_f558
-            | 0x1801_f5a8
-            | 0x1801_f69c
-            | 0x1801_f6ec
-            | 0x1801_f72c
-            | 0x1801_f794
-            | 0x1801_f900
-            | 0x1801_fa90
-            | 0x1801_faa8
+            0x1801_eed8 | 0x1801_ef1c | 0x1801_f000 | 0x1801_f068 | 0x1801_f1b4 | 0x1801_f250
+            | 0x1801_f394 | 0x1801_f474 | 0x1801_f4a8 | 0x1801_f558 | 0x1801_f5a8 | 0x1801_f69c
+            | 0x1801_f6ec | 0x1801_f72c | 0x1801_f794 | 0x1801_f900 | 0x1801_fa90 | 0x1801_faa8
             | 0x1801_fb3c => {
                 let global = 0x1802_5668;
                 for off in [0x00, 0x04, 0x08] {
-                    details.push(format!("glob+{:#04x}={:#010x}", off, self.read_guest_u32(global + off).unwrap_or(0)));
+                    details.push(format!(
+                        "glob+{:#04x}={:#010x}",
+                        off,
+                        self.read_guest_u32(global + off).unwrap_or(0)
+                    ));
                 }
                 let r4 = self.cpu.reg_get(mode, 4);
                 let r5 = self.cpu.reg_get(mode, 5);
                 let r6 = self.cpu.reg_get(mode, 6);
-                details.push(format!("lr={:#010x} r4={:#010x} r5={:#010x} r6={:#010x}", lr, r4, r5, r6));
+                details.push(format!(
+                    "lr={:#010x} r4={:#010x} r5={:#010x} r6={:#010x}",
+                    lr, r4, r5, r6
+                ));
 
                 // Most `0x1801fxxx` routines take the menu/resource object in
                 // r0 at function entry and keep it in r4 internally. At inner
@@ -8186,10 +8424,9 @@ impl Eapp {
                         continue;
                     }
                     for off in [
-                        0x00, 0x08, 0x0c, 0x10, 0x14, 0x18, 0x1c, 0x20, 0x24, 0x28,
-                        0x2c, 0x30, 0x38, 0x3c, 0x40, 0x44, 0x48, 0x4c, 0x50, 0x54,
-                        0x58, 0x5c, 0x60, 0x64, 0x68, 0x6c, 0x70, 0x74, 0x9c, 0xa0,
-                        0xa4,
+                        0x00, 0x08, 0x0c, 0x10, 0x14, 0x18, 0x1c, 0x20, 0x24, 0x28, 0x2c, 0x30,
+                        0x38, 0x3c, 0x40, 0x44, 0x48, 0x4c, 0x50, 0x54, 0x58, 0x5c, 0x60, 0x64,
+                        0x68, 0x6c, 0x70, 0x74, 0x9c, 0xa0, 0xa4,
                     ] {
                         details.push(format!(
                             "{}+{:#04x}={:#010x}",
@@ -8269,15 +8506,13 @@ impl Eapp {
                 // handoff rather than to an assumed HLE failure.
                 let manager = if pc == 0x1801_d770 { regs[0] } else { regs[5] };
                 let entry = if pc == 0x1801_d770 {
-                    self.read_guest_u32(manager.wrapping_add(0xf28)).unwrap_or(0)
+                    self.read_guest_u32(manager.wrapping_add(0xf28))
+                        .unwrap_or(0)
                 } else {
                     regs[4]
                 };
                 let mut state = if entry != 0 {
-                    format!(
-                        " e[0]={:#010x}",
-                        self.read_guest_u32(entry).unwrap_or(0)
-                    )
+                    format!(" e[0]={:#010x}", self.read_guest_u32(entry).unwrap_or(0))
                 } else {
                     String::new()
                 };
@@ -8470,8 +8705,7 @@ impl Eapp {
                 let desc = regs[0];
                 details.push(format!("lr={:#010x} desc={:#010x}", lr, desc));
                 for off in [
-                    0x00, 0x04, 0x08, 0x0c, 0x100, 0x107, 0x108, 0x109, 0x10c,
-                    0x110,
+                    0x00, 0x04, 0x08, 0x0c, 0x100, 0x107, 0x108, 0x109, 0x10c, 0x110,
                 ] {
                     details.push(format!(
                         "desc+{:#04x}={:#010x}",
@@ -8514,23 +8748,82 @@ impl Eapp {
                 // Scene root installer: reads [clock_obj+0x2c], calls vtable[0x44]
                 // This is where the active scene graph is selected for drawing
                 let clock_obj = regs[0];
-                let root_ptr = self.read_guest_u32(clock_obj.wrapping_add(0x2c)).unwrap_or(0);
+                let root_ptr = self
+                    .read_guest_u32(clock_obj.wrapping_add(0x2c))
+                    .unwrap_or(0);
                 // The root object has a vtable at offset 0 and various children
                 let vtable = if root_ptr != 0 {
                     self.read_guest_u32(root_ptr).unwrap_or(0)
-                } else { 0 };
+                } else {
+                    0
+                };
                 // Read more fields to understand the object layout
-                let obj_04 = if root_ptr != 0 { self.read_guest_u32(root_ptr.wrapping_add(0x04)).unwrap_or(0) } else { 0 };
-                let obj_08 = if root_ptr != 0 { self.read_guest_u32(root_ptr.wrapping_add(0x08)).unwrap_or(0) } else { 0 };
-                let obj_0c = if root_ptr != 0 { self.read_guest_u32(root_ptr.wrapping_add(0x0c)).unwrap_or(0) } else { 0 };
-                let obj_10 = if root_ptr != 0 { self.read_guest_u32(root_ptr.wrapping_add(0x10)).unwrap_or(0) } else { 0 };
-                let obj_14 = if root_ptr != 0 { self.read_guest_u32(root_ptr.wrapping_add(0x14)).unwrap_or(0) } else { 0 };
-                let obj_18 = if root_ptr != 0 { self.read_guest_u32(root_ptr.wrapping_add(0x18)).unwrap_or(0) } else { 0 };
-                let obj_1c = if root_ptr != 0 { self.read_guest_u32(root_ptr.wrapping_add(0x1c)).unwrap_or(0) } else { 0 };
-                let obj_20 = if root_ptr != 0 { self.read_guest_u32(root_ptr.wrapping_add(0x20)).unwrap_or(0) } else { 0 };
-                let obj_24 = if root_ptr != 0 { self.read_guest_u32(root_ptr.wrapping_add(0x24)).unwrap_or(0) } else { 0 };
-                let obj_28 = if root_ptr != 0 { self.read_guest_u32(root_ptr.wrapping_add(0x28)).unwrap_or(0) } else { 0 };
-                let obj_2c = if root_ptr != 0 { self.read_guest_u32(root_ptr.wrapping_add(0x2c)).unwrap_or(0) } else { 0 };
+                let obj_04 = if root_ptr != 0 {
+                    self.read_guest_u32(root_ptr.wrapping_add(0x04))
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                let obj_08 = if root_ptr != 0 {
+                    self.read_guest_u32(root_ptr.wrapping_add(0x08))
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                let obj_0c = if root_ptr != 0 {
+                    self.read_guest_u32(root_ptr.wrapping_add(0x0c))
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                let obj_10 = if root_ptr != 0 {
+                    self.read_guest_u32(root_ptr.wrapping_add(0x10))
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                let obj_14 = if root_ptr != 0 {
+                    self.read_guest_u32(root_ptr.wrapping_add(0x14))
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                let obj_18 = if root_ptr != 0 {
+                    self.read_guest_u32(root_ptr.wrapping_add(0x18))
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                let obj_1c = if root_ptr != 0 {
+                    self.read_guest_u32(root_ptr.wrapping_add(0x1c))
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                let obj_20 = if root_ptr != 0 {
+                    self.read_guest_u32(root_ptr.wrapping_add(0x20))
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                let obj_24 = if root_ptr != 0 {
+                    self.read_guest_u32(root_ptr.wrapping_add(0x24))
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                let obj_28 = if root_ptr != 0 {
+                    self.read_guest_u32(root_ptr.wrapping_add(0x28))
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                let obj_2c = if root_ptr != 0 {
+                    self.read_guest_u32(root_ptr.wrapping_add(0x2c))
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
                 details.push(format!(
                     "ROOT clock_obj={:#010x} root={:#010x} vt={:#010x} [04]={:#010x} [08]={:#010x} [0c]={:#010x} [10]={:#010x} [14]={:#010x} [18]={:#010x} [1c]={:#010x} [20]={:#010x} [24]={:#010x} [28]={:#010x} [2c]={:#010x}",
                     clock_obj, root_ptr, vtable, obj_04, obj_08, obj_0c, obj_10, obj_14, obj_18, obj_1c, obj_20, obj_24, obj_28, obj_2c
@@ -8619,11 +8912,7 @@ impl Eapp {
             ];
             details.push_str(&format!(
                 " r8={:#010x} r9={:#010x} r10={:#010x} r11={:#010x} r12={:#010x}",
-                extra_regs[0],
-                extra_regs[1],
-                extra_regs[2],
-                extra_regs[3],
-                extra_regs[4]
+                extra_regs[0], extra_regs[1], extra_regs[2], extra_regs[3], extra_regs[4]
             ));
         }
 
@@ -8632,8 +8921,7 @@ impl Eapp {
             let nav = 0x180c_954c;
             let cursor = 0x180c_0674;
             let nav_state_4 = self.read_guest_u32(nav + 4).unwrap_or(0) & 0xffff;
-            let input = if (WORK_RAM_BASE..WORK_RAM_BASE + WORK_RAM_SIZE as u32)
-                .contains(&regs[4])
+            let input = if (WORK_RAM_BASE..WORK_RAM_BASE + WORK_RAM_SIZE as u32).contains(&regs[4])
             {
                 regs[4]
             } else {
@@ -8857,11 +9145,7 @@ impl Eapp {
             return None;
         }
 
-        let writable = self
-            .metadata
-            .bundle_dir
-            .join(SAVE_DIR)
-            .join(normalized);
+        let writable = self.metadata.bundle_dir.join(SAVE_DIR).join(normalized);
         if let Some(parent) = writable.parent() {
             fs::create_dir_all(parent).ok()?;
         }
@@ -9199,21 +9483,20 @@ impl EappBus {
 
         let image_end = FILE_VMA_BASE.saturating_add(self.image_len);
         let work_end = WORK_RAM_BASE.saturating_add(WORK_RAM_SIZE as u32);
-        let (region, offset, extension) = if source_start >= FILE_VMA_BASE
-            && source_end <= image_end
-        {
-            ("file-backed", source_start - FILE_VMA_BASE, "bin")
-        } else if source_start >= WORK_RAM_BASE && source_end <= work_end {
-            ("work-RAM", source_start - WORK_RAM_BASE, "rgb565")
-        } else {
-            warn!(
-                target: "EAPP_HW",
-                "guest source dump skipped source={:#010x} len={:#x}",
-                source_start,
-                len
-            );
-            return;
-        };
+        let (region, offset, extension) =
+            if source_start >= FILE_VMA_BASE && source_end <= image_end {
+                ("file-backed", source_start - FILE_VMA_BASE, "bin")
+            } else if source_start >= WORK_RAM_BASE && source_end <= work_end {
+                ("work-RAM", source_start - WORK_RAM_BASE, "rgb565")
+            } else {
+                warn!(
+                    target: "EAPP_HW",
+                    "guest source dump skipped source={:#010x} len={:#x}",
+                    source_start,
+                    len
+                );
+                return;
+            };
 
         let _ = fs::create_dir_all(dir);
         let path = dir.join(format!("{label}_{source_start:#010x}.{extension}"));
@@ -9665,11 +9948,7 @@ fn find_game_executable(bundle_dir: &Path) -> Result<PathBuf, EappBuildError> {
                 .and_then(|name| name.to_str())
                 .map(|name| !name.starts_with('.') && !name.starts_with("._"))
                 .unwrap_or(false);
-            name_is_real
-                && path
-                    .extension()
-                    .map(|ext| ext == "bin")
-                    .unwrap_or(false)
+            name_is_real && path.extension().map(|ext| ext == "bin").unwrap_or(false)
         })
         .collect::<Vec<_>>();
     bins.sort();
@@ -9782,9 +10061,8 @@ fn vma_to_offset(addr: u32) -> Result<u32, EappBuildError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        decode_palette8_rgba8, is_palette8_compressed_upload_call,
-        live_gl_default_present_vflip, Eapp, EappInputState, GL_PALETTE8_RGBA8_OES,
-        GL_TEXTURE_2D, GL_TEXTURE_RECTANGLE,
+        decode_palette8_rgba8, is_palette8_compressed_upload_call, live_gl_default_present_vflip,
+        Eapp, EappInputState, GL_PALETTE8_RGBA8_OES, GL_TEXTURE_2D, GL_TEXTURE_RECTANGLE,
     };
 
     #[test]
@@ -9886,21 +10164,41 @@ mod tests {
     #[test]
     fn input_event_ids_follow_guest_button_mapping() {
         let buttons: [(&str, fn(&mut EappInputState), u8); 5] = [
-            ("menu", |state: &mut EappInputState| state.menu = true, 1 << 1),
+            (
+                "menu",
+                |state: &mut EappInputState| state.menu = true,
+                1 << 1,
+            ),
             (
                 "action",
                 |state: &mut EappInputState| state.action = true,
                 1 << 2,
             ),
-            ("left", |state: &mut EappInputState| state.left = true, 1 << 3),
-            ("right", |state: &mut EappInputState| state.right = true, 1 << 4),
-            ("up/down", |state: &mut EappInputState| state.up = true, 1 << 5),
+            (
+                "left",
+                |state: &mut EappInputState| state.left = true,
+                1 << 3,
+            ),
+            (
+                "right",
+                |state: &mut EappInputState| state.right = true,
+                1 << 4,
+            ),
+            (
+                "up/down",
+                |state: &mut EappInputState| state.up = true,
+                1 << 5,
+            ),
         ];
 
         for (name, set, expected) in buttons {
             let mut state = EappInputState::default();
             set(&mut state);
-            assert_eq!(Eapp::input_event_id_mask_for_state(&state), expected, "{name}");
+            assert_eq!(
+                Eapp::input_event_id_mask_for_state(&state),
+                expected,
+                "{name}"
+            );
         }
 
         let mut down = EappInputState::default();

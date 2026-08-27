@@ -203,6 +203,13 @@ For a portable corpus-wide probe, pass the root explicitly:
   or gameplay
 - Evidence: [Sims rectangle-target texture probe](../game_tests/20260827_sims_paletted_texture_target.md)
 
+### 2026-08-27: Sims RLB resource stream
+- A pointer-valued preload result now lets an opt-in diagnostic path reach the
+  guest's real `gameLib.rlb` parser
+- Bowling and Pool both issue title-specific seek/read requests for multiple
+  resource entries; neither has reached its menu or gameplay scene
+- Evidence: [Sims RLB stream probe](../game_tests/20260827_sims_rlb_stream_probe.md)
+
 ### 2026-06-26: Sudoku works, PopCap DMA, 12/16 games rendering
 - Sudoku: auto-begin, NDC scaling, auto-vflip, 0-draw preservation
 - Bejeweled/Zuma: DMA framebuffer overlay injection + alpha blending

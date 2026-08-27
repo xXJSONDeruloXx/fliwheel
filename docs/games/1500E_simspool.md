@@ -38,6 +38,12 @@ FLIWHEEL_GL_LIVE_CONTINUOUS=1
 FLIWHEEL_GL_PRESENT_VFLIP=1
 ```
 
-The optional `FLIWHEEL_EAPP_SIMS_ASYNC0_COMPLETE=1` flag is a diagnostic RLB
-completion experiment only; it is not required for the current default
-follow-up draw and does not yet reach gameplay.
+The optional Sims async flags stage the 19,440,133-byte Pool RLB and let the
+guest parse several real resource entries. The probe still ends without a menu
+or gameplay scene, so it is retained as reverse-engineering evidence rather
+than a default fix. See the [RLB stream probe](../game_tests/20260827_sims_rlb_stream_probe.md).
+
+Pool's first observed follow-up reads are 4,096 bytes at offset `0`, then
+55,607 bytes at offset `0x1000`, followed by additional guest-derived entries.
+The `payload` result alias keeps this experiment independent of the allocator's
+current synthetic address.
