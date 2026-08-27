@@ -23,10 +23,10 @@ older pages retain historical investigation notes and are not completion claims.
 | Bejeweled | 55555 | 🟡 PopCap partial | [→](55555_bejeweled.md) |
 | Zuma | 44444 | 🟡 PopCap partial | [→](44444_zuma.md) |
 | Vortex | 12345 | 🟡 Animated splash/VBO open | [matrix](../game_tests/20260826_interactive_matrix.md#current-matrix) |
-| iQuiz | 11002 | ❌ Pack/content loading blocked | [→](11002_twa.md) |
-| SAT Prep Reading | 11050 | 🟡 Splash/loading only | [matrix](../game_tests/20260826_interactive_matrix.md#current-matrix) |
-| SAT Prep Writing | 11051 | 🟡 Splash/loading only | [matrix](../game_tests/20260826_interactive_matrix.md#current-matrix) |
-| SAT Prep Mathematics | 11052 | 🟡 Splash/loading only | [matrix](../game_tests/20260826_interactive_matrix.md#current-matrix) |
+| iQuiz | 11002 | ❌ Pack discovery/content loading blocked | [→](11002_twa.md) |
+| SAT Prep Reading | 11050 | 🟡 Coherent splash/spinner; content handoff open | [SAT checkpoint](../game_tests/20260827_sat_loader_and_tetris_audio.md) |
+| SAT Prep Writing | 11051 | 🟡 Coherent splash/spinner; content handoff open | [SAT checkpoint](../game_tests/20260827_sat_loader_and_tetris_audio.md) |
+| SAT Prep Mathematics | 11052 | 🟡 Coherent splash/spinner; content handoff open | [SAT checkpoint](../game_tests/20260827_sat_loader_and_tetris_audio.md) |
 | LOST | 1B200 | ❌ Shader/render-server blocked | [→](1B200_lost.md) |
 | musika | 1C300 | 🟡 Splash only | [matrix](../game_tests/20260826_interactive_matrix.md#current-matrix) |
 

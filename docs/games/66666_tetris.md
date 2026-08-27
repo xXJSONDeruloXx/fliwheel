@@ -23,7 +23,8 @@
 - **UI:** `arrows_a8.pix`, `battery_5551.pix`, `battery_8888.pix`
 - **Audio:** 11 `.wav` files are staged during parsed boot; gameplay resource
   events resolve to `Menu.wav`, `Move.wav`, and `Drop.wav`, and the headed EAPP
-  frontend now routes supported assets to its host sink. Physical-output and
+  frontend now routes supported assets to its host sink. A headed smoke run
+  logged the initial `Menu.wav` events as played; physical timing, overlap, and
   mixing parity remain unverified.
 
 ## Save Files
@@ -57,8 +58,10 @@ signed wheel sweep visibly moves the active piece horizontally. Later
 visual analysis now proves that the two side-button edges rotate the active
 piece in opposite directions, while the wheel moves it horizontally and Down
 performs the hard-drop/lock transition. Later piece/line-clear transforms,
-exact display-relative direction naming, persistence, host audio output, and
-full long-run parity are still open.
+exact display-relative direction naming, persistence, and full long-run parity
+are still open. The 2026-08-27 controlled drop replay produced `Drop.wav` and
+later `Lock.wav` events but no `Clear.wav`, so line-clear reachability remains
+unverified.
 
 The old no-input probe used a diagnostic `FLIWHEEL_EAPP_HOST_EVENT_FLAGS=0x10`
 injection and is not evidence that ordinary no-input execution reaches the
@@ -79,6 +82,8 @@ transition.
 See [`20260827_tetris_rotation_probe.md`](../game_tests/20260827_tetris_rotation_probe.md)
 for the fresh visual and static-input evidence for rotation, wheel movement,
 and hard drop.
+See [`20260827_sat_loader_and_tetris_audio.md`](../game_tests/20260827_sat_loader_and_tetris_audio.md)
+for the headed audio-sink and controlled line-clear checkpoint.
 
 ## Texture Details
 | File | Format | Dimensions | Notes |

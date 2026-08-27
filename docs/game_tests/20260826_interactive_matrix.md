@@ -1,6 +1,7 @@
 # Decrypted clickwheel-game interactive matrix
 
-Date: 2026-08-26 UTC; renderer checkpoint: 2026-08-27 UTC
+Date: 2026-08-26 UTC; renderer checkpoint: 2026-08-27 UTC; follow-up probes:
+2026-08-27 UTC
 Repository: `fliwheel`  
 Corpus: `/Volumes/NO NAME/fliwheel-decrypted-corpus-20260826/20 iPod games/Games_RO`
 Runner: `target/release/eapp` with experimental live GL HLE  
@@ -62,9 +63,9 @@ manifest. They measure visual activity, not correctness.
 | Bundle | Title | Evidence from scripted run | Current assessment | Next gate |
 | --- | --- | --- | --- | --- |
 | `11002` | iQuiz | 700 guest frames, one black framebuffer hash, one skipped 149x75 A8 draw; the guest asks for a `data` pack after directory setup | Blocked at pack/content loading | Reconstruct the iQuiz pack index and map its material upload |
-| `11050` | SAT Prep Reading | 4 frames, 2 hashes, 2 draws; recognizable SAT Prep splash with spinner | Splash/loading only | Drive the menu after the data/font path is understood |
-| `11051` | SAT Prep Writing | 4 frames, 2 hashes, 2 draws; recognizable SAT Prep splash with spinner | Splash/loading only | Same shared testprep path as `11050` |
-| `11052` | SAT Prep Mathematics | 4 frames, 2 hashes, 2 draws; recognizable SAT Prep splash with spinner | Splash/loading only | Same shared testprep path as `11050` |
+| `11050` | SAT Prep Reading | Two completed resource callbacks (`rserver.bin`, `Fonts/Roman/fontinfo.txt`), then a coherent full-screen splash plus animated 34x34 spinner in steady state 6; Audio:47/input A/B did not transition it | Coherent splash/loading only; content handoff open | Identify the SAT content/runtime handoff |
+| `11051` | SAT Prep Writing | Same two-resource loader and coherent splash/spinner path as `11050`; clean bounded exit | Coherent splash/loading only; content handoff open | Share the SAT handoff investigation |
+| `11052` | SAT Prep Mathematics | Same two-resource loader and coherent splash/spinner path as `11050`; clean bounded exit | Coherent splash/loading only; content handoff open | Share the SAT handoff investigation |
 | `12345` | Vortex | 700 frames and continuously changing hashes; recognizable Vortex title art, but no content scene | Animated splash/title only | Decode the VBO/vertex indirection around ordinals 175/125 |
 | `14004` | Ms. PAC-MAN | 700 frames, 2 hashes, up to 12 draws; recognizable Namco loading art, with visible text/texture artifacts | Loading screen only | Validate texture atlas selection and advance past loading |
 | `1500C` | The Sims Bowling | 700 frames, 2 hashes, at most two draws; framebuffer is effectively black. The current HLE recognizes its normalized geometry family, but useful coverage remains absent | Renderer/asset decode blocked | Decode the `gameLib.rlb`/rserver texture path and verify NDC coverage |
@@ -76,7 +77,7 @@ manifest. They measure visual activity, not correctness.
 | `50513` | Sudoku | Reversed-register event heads drain cleanly; an opt-in RLB completion honors the late resource seek/read path and reaches coherent `PLAYER NAME`, `GAME SETUP`, `TUTORIAL`, and populated 9×9 puzzle-board scenes. The board cursor and numbered palette render; the default path remains unchanged | Puzzle-board/input partial under title-scoped gates; legal cell entry, audio, and save parity not verified | Calibrate board cursor/number controls, then verify error checking, audio, and persistence |
 | `50514` | Royal Solitaire | 700 frames, 26 hashes and 59 changes; the character splash is spatially coherent, scripted event nodes are consumed, and the savefile request completes. An opt-in diagnostic stages `Solitaire.rlb` and delivers its 4,096-byte plus 98,216-byte reads, but the linked callback probe faults | Coherent splash; RLB payload path proven diagnostically, readiness/object contract unresolved and board not reached | Reconstruct the firmware dispatcher continuation and first resource completion, then validate card/selection interaction |
 | `55555` | Bejeweled | Normalized wheel input reaches the tutorial and live 8×8 board; a deterministic `[8,6]` to `[8,7]` swap enters the guest swap path, displays “EXCELLENT!”, changes/refills tiles, and opens the score-bar overlay; the runner maps arrow keys to the four tap quadrants | Single live match verified; headed/mode/audio/save coverage remains | Confirm the arrow-key gesture in a headed run, then repeat across modes and verify audio/persistence |
-| `66666` | Tetris | Corrected run reaches frame 501 with 20 hashes and up to 382 draws; fresh 700-frame evidence proves the board, pause/resume, opposite side-button rotations, signed wheel movement, hard drop, and indexed `Menu.wav`/`Move.wav`/`Drop.wav` events | Best current target; core controls verified, interactive partial, not complete | Finish wall/kick and line clears, persistence, long-run visual parity, and sound mixing |
+| `66666` | Tetris | Corrected run reaches frame 501 with 20 hashes and up to 382 draws; fresh evidence proves the board, pause/resume, opposite side-button rotations, signed wheel movement, hard drop, and indexed `Menu.wav`/`Move.wav`/`Drop.wav` events. A longer controlled replay also reached `Lock.wav` but not `Clear.wav`; a headed smoke run logged `Menu.wav` as played | Best current target; core controls verified, interactive partial, not complete | Finish wall/kick and line clears, persistence, long-run visual parity, and sound mixing |
 | `77777` | Mahjong | 700 frames, 71 hashes, up to eight draws; mostly dotted/garbled title output | Texture/UV partial | Decode the `main.rlb` resource path and tile atlas |
 | `88888` | Mini Golf | 700 frames, two hashes, five draws; mostly black with a loading/progress outline | Splash/loading only | Load the compact course resources and reach the menu |
 | `99999` | Cubis 2 | 700 frames, 26 hashes and 27 changes, up to 49 draws; black/loading state despite many staged assets | Asset/renderer blocked | Decode the `.raw`/`.pix` image path and material handles |
