@@ -75,7 +75,13 @@ In the controlled Bowling run, the write was observed at frame 60 and the
 guest advanced its frame state from `1` through `5` to `6`, but it produced no
 new scene draws, menu, or gameplay. Injecting the existing input script at the
 same time did not change that result. This rules out the status byte as a
-sufficient content-handoff fix; it remains an opt-in diagnostic only.
+sufficient content-handoff fix; it remains an opt-in diagnostic only. A
+follow-up guest-PC trace shows that the final state change is guest-owned: the
+aux routine sees app state `5`, writes frame state `6` at `0x180458cc`, and
+then takes a stable state-6 return path. Without the input-ready probe, the
+same RLB gates reach only a transient state `5` and return to state `1`.
+The state-6 boundary and receipts are documented in the [Bowling state-6
+probe](20260827_sims_bowling_state6_boundary.md).
 
 The Pool run exercised the same pointer-valued RLB path and completed 12
 staged reads in 15 seconds, but did not emit the readiness-probe write before

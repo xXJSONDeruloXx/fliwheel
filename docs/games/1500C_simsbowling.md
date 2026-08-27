@@ -49,3 +49,8 @@ The first observed Bowling follow-up reads are 4,096 bytes at offset `0`, then
 63,527 bytes at offset `0x1000`, followed by additional guest-derived entries.
 The `payload` result alias keeps this experiment independent of the allocator's
 current synthetic address.
+
+The optional input-ready experiment now reaches Bowling's stable guest state
+6 after the RLB reads, but that path issues no menu or gameplay draw. The
+state-6 boundary is documented in the [focused probe](../game_tests/20260827_sims_bowling_state6_boundary.md);
+the input write remains diagnostic-only and is not enabled by default.
