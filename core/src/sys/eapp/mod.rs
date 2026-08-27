@@ -6386,6 +6386,11 @@ impl Eapp {
                 .bundle_dir
                 .to_str()
                 .map_or(false, |p| p.contains("1500C") || p.contains("1500E"));
+            let is_royal = self
+                .metadata
+                .bundle_dir
+                .to_str()
+                .map_or(false, |p| p.contains("50514"));
             let owner = args[0];
             let req = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
             let req_cb = self.read_guest_u32(req.wrapping_add(0x0c)).unwrap_or(0);
@@ -6406,6 +6411,10 @@ impl Eapp {
                 && fliwheel_var("EAPP_SIMS_ASYNC1_COMPLETE")
                     .map(|v| v == "1" || v == "true")
                     .unwrap_or(false);
+            let royal_complete = is_royal
+                && fliwheel_var("EAPP_ROYAL_ASYNC1_COMPLETE")
+                    .map(|v| v == "1" || v == "true")
+                    .unwrap_or(false);
             info!(
                 target: "EAPP_IMPORT",
                 "AsyncFileIO:1 owner={:#010x} req={:#010x} req_cb={:#010x} req_ctx={:#010x} owner_cb={:#010x} owner_ctx={:#010x} internal_cb={:#010x} internal_ctx={:#010x} complete={}",
@@ -6417,7 +6426,11 @@ impl Eapp {
                 owner_ctx,
                 owner_internal_cb,
                 owner_internal_ctx,
-                (complete && is_tetris || texas_complete || sudoku_complete || sims_complete) as u8
+                (complete && is_tetris
+                    || texas_complete
+                    || sudoku_complete
+                    || sims_complete
+                    || royal_complete) as u8
             );
             if is_sims {
                 info!(
@@ -6527,6 +6540,35 @@ impl Eapp {
                     byte_count
                 );
             }
+            if royal_complete && owner != 0 && owner_internal_cb != 0 {
+                let status = fliwheel_var("EAPP_ROYAL_ASYNC1_STATUS")
+                    .ok()
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .unwrap_or(0);
+                let byte_count = fliwheel_var("EAPP_ROYAL_ASYNC1_BYTES")
+                    .ok()
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .unwrap_or_else(|| self.read_guest_u32(owner.wrapping_add(0x24)).unwrap_or(0));
+                self.write_guest_u32(owner.wrapping_add(0x20), status);
+                self.write_guest_u32(owner.wrapping_add(0x24), byte_count);
+                let _ = self.write_guest_bytes(owner.wrapping_add(0x1c), &[0]);
+                self.async_callback_queued_count = self.async_callback_queued_count.wrapping_add(1);
+                self.pending_guest_calls.push_back(PendingGuestCall {
+                    pc: owner_internal_cb,
+                    arg0: owner,
+                    arg1: status,
+                    arg2: byte_count,
+                    arg3: owner_internal_ctx,
+                });
+                info!(
+                    target: "EAPP_IMPORT",
+                    "AsyncFileIO:1 Royal completion owner={:#010x} cb_pc={:#010x} status={} bytes={}",
+                    owner,
+                    owner_internal_cb,
+                    status,
+                    byte_count
+                );
+            }
             if texas_complete && owner != 0 && req != 0 && req_cb != 0 {
                 // 0x1802c2d0 stores the request callback/context at
                 // request+0x0c/+0x10, not on the transient owner. The
@@ -6597,6 +6639,11 @@ impl Eapp {
                 .bundle_dir
                 .to_str()
                 .map_or(false, |p| p.contains("1500C") || p.contains("1500E"));
+            let is_royal = self
+                .metadata
+                .bundle_dir
+                .to_str()
+                .map_or(false, |p| p.contains("50514"));
             let owner = args[0];
             let callback_pc = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
             let callback_ctx = self.read_guest_u32(owner.wrapping_add(0x38)).unwrap_or(0);
@@ -6612,13 +6659,21 @@ impl Eapp {
                 && fliwheel_var("EAPP_SIMS_ASYNC2_COMPLETE")
                     .map(|v| v == "1" || v == "true")
                     .unwrap_or(false);
+            let royal_complete = is_royal
+                && fliwheel_var("EAPP_ROYAL_ASYNC2_COMPLETE")
+                    .map(|v| v == "1" || v == "true")
+                    .unwrap_or(false);
             info!(
                 target: "EAPP_IMPORT",
                 "AsyncFileIO:2 owner={:#010x} cb_pc={:#010x} cb_ctx={:#010x} complete={}",
                 owner,
                 callback_pc,
                 callback_ctx,
-                (complete && is_tetris || texas_complete || sudoku_complete || sims_complete) as u8
+                (complete && is_tetris
+                    || texas_complete
+                    || sudoku_complete
+                    || sims_complete
+                    || royal_complete) as u8
             );
             if complete && is_tetris && owner != 0 && callback_pc != 0 {
                 let _ = self.write_guest_bytes(owner.wrapping_add(0x1c), &[0]);
@@ -6643,7 +6698,8 @@ impl Eapp {
                     );
                 }
             }
-            let title_async2_complete = texas_complete || sudoku_complete || sims_complete;
+            let title_async2_complete =
+                texas_complete || sudoku_complete || sims_complete || royal_complete;
             if title_async2_complete && owner != 0 && callback_pc != 0 {
                 // Hold'em's resource callback at 0x18004a14 is entered as
                 // (owner, entry). The two pointers are the same object for
@@ -6743,6 +6799,8 @@ impl Eapp {
                         "Sudoku"
                     } else if sims_complete {
                         "Sims"
+                    } else if royal_complete {
+                        "Royal"
                     } else {
                         "Texas"
                     },
@@ -6794,10 +6852,10 @@ impl Eapp {
                 // callback is supplied by the guest in owner+0x34; it is not a
                 // fixed address because every EAPP binary has its own code
                 // layout. Keep whole-file completion title-scoped and
-                // opt-in: Tetris and Texas Hold'em have separate proven
-                // probes, while Sudoku's and The Sims' RLB completion remain
-                // diagnostic experiments until their post-callback scene
-                // contracts are understood.
+                // opt-in: Tetris, Texas Hold'em, and Royal Solitaire have
+                // separate probes, while Sudoku's and The Sims' RLB
+                // completion remain diagnostic experiments until their
+                // post-callback scene contracts are understood.
                 let owner = args[3];
                 let is_tetris = self
                     .metadata
@@ -6819,6 +6877,11 @@ impl Eapp {
                     .bundle_dir
                     .to_str()
                     .map_or(false, |p| p.contains("1500C") || p.contains("1500E"));
+                let is_royal = self
+                    .metadata
+                    .bundle_dir
+                    .to_str()
+                    .map_or(false, |p| p.contains("50514"));
                 let tetris_complete = is_tetris
                     && fliwheel_var("EAPP_ASYNC3_COMPLETE")
                         .map(|v| v == "1" || v == "true")
@@ -6835,8 +6898,16 @@ impl Eapp {
                     && fliwheel_var("EAPP_SIMS_ASYNC0_COMPLETE")
                         .map(|v| v == "1" || v == "true")
                         .unwrap_or(false);
+                let royal_complete = is_royal
+                    && fliwheel_var("EAPP_ROYAL_ASYNC0_COMPLETE")
+                        .map(|v| v == "1" || v == "true")
+                        .unwrap_or(false);
                 let complete =
-                    tetris_complete || texas_complete || sudoku_complete || sims_complete;
+                    tetris_complete
+                        || texas_complete
+                        || sudoku_complete
+                        || sims_complete
+                        || royal_complete;
                 let callback_pc = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
                 if let Some(host_path) = self.resolve_or_create_host_path(&path) {
                     self.note_audio_asset_path(&host_path);

@@ -6,48 +6,57 @@ Bundle: `50514` (`Solitaire_1_1_2703086.bin`)
 
 ## Result
 
-This probe did not produce an accepted HLE change. It tested whether the
-ordinal-1 completion could safely queue Royal Solitaire's linked request
-callback (`0x1801ee18`) after the transient owner callback (`0x18023930`).
-The direct callback path is not sufficient: it either leaves the resource
-load stalled or faults in guest code before the next resource can load.
+This probe did not produce an accepted default-path HLE change. Three
+title-scoped, opt-in completion gates were used to separate the file payload
+from the guest resource contract:
+
+- `EAPP_ROYAL_ASYNC0_COMPLETE=1` completes the initial `q.wav` stream.
+- `EAPP_ROYAL_ASYNC2_COMPLETE=1` completes the following staged read.
+- `EAPP_ROYAL_ASYNC1_COMPLETE=1` completes the linked request with the
+  observed `q.wav` byte count (`EAPP_ROYAL_ASYNC1_BYTES=452776`).
+
+With all three enabled, the natural guest callback chain runs, Royal reaches
+state 7, and the full `Solitaire.rlb` payload is staged and delivered. The
+RLB opener then loops before the card board is created. The default runtime
+remains on the no-forced-completion path.
 
 The default runtime is unchanged and remains on the no-forced-completion
 path.
 
 ## Evidence
 
-The earlier all-gate diagnostic established that the file payload itself is
-available to the guest:
+The all-gate diagnostic established that the file payload itself is available
+to the guest:
 
 - `q.wav` was staged and read through its header/data path.
 - `Solitaire.rlb` was staged at 13,180,905 bytes.
-- The RLB parser read 4,096 bytes, then read 98,216 bytes from the staged
-  offset 4,096 into the guest resource buffer.
-- The first resource-table entry still remained at state `0`/`1` while the
-  two earlier title resources reached state `6`; the state-7 readiness check
-  therefore returned false.
+- The guest entered the RLB opener at `0x180112dc` after the callback chain
+  completed.
+- The RLB object's inner async-file object was constructed at
+  `0x1002d434`, but its status at `object+0x10` stayed `-1`. The poll at
+  `0x1800b898` therefore returned `-1` and `0x180112dc` repeated on later
+  frames.
 
-The focused linked-callback attempts were run with temporary, title-scoped
-completion gates and then removed:
+The manager trace shows the normal callback path rather than a missing generic
+dispatcher continuation: `0x180238c4` falls through to `0x180238f8`, invokes
+`0x1801eb90`, and that calls `0x1801ee40`. The latter updates the resource
+manager and the guest proceeds to state 7. The remaining transition from the
+resource-manager completion to the inner async-file object's ready status is
+not implemented by the current HLE.
 
-- Directly queuing `0x1801ee18` with the observed request context did not
-  advance beyond the initial `q.wav` chain; the run completed with the splash
-  still shown (`/tmp/fliwheel_royal_linked_20260827/`).
-- Queuing the internal owner shim followed by the linked callback caused a
-  guest read fault at `0x18022f80` from address `0x00000008` at frame 16
-  (`/tmp/fliwheel_royal_linked_b_20260827/`).
+The focused run was bounded and produced no guest fault after the RLB stage:
 
-The fault shows that the missing piece is the firmware dispatcher’s
-continuation and context/owner lifecycle, not a simple callback address or a
-missing RLB payload. `PendingGuestCall` currently does not propagate callback
-return registers, so it cannot yet model the owner shim's transformed
-`(request,status,count)` result safely.
+```text
+/tmp/fliwheel_royal_manager_watch_20260827.log
+/tmp/fliwheel_royal_inner_watch_20260827.log
+/tmp/fliwheel_royal_request_watch_20260827.log
+```
 
 ## Current implication
 
-Royal Solitaire remains at a coherent splash with verified input/save
-lifecycle, while its board is not reached. The next implementation target is
-an explicit model of the ordinal-1 dispatcher continuation and the resource
-manager's completion state transition. No unconditional ready-byte or forced
-callback workaround is accepted.
+Royal Solitaire remains at a coherent splash in the default path with
+verified input/save lifecycle, while its board is not reached. The next
+implementation target is the guest async-file object's readiness transition
+after the resource-manager callback, not an unconditional ready-byte clear or
+a direct callback queue. The completion gates are retained only as explicit
+diagnostic probes and do not affect normal execution.

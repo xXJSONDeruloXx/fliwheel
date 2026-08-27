@@ -75,10 +75,25 @@ A second diagnostic queued the linked request callback `0x1801ee18` after
 the internal owner shim `0x18023930`, using the observed request context.
 The direct-only attempt left Royal on the splash; the two-stage attempt
 faulted at guest PC `0x18022f80` reading address `0x00000008`. Both
-experiments were removed. This rejects a direct callback queue as the fix and
-points to the missing firmware dispatcher continuation, including callback
-return-register propagation and owner/context lifecycle. Full details are in
-the [RLB callback probe](20260827_royal_rlb_callback_probe.md).
+experiments were removed. Those runs reject a direct callback queue as a
+standalone fix, but they do not establish that the normal callback chain is
+missing generic return-register propagation. The later all-gate trace shows
+the natural chain completing through `0x1801ee40` and reaching state 7; the
+remaining gap is the inner async-file object's readiness transition. Full
+details are in the [RLB callback probe](20260827_royal_rlb_callback_probe.md).
+
+## 2026-08-27 current default and gated boundary
+
+The clean default binary runs Royal's state machine through states 1 to 5,
+then waits at the initial `q.wav` stream completion. It does not enter the
+RLB opener. A title-scoped diagnostic run with
+`EAPP_ROYAL_ASYNC0_COMPLETE=1`, `EAPP_ROYAL_ASYNC1_COMPLETE=1`, and
+`EAPP_ROYAL_ASYNC2_COMPLETE=1` (plus the observed `q.wav` byte count) reaches
+state 7, stages the complete 13,180,905-byte `Solitaire.rlb`, and invokes the
+guest RLB opener. The opener constructs its inner async-file object, but the
+object status remains `-1`, so the guest repeats the opener without reaching
+the card board. No default behavior was changed; the gates remain
+diagnostic-only.
 
 ## Current status
 
