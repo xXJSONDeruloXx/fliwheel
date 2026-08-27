@@ -2451,7 +2451,10 @@ impl Eapp {
             // Ordinal 4: glBindTexture(target, texture).
             // r0=target (e.g. 0xDE1=GL_TEXTURE_2D), r1=texture_name.
             // Capture the texture name so that the next ordinal-99 upload
-            // can be associated with it (instead of / in addition to ordinal-45).
+            // can be associated with it. A real bind is the latest candidate
+            // even when an older ordinal-45 descriptor left a pending name;
+            // PopCap loads several textures through this bind-before-upload
+            // sequence and reuses the same material handles across them.
             4 => {
                 let tex_name = args[1];
                 if let Some(lg) = self.live_gl.as_mut() {
@@ -2462,10 +2465,7 @@ impl Eapp {
                 }
                 if tex_name != 0 {
                     if let Some(lg) = self.live_gl.as_mut() {
-                        // Only set if not already captured by ordinal 45
-                        if lg.pending_tex_name.is_none() {
-                            lg.pending_tex_name = Some(tex_name);
-                        }
+                        lg.pending_tex_name = Some(tex_name);
                     }
                 }
                 0
@@ -9471,7 +9471,18 @@ fn find_game_executable(bundle_dir: &Path) -> Result<PathBuf, EappBuildError> {
         .map_err(|_| EappBuildError::MissingExecutable(bundle_dir.display().to_string()))?
         .filter_map(|entry| entry.ok())
         .map(|entry| entry.path())
-        .filter(|path| path.extension().map(|ext| ext == "bin").unwrap_or(false))
+        .filter(|path| {
+            let name_is_real = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(|name| !name.starts_with('.') && !name.starts_with("._"))
+                .unwrap_or(false);
+            name_is_real
+                && path
+                    .extension()
+                    .map(|ext| ext == "bin")
+                    .unwrap_or(false)
+        })
         .collect::<Vec<_>>();
     bins.sort();
     bins.into_iter()
