@@ -385,6 +385,7 @@ struct StartupArtifactCapture {
     periodic_interval: u64,
     max_frames: u64,
     max_dumps: u64,
+    dump_start_frame: u64,
     manifest_rows: u64,
     dump_count: u64,
     last_hash: Option<u64>,
@@ -407,6 +408,11 @@ impl StartupArtifactCapture {
         let max_dumps = fliwheel_var_os("STARTUP_CAPTURE_MAX_DUMPS")
             .and_then(|v| v.to_string_lossy().parse::<u64>().ok())
             .unwrap_or(400);
+        // Late-game probes can skip the startup animation while retaining the
+        // complete manifest. A zero value preserves the historical behavior.
+        let dump_start_frame = fliwheel_var_os("STARTUP_CAPTURE_DUMP_START_FRAME")
+            .and_then(|v| v.to_string_lossy().parse::<u64>().ok())
+            .unwrap_or(0);
         if enabled {
             let _ = fs::create_dir_all(&dir);
             let _ = fs::write(
@@ -421,6 +427,7 @@ impl StartupArtifactCapture {
             periodic_interval,
             max_frames,
             max_dumps,
+            dump_start_frame,
             manifest_rows: 0,
             dump_count: 0,
             last_hash: None,
@@ -5097,7 +5104,9 @@ impl Eapp {
 
     /// Optional startup capture (`FLIWHEEL_STARTUP_CAPTURE_DIR=/tmp/...`). Writes
     /// a chronological TSV manifest for completed frames, and dumps PPMs for
-    /// every presented framebuffer hash change plus periodic samples.
+    /// every presented framebuffer hash change plus periodic samples. Setting
+    /// `FLIWHEEL_STARTUP_CAPTURE_DUMP_START_FRAME` keeps the manifest from
+    /// frame zero but defers PPM output until the requested guest frame.
     fn capture_startup_completed_frame(&mut self, frame: &live_gl::CompletedFrame) {
         if !self.startup_capture.enabled {
             return;
@@ -5114,9 +5123,10 @@ impl Eapp {
             .unwrap_or(0);
         let hash_changed = self.startup_capture.last_hash != Some(frame.presented_hash);
         let periodic = self.frame_counter % self.startup_capture.periodic_interval == 0;
-        let reason = if hash_changed {
+        let dump_allowed = self.frame_counter >= self.startup_capture.dump_start_frame;
+        let reason = if dump_allowed && hash_changed {
             "hash_change"
-        } else if periodic {
+        } else if dump_allowed && periodic {
             "periodic"
         } else {
             ""
