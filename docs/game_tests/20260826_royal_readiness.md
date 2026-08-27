@@ -63,6 +63,23 @@ That result is useful for identifying the gate, but it is not a valid HLE
 fix. The force-ready hook was removed; only the bounded read-only PC trace is
 retained for future reverse engineering.
 
+## 2026-08-27 post-load callback follow-up
+
+An opt-in diagnostic completion path was used to separate missing file data
+from the resource-manager contract. It staged the full `Solitaire.rlb` and
+delivered the parser's 4,096-byte header read followed by its 98,216-byte
+resource read. The first resource-table entry nevertheless remained at
+state `0`/`1`, while the earlier entries reached state `6`.
+
+A second diagnostic queued the linked request callback `0x1801ee18` after
+the internal owner shim `0x18023930`, using the observed request context.
+The direct-only attempt left Royal on the splash; the two-stage attempt
+faulted at guest PC `0x18022f80` reading address `0x00000008`. Both
+experiments were removed. This rejects a direct callback queue as the fix and
+points to the missing firmware dispatcher continuation, including callback
+return-register propagation and owner/context lifecycle. Full details are in
+the [RLB callback probe](20260827_royal_rlb_callback_probe.md).
+
 ## Current status
 
 The shared NDC projection fix makes the splash spatially coherent, and the
