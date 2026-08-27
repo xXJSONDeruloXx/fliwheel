@@ -72,7 +72,7 @@ manifest. They measure visual activity, not correctness.
 | `1B200` | LOST | 700 frames, zero GL draws, blank framebuffer; rserver loads but no shader output | Shader/render-server blocked | Parse or emulate the `rserver.bin` programmable path |
 | `1C300` | musika | One captured frame with the Musika logo; no fatal | Splash only | Reverse the animation/packet/sound-bank runtime after the first scene |
 | `33333` | Texas Hold'em | Corrected run completes 30,000,000 cycles / 700 captured frames with 3 visual hashes, 34 draws per steady-state frame, and no fatal; the stabilized capture is the `LOADING` screen | Loading screen only; playable state not reached | Reverse the title-specific resource completion/transition path, then verify poker-table controls and sound |
-| `44444` | Zuma | Deterministic entry reaches the Temple, all built-in instruction pages, tutorial close, and live `LEVEL 1-1: SPIRAL OF DOOM`; commit `b12cd60` renders the spiral path and colored marbles coherently, and a durable 400M-cycle probe shows a post-entry projectile, collision/result animation, and bonus coin with no fatal signature | One fire/collision sequence verified; repeatable aim, audio, and save remain open | Repeat wheel-to-aim/fire several times, then verify audio and persistence |
+| `44444` | Zuma | Deterministic entry reaches the Temple, all built-in instruction pages, tutorial close, and live `LEVEL 1-1: SPIRAL OF DOOM`; commit `b12cd60` renders the spiral path and colored marbles coherently, and a durable 400M-cycle probe shows repeated post-entry fire/result activity including `+80 SLOWDOWN BALL`, with no fatal signature | Repeated fire/result activity verified; aim-angle parity, audio, and save remain open | Repeat controlled wheel-to-aim/fire sequences, then verify audio and persistence |
 | `50513` | Sudoku | Recognizable title screen; reversed-register event heads now drain cleanly, and Menu enters the save/settings teardown loop. An opt-in full RLB completion runs its callback chain but adds no board draws | Input lifecycle and Menu/exit path verified; board not reached | Derive the puzzle-start/select contract and render the puzzle grid |
 | `50514` | Royal Solitaire | 700 frames, 26 hashes and 59 changes; the character splash is spatially coherent, scripted event nodes are consumed, and the savefile request completes | Coherent splash; readiness/object contract unresolved and board not reached | Reconstruct the manager readiness callback, then validate card/selection interaction |
 | `55555` | Bejeweled | Normalized wheel input reaches the tutorial and live 8×8 board; a deterministic `[8,6]` to `[8,7]` swap enters the guest swap path, displays “EXCELLENT!”, changes/refills tiles, and opens the score-bar overlay; the runner maps arrow keys to the four tap quadrants | Single live match verified; headed/mode/audio/save coverage remains | Confirm the arrow-key gesture in a headed run, then repeat across modes and verify audio/persistence |
@@ -162,11 +162,11 @@ Evidence is retained at `/tmp/fliwheel_holdem_ok_sweep_20260826/` and
   real OpenGLES:4 bind arrives. This fixes the observed Zuma `0x8` marble-atlas
   upload being incorrectly tagged as `0x7`; the corrected board capture and
   control replay are recorded in the [Zuma board-entry receipt](20260826_zuma_board_entry.md).
-- The durable Zuma gameplay probe now reaches beyond board entry: a wheel
-  rotation followed by Select produces a visible projectile, collision/result
-  animation, score/chain change, and bonus coin. This verifies one input-to-
-  gameplay path, while repeatable aim-angle control, audio, and persistence
-  remain unverified. See the [Zuma gameplay probe](20260827_zuma_gameplay_probe.md).
+- The durable Zuma gameplay probe now reaches beyond board entry: repeated
+  wheel rotations followed by Select produce a visible projectile and a later
+  `+80 SLOWDOWN BALL` collision/result bonus. This verifies repeated
+  input-to-gameplay activity, while controlled aim-angle parity, audio, and
+  persistence remain unverified. See the [Zuma gameplay probe](20260827_zuma_gameplay_probe.md).
 - Executable discovery ignores archive-generated AppleDouble `._*.bin`
   sidecars. The durable corpus extracted from the external drive contains
   those metadata files alongside the real plaintext eApp binaries, so this is

@@ -13,9 +13,10 @@ marble/firing animation, and repeated Select edges after board entry. The
 texture-name fix in commit `b12cd60` now associates each PopCap upload with the
 latest real `OpenGLES:4` bind, so the corrected replay renders the spiral path
 and colored marbles coherently. A later durable-corpus control probe now also
-shows a post-entry Select-driven projectile, collision/result animation, and
-bonus coin; controlled aim, repeatability, audio, and persistence are still
-open. See the [gameplay probe](20260827_zuma_gameplay_probe.md).
+shows post-entry Select-driven projectile and collision/result activity twice,
+including a `+80 SLOWDOWN BALL` bonus; controlled aim-angle parity, full
+playability, audio, and persistence are still open. See the [gameplay
+probe](20260827_zuma_gameplay_probe.md).
 
 ## Reproduction
 
@@ -93,13 +94,15 @@ signatures. Their report is at
 `/tmp/fliwheel_bindfix_regression_20260826/interactive_matrix.md`.
 
 The durable gameplay probe at
-`/tmp/fliwheel_zuma_gameplay_sparse.iDL3rl/` completed 400,000,000 cycles
-with exit `0`, 8,688 guest-frame rows, 2,922 presented hashes, 3,125 hash
-changes, and no fatal signature. Frames `7400`, `7410`, and `7420` show the
-post-entry projectile, collision/result animation, and bonus coin. The full
-receipt is [the Zuma gameplay probe](20260827_zuma_gameplay_probe.md).
+`/tmp/fliwheel_zuma_multishot.5FwyEK/` completed 400,000,000 cycles with exit
+`0`, 7,851 guest-frame rows, 2,966 unique presented hashes, 3,337 actual hash
+changes, and no fatal signature. Frames `7400`-`7420` show the first
+post-entry projectile/result sequence; frames `7700`-`7710` show the later
+`+80 SLOWDOWN BALL` result. The full receipt is [the Zuma gameplay
+probe](20260827_zuma_gameplay_probe.md).
 
 ## Remaining gates
 
-Zuma still needs repeatable clickwheel rotation/aim behavior, several-shot
-collision-chain coverage, audio playback, and save/persistence coverage.
+Zuma still needs repeatable clickwheel rotation/aim-angle parity, broader
+several-shot collision-chain coverage, audio playback, and save/persistence
+coverage.
