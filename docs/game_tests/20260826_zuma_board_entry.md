@@ -12,9 +12,10 @@ board-entry capture contains the HUD, centered frog, level transition,
 marble/firing animation, and repeated Select edges after board entry. The
 texture-name fix in commit `b12cd60` now associates each PopCap upload with the
 latest real `OpenGLES:4` bind, so the corrected replay renders the spiral path
-and colored marbles coherently. This is still a gameplay-state receipt, not a
-playable-parity receipt: aim, firing, collision, audio, and persistence remain
-to be verified.
+and colored marbles coherently. A later durable-corpus control probe now also
+shows a post-entry Select-driven projectile, collision/result animation, and
+bonus coin; controlled aim, repeatability, audio, and persistence are still
+open. See the [gameplay probe](20260827_zuma_gameplay_probe.md).
 
 ## Reproduction
 
@@ -91,7 +92,14 @@ Bejeweled (`55555`) and Tetris (`66666`) with exit `0` and zero fatal
 signatures. Their report is at
 `/tmp/fliwheel_bindfix_regression_20260826/interactive_matrix.md`.
 
+The durable gameplay probe at
+`/tmp/fliwheel_zuma_gameplay_sparse.iDL3rl/` completed 400,000,000 cycles
+with exit `0`, 8,688 guest-frame rows, 2,922 presented hashes, 3,125 hash
+changes, and no fatal signature. Frames `7400`, `7410`, and `7420` show the
+post-entry projectile, collision/result animation, and bonus coin. The full
+receipt is [the Zuma gameplay probe](20260827_zuma_gameplay_probe.md).
+
 ## Remaining gates
 
-Zuma still needs clickwheel rotation/aim behavior, a verified fired shot and
-collision chain, audio playback, and save/persistence coverage.
+Zuma still needs repeatable clickwheel rotation/aim behavior, several-shot
+collision-chain coverage, audio playback, and save/persistence coverage.
