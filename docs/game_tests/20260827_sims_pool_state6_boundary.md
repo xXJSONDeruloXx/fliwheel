@@ -18,6 +18,25 @@ matching input-manager global is `0x18085bac`, while Bowling uses
 `0x1807380c`. Pool's separate `0x18086514` byte is checked later by the
 state-5 branch and is not the trigger used by this probe.
 
+## Post-state-6 input check
+
+A bounded input script was delivered after state 6 (`action`, `menu`, and
+wheel edges). The `InputEvents:0` import produced valid event-list heads, but
+the guest's shared dispatcher at `0x18005000` found no active listener:
+`[0x18085bac + 4] == 0`. The guest routine at `0x18006c04` intentionally
+clears that listener at `0x18006c28` as part of the same state-6 teardown.
+
+An opt-in retention probe restored the observed listener pointer
+(`0x10006540`) immediately before the clear. That did not activate a scene;
+the stale object instead faulted in its teardown path at `0x1801f3f0`
+(`fault_addr=0x2fff0000`). The probe was removed. This rules out the current
+input event-list ABI as the immediate blocker and points to missing guest-side
+scene/object construction after state 6.
+
+Receipts: `/tmp/fliwheel_sims_pool_post_state6_input_20260827.log`,
+`/tmp/fliwheel_sims_pool_input_watch_20260827.log`, and
+`/tmp/fliwheel_sims_pool_keep_listener_20260827.log`.
+
 ## Reproduction
 
 The positive run used the Sims RLB completion gates, the pointer-valued owner
