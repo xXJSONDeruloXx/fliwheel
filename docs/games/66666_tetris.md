@@ -1,6 +1,6 @@
 # Tetris (Bundle 66666)
 
-**Status:** 🟡 CENTERED BOARD + WHEEL/INPUT PATH VERIFIED | **Gameplay:** gravity, wheel movement, controls, and hard drop smoke verified; parity open | **Engine:** Tetris Runtime
+**Status:** 🟡 CENTERED BOARD + CORE CONTROLS VERIFIED | **Gameplay:** gravity, opposite side-button rotations, wheel movement, and hard drop smoke verified; parity open | **Engine:** Tetris Runtime
 
 ## Quick Start
 ```bash
@@ -54,8 +54,11 @@ A focused follow-up now verifies pause/resume, gravity, side-button response,
 the hard-drop transition, and a 1,000-frame repeat-drop/game-over regression
 reaches `Drop.wav`, `Lock.wav`, and `GameOver.wav` resource events. A separate
 signed wheel sweep visibly moves the active piece horizontally. Later
-piece/line-clear transforms, exact physical mapping, persistence, host audio
-output, and full long-run parity are still open.
+visual analysis now proves that the two side-button edges rotate the active
+piece in opposite directions, while the wheel moves it horizontally and Down
+performs the hard-drop/lock transition. Later piece/line-clear transforms,
+exact display-relative direction naming, persistence, host audio output, and
+full long-run parity are still open.
 
 The old no-input probe used a diagnostic `FLIWHEEL_EAPP_HOST_EVENT_FLAGS=0x10`
 injection and is not evidence that ordinary no-input execution reaches the
@@ -73,6 +76,9 @@ renderer checkpoint.
 See [`20260826_tetris_incremental_transform_regression.md`](../game_tests/20260826_tetris_incremental_transform_regression.md)
 for the byte-identical A/B receipt covering the full-to-incremental draw
 transition.
+See [`20260827_tetris_rotation_probe.md`](../game_tests/20260827_tetris_rotation_probe.md)
+for the fresh visual and static-input evidence for rotation, wheel movement,
+and hard drop.
 
 ## Texture Details
 | File | Format | Dimensions | Notes |
@@ -89,15 +95,15 @@ transition.
 
 The emulator's scripted harness can inject `wheel`, `left`, `right`, `down`,
 and `action` packets at selected guest frames. The current smoke path verifies
-gravity, pause/resume, side-button response, and hard drop; exact gameplay
-mapping is still being checked against device behavior. The contemporary [iLounge review](https://www.ilounge.com/index.php/reviews/entry/electronic-arts-tetris)
+gravity, pause/resume, opposite side-button rotations, wheel movement, and
+hard drop. The contemporary [iLounge review](https://www.ilounge.com/index.php/reviews/entry/electronic-arts-tetris)
 describes wheel sweeps for horizontal movement, clickwheel side buttons for
 rotation, and center/down actions for faster or instant drops.
 
 | Key | Action |
 |-----|--------|
 | Wheel | Navigate menus/name entry; moves the active piece in an isolated signed sweep |
-| Left / Right | Responsive gameplay path; exact rotate/move labels under verification |
+| Left / Right | Opposite rotation steps; clockwise naming remains display-orientation dependent |
 | Down | Hard-drop/lock transition observed |
 | Enter / Action | Select, commit, pause, resume, or advance the current scene |
 | M | Menu / Back |
@@ -122,6 +128,7 @@ automatic for bundle `66666`; no preservation override is required.
 - Text/name-entry evidence: [`20260825_tetris_text_and_name_entry.md`](../game_tests/20260825_tetris_text_and_name_entry.md)
 - Gameplay controls evidence: [`20260826_tetris_gameplay_controls.md`](../game_tests/20260826_tetris_gameplay_controls.md)
 - Wheel movement evidence: [`20260826_tetris_wheel_probe.md`](../game_tests/20260826_tetris_wheel_probe.md)
+- Rotation and control evidence: [`20260827_tetris_rotation_probe.md`](../game_tests/20260827_tetris_rotation_probe.md)
 - Board-origin and long-run evidence: [`20260826_tetris_board_origin.md`](../game_tests/20260826_tetris_board_origin.md)
 - Incremental-transform regression: [`20260826_tetris_incremental_transform_regression.md`](../game_tests/20260826_tetris_incremental_transform_regression.md)
 - Frame capture produces PPM files visible with `open /tmp/tetris_capture_*.ppm`

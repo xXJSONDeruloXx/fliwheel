@@ -16,10 +16,11 @@ separately in [`20260826_tetris_board_origin.md`](20260826_tetris_board_origin.m
 - A center-button press after board entry pauses the scene; a second center
   press resumes it. With the live guest clock advancing, the active piece then
   visibly falls through the 10×20 well.
-- A left-button edge changes the active piece draw/shape, and a right-button
-  edge produces a subsequent draw/shape change. This verifies guest delivery
-  and a responsive side-button gameplay path, though exact physical labels are
-  still being compared with device references.
+- A left-button edge changes the active piece orientation, and a right-button
+  edge produces the opposite orientation change. Static disassembly confirms
+  these are the guest's two side-button event ids, so this is rotation
+  evidence rather than only a generic draw/hash change. Clockwise naming is
+  still display-orientation dependent.
 - A down-button edge triggers the hard-drop/lock transition: the active piece
   moves to the floor, the board performs a high-draw transition, and the next
   piece scene appears.
@@ -44,8 +45,8 @@ The play-controls manifest records these useful boundaries:
 |---:|---|---|
 | 230 | center press | pause transition begins |
 | 260 | center press | gameplay resumes |
-| 300 | left press | draw/hash changes |
-| 330 | right press | draw/hash changes |
+| 300 | left press | active piece rotates one direction |
+| 330 | right press | active piece rotates in the opposite direction |
 | 360 | wheel packet `0x4000002a` | packet delivered; displacement still open |
 | 400 | down press | hard-drop/lock transition begins |
 
@@ -87,8 +88,8 @@ target/release/eapp \
 ## Current boundary
 
 Tetris now has evidence-backed gameplay timing, pause/resume, gravity, wheel
-movement, side-button response, and a centered hard-drop transition. It is not
-yet a full parity result: exact rotate/move/drop labels, lock and line-clear
-behavior, save persistence, long-run rendering, and host audio playback remain
-open. Device comparison is still needed for those gameplay semantics and
-transition details.
+movement, opposite side-button rotations, and a centered hard-drop transition.
+It is not yet a full parity result: wall/kick and line-clear behavior, save
+persistence, long-run rendering, and host audio playback remain open. Device
+comparison is still needed for display-relative direction naming and those
+remaining gameplay semantics.

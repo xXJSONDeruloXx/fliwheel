@@ -9,7 +9,7 @@ older pages retain historical investigation notes and are not completion claims.
 
 | Game | Bundle | Current state | Docs |
 |------|---------|---------------|------|
-| Tetris | 66666 | 🟡 Content-level interaction partial | [→](66666_tetris.md) |
+| Tetris | 66666 | 🟡 Core controls + centered board; gameplay parity open | [→](66666_tetris.md) |
 | Cubis 2 | 99999 | ❌ Asset/renderer blocked | [→](99999_cubis2.md) |
 | Texas Hold'em | 33333 | 🟡 Default loading-only; scoped experiment reaches partial first scene | [→](33333_holdem.md) |
 | Ms. PAC-MAN | 14004 | 🟡 Loading screen only | [→](14004_mspacman.md) |
