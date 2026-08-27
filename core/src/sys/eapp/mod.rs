@@ -675,6 +675,12 @@ struct EappBus {
     /// dumped on fatal / at end of run. Bounded; a flooded range is a sign
     /// the watch was set too wide.
     watch_log: Vec<WatchHit>,
+    /// Optional inclusive guest-frame window for watchpoint hits. This keeps
+    /// startup initialization from consuming the bounded log during RE runs.
+    watch_frame_window: Option<(u64, u64)>,
+    /// Current guest frame, copied from `Eapp::frame_counter` immediately
+    /// before each CPU step so memory accesses can be attributed to a frame.
+    watch_frame: u64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -682,6 +688,7 @@ struct WatchHit {
     addr: u32,
     val: u32,
     pc: u32,
+    frame: u64,
     regs: Option<WatchRegs>,
 }
 
@@ -802,6 +809,8 @@ impl Eapp {
                 previous_pc: 0,
                 previous_lr: 0,
                 watch_log: Vec::new(),
+                watch_frame_window: Self::parse_watch_frames_env(),
+                watch_frame: 0,
             },
             metadata: image.metadata,
             header: image.header,
@@ -952,8 +961,8 @@ impl Eapp {
             };
             warn!(
                 target: "EAPP",
-                "  write addr={:#010x} val={:#010x}{} pc={:#010x}",
-                hit.addr, hit.val, ascii, hit.pc,
+                "  frame={} write addr={:#010x} val={:#010x}{} pc={:#010x}",
+                hit.frame, hit.addr, hit.val, ascii, hit.pc,
             );
             if let Some(regs) = hit.regs {
                 warn!(
@@ -1606,6 +1615,7 @@ impl Eapp {
         self.bus.previous_pc = self.bus.pending_pc;
         self.bus.previous_lr = self.bus.pending_lr;
         self.bus.pending_pc = pc;
+        self.bus.watch_frame = self.frame_counter;
         let mode = self.cpu.mode();
         for idx in 0..4 {
             self.bus.pending_regs[idx] = self.cpu.reg_get(mode, idx as u8);
@@ -2145,6 +2155,28 @@ impl Eapp {
         let addr = parse_num(addr_str)?;
         let len = parse_num(len_str).unwrap_or(0x20);
         Some((addr, addr.wrapping_add(len)))
+    }
+
+    /// Parse `FLIWHEEL_EAPP_WATCH_FRAMES=start-end` into an inclusive guest
+    /// frame window. A single frame number is also accepted. The range is
+    /// intentionally separate from `FLIWHEEL_EAPP_WATCH` so an existing
+    /// address watch keeps its historical all-frame behavior when unset.
+    fn parse_watch_frames_env() -> Option<(u64, u64)> {
+        fliwheel_var("EAPP_WATCH_FRAMES")
+            .ok()
+            .and_then(|raw| Self::parse_watch_frame_range(&raw))
+    }
+
+    fn parse_watch_frame_range(raw: &str) -> Option<(u64, u64)> {
+        let mut parts = raw.trim().splitn(2, '-');
+        let start = parts.next()?.trim().parse::<u64>().ok()?;
+        let end = parts
+            .next()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(start);
+        (start <= end).then_some((start, end))
     }
 
     fn parse_stop_frame_env() -> Option<u64> {
@@ -8899,6 +8931,34 @@ fn upload_summary(upload: &live_gl::LiveGlUpload) -> String {
 }
 
 impl EappBus {
+    fn watch_frame_enabled(&self) -> bool {
+        self.watch_frame_window
+            .is_none_or(|(start, end)| (start..=end).contains(&self.watch_frame))
+    }
+
+    fn record_watch_hit(&mut self, width: u8, addr: u32, val: u32) {
+        let Some((start, end)) = self.watch else {
+            return;
+        };
+        if !self.watch_frame_enabled() || !ranges_overlap(addr, width as u32, start, end) {
+            return;
+        }
+        if self.watch_source_dump_dir.is_some() && !self.watch_source_dumped {
+            self.dump_watch_source();
+        }
+        self.watch_log.push(WatchHit {
+            addr,
+            val,
+            pc: self.pending_pc,
+            frame: self.watch_frame,
+            regs: self.capture_watch_regs(),
+        });
+        // Hard cap to avoid OOM on a flooding range.
+        if self.watch_log.len() > 4096 {
+            self.watch_log.truncate(4096);
+        }
+    }
+
     fn capture_watch_regs(&self) -> Option<WatchRegs> {
         self.watch_regs.then_some(WatchRegs {
             r0: self.pending_regs[0],
@@ -8946,6 +9006,9 @@ impl EappBus {
         if self.watch_read_remaining == 0 {
             return;
         }
+        if !self.watch_frame_enabled() {
+            return;
+        }
         let Some((start, end)) = self.watch else {
             return;
         };
@@ -8970,7 +9033,8 @@ impl EappBus {
         };
         info!(
             target: "EAPP_WATCH_READ",
-            "read w{} addr={:#010x} val={:#010x} pc={:#010x} remaining={}{}",
+            "frame={} read w{} addr={:#010x} val={:#010x} pc={:#010x} remaining={}{}",
+            self.watch_frame,
             width,
             offset,
             value,
@@ -9262,23 +9326,7 @@ impl Memory for EappBus {
     }
 
     fn w32(&mut self, offset: u32, val: u32) -> MemResult<()> {
-        if let Some((start, end)) = self.watch {
-            if ranges_overlap(offset, 4, start, end) {
-                if self.watch_source_dump_dir.is_some() && !self.watch_source_dumped {
-                    self.dump_watch_source();
-                }
-                self.watch_log.push(WatchHit {
-                    addr: offset,
-                    val,
-                    pc: self.pending_pc,
-                    regs: self.capture_watch_regs(),
-                });
-                // Hard cap to avoid OOM on a flooding range.
-                if self.watch_log.len() > 4096 {
-                    self.watch_log.truncate(4096);
-                }
-            }
-        }
+        self.record_watch_hit(4, offset, val);
         match offset {
             FILE_VMA_BASE..=u32::MAX if offset - FILE_VMA_BASE < self.image_len => {
                 self.image.w32(offset - FILE_VMA_BASE, val)
@@ -9421,22 +9469,7 @@ impl Memory for EappBus {
     }
 
     fn w8(&mut self, offset: u32, val: u8) -> MemResult<()> {
-        if let Some((start, end)) = self.watch {
-            if ranges_overlap(offset, 1, start, end) {
-                if self.watch_source_dump_dir.is_some() && !self.watch_source_dumped {
-                    self.dump_watch_source();
-                }
-                self.watch_log.push(WatchHit {
-                    addr: offset,
-                    val: val as u32,
-                    pc: self.pending_pc,
-                    regs: self.capture_watch_regs(),
-                });
-                if self.watch_log.len() > 4096 {
-                    self.watch_log.truncate(4096);
-                }
-            }
-        }
+        self.record_watch_hit(1, offset, val as u32);
         match offset {
             FILE_VMA_BASE..=u32::MAX if offset - FILE_VMA_BASE < self.image_len => {
                 self.image.w8(offset - FILE_VMA_BASE, val)
@@ -9472,22 +9505,7 @@ impl Memory for EappBus {
     }
 
     fn w16(&mut self, offset: u32, val: u16) -> MemResult<()> {
-        if let Some((start, end)) = self.watch {
-            if ranges_overlap(offset, 2, start, end) {
-                if self.watch_source_dump_dir.is_some() && !self.watch_source_dumped {
-                    self.dump_watch_source();
-                }
-                self.watch_log.push(WatchHit {
-                    addr: offset,
-                    val: val as u32,
-                    pc: self.pending_pc,
-                    regs: self.capture_watch_regs(),
-                });
-                if self.watch_log.len() > 4096 {
-                    self.watch_log.truncate(4096);
-                }
-            }
-        }
+        self.record_watch_hit(2, offset, val as u32);
         match offset {
             FILE_VMA_BASE..=u32::MAX if offset - FILE_VMA_BASE < self.image_len => {
                 self.image.w16(offset - FILE_VMA_BASE, val)
@@ -9789,6 +9807,14 @@ mod tests {
 
         assert_eq!(Eapp::wheel_frame_bits(&mut position, 0.0), 0);
         assert_eq!(position, 17);
+    }
+
+    #[test]
+    fn watch_frame_range_accepts_single_and_inclusive_ranges() {
+        assert_eq!(Eapp::parse_watch_frame_range("120-450"), Some((120, 450)));
+        assert_eq!(Eapp::parse_watch_frame_range("37"), Some((37, 37)));
+        assert_eq!(Eapp::parse_watch_frame_range("450-120"), None);
+        assert_eq!(Eapp::parse_watch_frame_range(""), None);
     }
 
     #[test]
