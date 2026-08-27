@@ -158,8 +158,27 @@ impl DesktopAudio {
 fn is_supported_sound_path(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())
-        .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "wav" | "mp3" | "flac" | "ogg"))
+        .map(|ext| {
+            matches!(
+                ext.to_ascii_lowercase().as_str(),
+                "wav" | "mp3" | "flac" | "ogg" | "aac" | "mp4" | "m4a" | "m4b" | "m4p" | "m4r"
+            )
+        })
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_supported_sound_path;
+    use std::path::Path;
+
+    #[test]
+    fn recognizes_ipod_aac_asset_extensions() {
+        for path in ["click.wav", "CLICK.M4A", "music.m4b", "stream.aac", "clip.mp4"] {
+            assert!(is_supported_sound_path(Path::new(path)), "{}", path);
+        }
+        assert!(!is_supported_sound_path(Path::new("metadata.bin")));
+    }
 }
 
 fn run_minifb_ui(
