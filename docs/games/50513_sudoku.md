@@ -74,8 +74,10 @@ NAME` → `GAME SETUP` → `TUTORIAL` → populated puzzle board. The board curs
 number palette render. The latest retest produces the expected filtered wheel
 event, but the board-state listener chain lacks the selector object that is
 present during name entry, so the visible palette remains on `1`. A legal
-user-entered digit, full cursor movement, pen mode, audio, and save behavior
-remain unverified. The evidence is recorded in
+user-entered digit and deterministic full cursor movement remain unverified;
+the board D-pad handler does respond to a bounded edge sweep, while Center
+starts the palette-dismissal/entry transition. Pen mode, audio, and save
+behavior also remain unverified. The evidence is recorded in
 [`20260827_sudoku_rlb_seek_and_setup.md`](../game_tests/20260827_sudoku_rlb_seek_and_setup.md)
 and [`20260827_sudoku_puzzle_board_and_input.md`](../game_tests/20260827_sudoku_puzzle_board_and_input.md).
 

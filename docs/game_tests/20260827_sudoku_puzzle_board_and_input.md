@@ -94,6 +94,15 @@ The registration trace is retained at
 larger packet selected `4` is not reproducible under this canonical board
 route and is treated as unconfirmed rather than as a working input result.
 
+A bounded button sweep after the same board transition used
+`down:10900-10905`, `up:11000-11005`, `right:11100-11105`, and
+`action:11200-11201`. The board-side handler is active: the D-pad edges produce
+stable changes in the board's selected-digit/cursor highlighting, and Center
+starts the visible palette-dismissal/entry transition. The run did not yet
+establish a legal, persistent digit in a cell, so this is partial button-input
+evidence rather than a completed entry path. The wheel remains the unresolved
+palette-selector boundary.
+
 ## What is not yet proven
 
 The first entry probe selected `1`, which is illegal for the highlighted cell,
@@ -102,7 +111,7 @@ not visibly change the palette selection, so no legal digit selection or entry
 has been proven. Therefore the following remain open:
 
 - calibrated legal digit selection and cell-entry confirmation;
-- complete board cursor movement and the game's pen-mode toggle;
+- deterministic full board cursor movement and the game's pen-mode toggle;
 - error-checking, completion/win behavior, sound mixing, and persistence;
 - the default (non-experimental) RLB completion path;
 - the post-input invalid-surface loop.
