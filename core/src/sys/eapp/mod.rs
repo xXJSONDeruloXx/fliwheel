@@ -537,9 +537,9 @@ pub struct Eapp {
     /// host PCM sink is wired so the ABI does not collapse every source to 0.
     audio_handles: HashMap<u32, AudioHandle>,
     next_audio_handle: u32,
-    /// Zuma registers each sound source immediately before its async WAV
-    /// header read. Keep the most recent source until that read supplies the
-    /// host path, then bind the path to the synthetic handle.
+    /// PopCap titles register each sound source immediately before its async
+    /// WAV header read. Keep the most recent source until that read supplies
+    /// the host path, then bind the path to the synthetic handle.
     audio_pending_asset_handle: Option<u32>,
     /// Resource-indexed audio assets retained after the guest releases its
     /// startup table handles. Gameplay uses the resource index again later,
@@ -6114,7 +6114,7 @@ impl Eapp {
                     host_path: None,
                 };
                 self.audio_handles.insert(handle, source.clone());
-                if self.metadata.title == "44444" {
+                if self.uses_wav_audio_source_abi() {
                     self.audio_pending_asset_handle = Some(handle);
                 }
                 if fliwheel_var_os("AUDIO_TRACE").is_some() {
@@ -6129,11 +6129,11 @@ impl Eapp {
                 handle
             }
             2 => {
-                // Zuma configures a source with Audio:13/14/15 and commits
-                // the trigger with Audio:2. Its source handle is the value
-                // returned by Audio:0, so resolve the previously bound WAV
-                // only at this final trigger point.
-                if self.metadata.title == "44444" {
+                // PopCap titles configure a source with Audio:13/14/15 and
+                // commit the trigger with Audio:2. The source handle is the
+                // value returned by Audio:0, so resolve the previously bound
+                // WAV only at this final trigger point.
+                if self.uses_wav_audio_source_abi() {
                     if let Some(source) = self.audio_handles.get(&args[0]).cloned() {
                         if let Some(host_path) = source.host_path {
                             self.queue_audio_event(
@@ -8188,8 +8188,8 @@ impl Eapp {
     }
 
     fn note_audio_asset_path(&mut self, host_path: &Path) {
-        if self.metadata.title == "44444" {
-            self.note_zuma_audio_asset_path(host_path);
+        if self.uses_wav_audio_source_abi() {
+            self.note_wav_audio_asset_path(host_path);
             return;
         }
         // Keep the provisional Tetris-only resource catalog honest until the
@@ -8226,7 +8226,11 @@ impl Eapp {
         }
     }
 
-    fn note_zuma_audio_asset_path(&mut self, host_path: &Path) {
+    fn uses_wav_audio_source_abi(&self) -> bool {
+        matches!(self.metadata.title.as_str(), "44444" | "55555")
+    }
+
+    fn note_wav_audio_asset_path(&mut self, host_path: &Path) {
         let is_wav = host_path
             .extension()
             .and_then(|ext| ext.to_str())
