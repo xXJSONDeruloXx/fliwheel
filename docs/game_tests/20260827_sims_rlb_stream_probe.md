@@ -62,9 +62,9 @@ secondary async status/byte contract.
 
 ## Input-readiness gate probe
 
-The Bowling frame loop also reads the input-manager status byte at guest
-address `0x1807380c` while it is in its resource-loading state. A separate
-Sims-only diagnostic can write `0` after a chosen frame:
+The two Sims images use relocated input-manager globals while they are in
+their resource-loading state. A separate Sims-only diagnostic can write `0`
+after a chosen frame:
 
 ```text
 FLIWHEEL_EAPP_SIMS_INPUT_READY=1
@@ -83,9 +83,15 @@ same RLB gates reach only a transient state `5` and return to state `1`.
 The state-6 boundary and receipts are documented in the [Bowling state-6
 probe](20260827_sims_bowling_state6_boundary.md).
 
-The Pool run exercised the same pointer-valued RLB path and completed 12
-staged reads in 15 seconds, but did not emit the readiness-probe write before
-the run ended. No success is inferred from that absence.
+Pool's matching write targets `0x18085bac`, found through the same relocated
+input-manager helper that references Bowling's `0x1807380c`. With that
+title-specific probe enabled, Pool enters its state-5 branch at
+`0x1804fd14`, writes stable frame state `6` at `0x1804fd50`, and remains on
+the state-6 path through the bounded run. The existing live frame does not
+gain a menu or gameplay draw. Pool's `0x18086514` byte is a separate check in
+the state-5 branch, not the readiness trigger. See the [Pool state-6
+probe](20260827_sims_pool_state6_boundary.md) and receipt
+`/tmp/fliwheel_sims_pool_input_correct_20260827.log`.
 
 ## Additional negative probes
 

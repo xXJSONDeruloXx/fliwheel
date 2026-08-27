@@ -47,3 +47,9 @@ Pool's first observed follow-up reads are 4,096 bytes at offset `0`, then
 55,607 bytes at offset `0x1000`, followed by additional guest-derived entries.
 The `payload` result alias keeps this experiment independent of the allocator's
 current synthetic address.
+
+The optional input-ready experiment now reaches Pool's stable guest state 6
+after the RLB reads, but that path still issues no menu or gameplay draw. The
+title-specific address and receipt are documented in the [focused state-6
+probe](../game_tests/20260827_sims_pool_state6_boundary.md); the input write
+remains diagnostic-only and is not enabled by default.

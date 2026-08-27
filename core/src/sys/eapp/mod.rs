@@ -7825,10 +7825,10 @@ impl Eapp {
         self.drain_watch_log();
     }
 
-    /// The Sims frame loop waits for the input-manager status byte at
-    /// `0x1807380c` to become zero before it leaves its resource-loading state.
-    /// The retail image initializes that byte to 2, while the currently
-    /// emulated input path does not produce the observed completion write.
+    /// The Sims frame loop waits for a title-specific input-manager status byte
+    /// to become zero before it leaves its resource-loading state. The retail
+    /// image initializes that byte to 2, while the currently emulated input
+    /// path does not produce the observed completion write.
     /// Keep a one-shot override behind an explicit, Sims-only probe flag so
     /// default execution remains unchanged while the next scene contract is
     /// investigated.
@@ -7854,13 +7854,22 @@ impl Eapp {
             return;
         }
 
-        const INPUT_STATUS: u32 = 0x1807_380c;
-        let before = self.read_guest_u8(INPUT_STATUS).unwrap_or(0xff);
+        let input_status = match self.metadata.title.as_str() {
+            // Bowling's input manager global.
+            "1500C" => 0x1807_380c,
+            // Pool is a relocated build; its matching input-manager global
+            // is referenced by the same shared helper at 0x180051b4.
+            "1500E" => 0x1808_5bac,
+            _ => return,
+        };
+        let before = self.read_guest_u8(input_status).unwrap_or(0xff);
         if before == 2 {
-            let wrote = self.write_guest_bytes(INPUT_STATUS, &[0]);
+            let wrote = self.write_guest_bytes(input_status, &[0]);
             info!(
                 target: "EAPP",
-                "Sims input readiness probe status={:#04x} -> 0 wrote={}",
+                "Sims input readiness probe title={} addr={:#010x} status={:#04x} -> 0 wrote={}",
+                self.metadata.title,
+                input_status,
                 before,
                 wrote
             );
