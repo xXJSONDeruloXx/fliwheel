@@ -4010,7 +4010,7 @@ impl Eapp {
                     .as_ref()
                     .is_some_and(|lg| lg.is_font_atlas_for(handle, uvs))
         });
-        let effective_translation = if pointer_handle {
+        let mut effective_translation = if pointer_handle {
             self.live_gl
                 .as_ref()
                 .and_then(|lg| {
@@ -4040,7 +4040,7 @@ impl Eapp {
             self.live_maybe_dump_texgen_stack_locals();
         }
 
-        let positions = match self.live_decode_positions_range(
+        let mut positions = match self.live_decode_positions_range(
             &pos_def,
             pos_enabled,
             effective_translation,
@@ -4109,6 +4109,68 @@ impl Eapp {
                     count,
                 )
             });
+
+        // Tetris normally establishes the centered board origin before the
+        // matrix draw. After a hard drop or pause/resume re-entry, the guest
+        // submits a full 115x223 `matrix_565` quad at (0,0) while retaining
+        // the same logical 320x240 scene. The incremental mino draws that
+        // follow then inherit that bad origin unless the matrix is re-anchored
+        // first. Keep this narrow: the 320x240 background also uses handle
+        // 0x13, so handle plus texture dimensions are required evidence.
+        if self
+            .live_gl
+            .as_ref()
+            .is_some_and(|lg| lg.game_id == "66666")
+            && handle == 0x13
+            && quad_groups == 1
+            && explicit.as_ref().is_some_and(|uvs| {
+                if uvs.len() < 4 {
+                    return false;
+                }
+                let (min_u, min_v, max_u, max_v) = uvs.iter().take(4).fold(
+                    (
+                        f32::INFINITY,
+                        f32::INFINITY,
+                        f32::NEG_INFINITY,
+                        f32::NEG_INFINITY,
+                    ),
+                    |acc, (u, v)| {
+                        (acc.0.min(*u), acc.1.min(*v), acc.2.max(*u), acc.3.max(*v))
+                    },
+                );
+                (max_u - min_u).round() as usize == 115
+                    && (max_v - min_v).round() as usize == 223
+            })
+        {
+            let current_origin = positions.iter().fold(
+                (f32::INFINITY, f32::INFINITY),
+                |acc, (x, y)| (acc.0.min(*x), acc.1.min(*y)),
+            );
+            let expected_origin = (102.0, 7.0);
+            let correction = (
+                expected_origin.0 - current_origin.0,
+                expected_origin.1 - current_origin.1,
+            );
+            if correction.0.abs() > 0.5 || correction.1.abs() > 0.5 {
+                for (x, y) in &mut positions {
+                    *x += correction.0;
+                    *y += correction.1;
+                }
+                effective_translation.0 += correction.0;
+                effective_translation.1 += correction.1;
+                info!(
+                    target: "EAPP_GL",
+                    "tetris_matrix_reanchor current=({:.1},{:.1}) expected=({:.1},{:.1}) delta=({:.1},{:.1})",
+                    current_origin.0,
+                    current_origin.1,
+                    expected_origin.0,
+                    expected_origin.1,
+                    correction.0,
+                    correction.1
+                );
+            }
+        }
+
         let solid_color = if handle == 0x3 {
             self.live_decode_solid_color(&explicit_uv_def, explicit_uv_enabled, material_epoch)
         } else {

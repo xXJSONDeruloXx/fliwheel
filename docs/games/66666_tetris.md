@@ -47,7 +47,9 @@ board updates, and carries the paired tile transforms for the matrix/mino
 materials. Full gameplay frames now restore the board origin from the
 `matrix_565.pix` draw, centering the 115×223 well at `(102,7)` and placing the
 first active cell inside it. The board remains intact and input changes the
-dynamic draw stream.
+dynamic draw stream. A follow-up re-entry probe also re-anchors the matrix
+after the down-button hard-drop transition, keeping the 47-draw composition
+centered.
 A focused follow-up now verifies pause/resume, gravity, side-button response,
 the hard-drop transition, and a 1,000-frame repeat-drop/game-over regression
 reaches `Drop.wav`, `Lock.wav`, and `GameOver.wav` resource events. A separate
@@ -66,7 +68,8 @@ for the gameplay timing and control evidence.
 See [`20260826_tetris_wheel_probe.md`](../game_tests/20260826_tetris_wheel_probe.md)
 for the isolated signed-wheel visual assertion.
 See [`20260826_tetris_board_origin.md`](../game_tests/20260826_tetris_board_origin.md)
-for the centered-board fix and long-run renderer checkpoint.
+for the centered-board fix, hard-drop re-entry correction, and long-run
+renderer checkpoint.
 See [`20260826_tetris_incremental_transform_regression.md`](../game_tests/20260826_tetris_incremental_transform_regression.md)
 for the byte-identical A/B receipt covering the full-to-incremental draw
 transition.

@@ -28,6 +28,28 @@ The follow-up full-to-incremental transition is covered separately in
 That A/B receipt confirms the centered-board change and the later incremental
 piece update produce the same frame as the pre-centering reference build.
 
+## Hard-drop re-entry follow-up
+
+The earlier board-origin fix covered the first full gameplay composition. A
+separate replay then exposed the same logical board being submitted at
+`(0,0)` after a down-button hard drop, when the guest switched back to its
+47-draw transition composition. The HLE now recognizes the Tetris
+`matrix_565` 115×223 draw and re-anchors only that matrix to `(102,7)` before
+the following mino draws inherit its base.
+
+The corrected diagnostic run records the re-anchor twice, including the
+hard-drop boundary:
+
+```text
+tetris_matrix_reanchor current=(0.0,0.0) expected=(102.0,7.0) delta=(102.0,7.0)
+draw37 rasterized handle=0x13 inferred_upload=18 dim=Some((115, 223)) bounds=(102.0,7.0)-(217.0,230.0) cov=25645
+```
+
+The frame-330 capture is centered and the subsequent 47-draw transition no
+longer leaves the board and cells at the left edge. This is a renderer
+re-entry fix, not proof that locking, line clearing, or game-over behavior
+matches the device.
+
 ## Evidence
 
 Focused 50M-cycle run:
@@ -65,6 +87,17 @@ Long repeat-drop/game-over regression:
 
 The long run used `EAPP_AUDIO_DISABLE=1`, so those are resource-identity
 events, not proof of host speaker output or mixer parity.
+
+Hard-drop re-entry regression:
+
+- Capture: `/tmp/fliwheel_tetris_reanchor.OaOedd/capture/`
+- Diagnostic log: `/tmp/fliwheel_tetris_reanchor_trace.dOAzFp/run.log`
+- Exit: `0`
+- Captured rows: `380` (`0..379`), with `380` PPMs
+- Presented hashes: `49` unique, `49` sequential changes
+- Draws: maximum `382`; `2` startup zero-draw rows
+- Input: signed wheel sweeps at frames `240..245` and `270..275`,
+  down-button edge at frame `330..331`
 
 ## Reproduce
 

@@ -52,8 +52,9 @@ The play-controls manifest records these useful boundaries:
 The later centered-board isolation uses `wheel=4:240-245` followed by
 `wheel=-4:270-275`. The dominant red active-piece component moves from
 `x=149..168` to `x=193..212`, then back to `x=127..157`; see the dedicated
-receipt for the exact capture paths and metrics. The pause/resume and hard-drop
-transitions remain separate visual gates.
+receipt for the exact capture paths and metrics. The hard-drop transition is
+now centered by the title-scoped board re-anchor; lock, line-clear, and
+next-piece correctness remain separate gameplay gates.
 
 The external [iLounge Tetris review](https://www.ilounge.com/index.php/reviews/entry/electronic-arts-tetris)
 describes the same clickwheel-oriented control family: wheel sweeps for
@@ -86,8 +87,8 @@ target/release/eapp \
 ## Current boundary
 
 Tetris now has evidence-backed gameplay timing, pause/resume, gravity, wheel
-movement, side-button response, and hard-drop behavior. It is not yet a full
-parity result: exact rotate/move/drop labels, lock and line-clear behavior,
-save persistence, long-run rendering, and host audio playback remain open.
-Transition frames still need visual comparison against a device capture before
-the renderer can be called fully correct.
+movement, side-button response, and a centered hard-drop transition. It is not
+yet a full parity result: exact rotate/move/drop labels, lock and line-clear
+behavior, save persistence, long-run rendering, and host audio playback remain
+open. Device comparison is still needed for those gameplay semantics and
+transition details.
