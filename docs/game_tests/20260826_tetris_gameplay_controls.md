@@ -23,9 +23,10 @@ separately in [`20260826_tetris_board_origin.md`](20260826_tetris_board_origin.m
 - A down-button edge triggers the hard-drop/lock transition: the active piece
   moves to the floor, the board performs a high-draw transition, and the next
   piece scene appears.
-- A wheel packet reaches the guest as an absolute-position packet. Its exact
-  horizontal gameplay displacement and direction still need a visual assertion
-  independent of menu/name-entry navigation.
+- A sustained signed wheel sweep reaches the guest as an absolute-position
+  packet and visibly moves the active piece horizontally. The isolated
+  before/after receipt is [`20260826_tetris_wheel_probe.md`](20260826_tetris_wheel_probe.md).
+  Exact physical scaling and device labels remain open.
 - The bounded run completes without a fatal memory error, panic, unsupported
   upload fatal, or emulator process error.
 
@@ -47,6 +48,11 @@ The play-controls manifest records these useful boundaries:
 | 330 | right press | draw/hash changes |
 | 360 | wheel packet `0x4000002a` | packet delivered; displacement still open |
 | 400 | down press | hard-drop/lock transition begins |
+
+The later isolated sweep uses `wheel=4:300-305` followed by
+`wheel=-4:330-335`. The dominant red active-piece component moves from
+`x=138..168` to `x=182..212`, then back to `x=127..157`; see the dedicated
+receipt for the exact capture paths and metrics.
 
 The external [iLounge Tetris review](https://www.ilounge.com/index.php/reviews/entry/electronic-arts-tetris)
 describes the same clickwheel-oriented control family: wheel sweeps for
@@ -78,10 +84,9 @@ target/release/eapp \
 
 ## Current boundary
 
-Tetris now has evidence-backed gameplay timing, pause/resume, gravity, side
-button response, and hard-drop behavior. It is not yet a full parity result:
-wheel movement needs an isolated visual assertion; exact rotate/move/drop
-labels, lock and line-clear behavior, save persistence, long-run rendering,
-and host audio playback remain open. Transition frames also still need visual
-comparison against a device capture before the renderer can be called fully
-correct.
+Tetris now has evidence-backed gameplay timing, pause/resume, gravity, wheel
+movement, side-button response, and hard-drop behavior. It is not yet a full
+parity result: exact rotate/move/drop labels, lock and line-clear behavior,
+save persistence, long-run rendering, and host audio playback remain open.
+Transition frames still need visual comparison against a device capture before
+the renderer can be called fully correct.

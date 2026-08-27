@@ -1,6 +1,6 @@
 # Tetris (Bundle 66666)
 
-**Status:** 🟡 CENTERED BOARD + INPUT PATH VERIFIED | **Gameplay:** gravity, controls, and hard drop smoke verified; parity open | **Engine:** Tetris Runtime
+**Status:** 🟡 CENTERED BOARD + WHEEL/INPUT PATH VERIFIED | **Gameplay:** gravity, wheel movement, controls, and hard drop smoke verified; parity open | **Engine:** Tetris Runtime
 
 ## Quick Start
 ```bash
@@ -50,9 +50,10 @@ first active cell inside it. The board remains intact and input changes the
 dynamic draw stream.
 A focused follow-up now verifies pause/resume, gravity, side-button response,
 the hard-drop transition, and a 1,000-frame repeat-drop/game-over regression
-reaches `Drop.wav`, `Lock.wav`, and `GameOver.wav` resource events. Wheel
-displacement, later piece/line-clear transforms, exact physical mapping,
-persistence, host audio output, and full long-run parity are still open.
+reaches `Drop.wav`, `Lock.wav`, and `GameOver.wav` resource events. A separate
+signed wheel sweep visibly moves the active piece horizontally. Later
+piece/line-clear transforms, exact physical mapping, persistence, host audio
+output, and full long-run parity are still open.
 
 The old no-input probe used a diagnostic `FLIWHEEL_EAPP_HOST_EVENT_FLAGS=0x10`
 injection and is not evidence that ordinary no-input execution reaches the
@@ -62,6 +63,8 @@ See [`20260825_tetris_text_and_name_entry.md`](../game_tests/20260825_tetris_tex
 for the exact commands and capture artifacts.
 See [`20260826_tetris_gameplay_controls.md`](../game_tests/20260826_tetris_gameplay_controls.md)
 for the gameplay timing and control evidence.
+See [`20260826_tetris_wheel_probe.md`](../game_tests/20260826_tetris_wheel_probe.md)
+for the isolated signed-wheel visual assertion.
 See [`20260826_tetris_board_origin.md`](../game_tests/20260826_tetris_board_origin.md)
 for the centered-board fix and long-run renderer checkpoint.
 See [`20260826_tetris_incremental_transform_regression.md`](../game_tests/20260826_tetris_incremental_transform_regression.md)
@@ -90,7 +93,7 @@ rotation, and center/down actions for faster or instant drops.
 
 | Key | Action |
 |-----|--------|
-| Wheel | Navigate menus/name entry; gameplay displacement under verification |
+| Wheel | Navigate menus/name entry; moves the active piece in an isolated signed sweep |
 | Left / Right | Responsive gameplay path; exact rotate/move labels under verification |
 | Down | Hard-drop/lock transition observed |
 | Enter / Action | Select, commit, pause, resume, or advance the current scene |
@@ -115,6 +118,7 @@ automatic for bundle `66666`; no preservation override is required.
 - Clickwheel ingress evidence: [`20260825_clickwheel_input.md`](../game_tests/20260825_clickwheel_input.md)
 - Text/name-entry evidence: [`20260825_tetris_text_and_name_entry.md`](../game_tests/20260825_tetris_text_and_name_entry.md)
 - Gameplay controls evidence: [`20260826_tetris_gameplay_controls.md`](../game_tests/20260826_tetris_gameplay_controls.md)
+- Wheel movement evidence: [`20260826_tetris_wheel_probe.md`](../game_tests/20260826_tetris_wheel_probe.md)
 - Board-origin and long-run evidence: [`20260826_tetris_board_origin.md`](../game_tests/20260826_tetris_board_origin.md)
 - Incremental-transform regression: [`20260826_tetris_incremental_transform_regression.md`](../game_tests/20260826_tetris_incremental_transform_regression.md)
 - Frame capture produces PPM files visible with `open /tmp/tetris_capture_*.ppm`
