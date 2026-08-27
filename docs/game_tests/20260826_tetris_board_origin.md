@@ -23,6 +23,11 @@ Tetris parity: later piece/preview and line-clear paths still contain
 off-screen transforms that need separate guest-array/ABI analysis, and host
 audio output remains unverified.
 
+The follow-up full-to-incremental transition is covered separately in
+[`20260826_tetris_incremental_transform_regression.md`](20260826_tetris_incremental_transform_regression.md).
+That A/B receipt confirms the centered-board change and the later incremental
+piece update produce the same frame as the pre-centering reference build.
+
 ## Evidence
 
 Focused 50M-cycle run:

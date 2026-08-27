@@ -3218,9 +3218,25 @@ impl Eapp {
         let state_ptr = args[1];
         if let Some(lg) = self.live_gl.as_mut() {
             if lg.game_id == "66666"
+                && lg.use_incremental_translation
+                && matches!(handle, 0x13 | 0x19)
+            {
+                if !lg.frame_material_bound {
+                    // Incremental frames arrive with an already-composed
+                    // guest base before the first material bind. Capture it
+                    // as-is; applying the full-board origin here would erase
+                    // the active piece's guest-local placement.
+                    lg.frame_base_translation = lg.translation;
+                } else {
+                    lg.translation = lg.frame_base_translation;
+                }
+                lg.frame_material_bound = true;
+            } else if lg.game_id == "66666"
                 && handle == 0x19
                 && lg.board_base_translation_valid
             {
+                // Non-incremental frames use the centered origin learned
+                // from the complete matrix draw.
                 lg.translation = lg.frame_base_translation;
             }
             lg.current_handle = handle;
@@ -4866,7 +4882,9 @@ impl Eapp {
                 }
             }
             let preserve_translation = lg.use_incremental_translation
-                && records.iter().all(|record| record.handle == 0x19);
+                && records
+                    .iter()
+                    .all(|record| matches!(record.handle, 0x13 | 0x19));
             lg.draws.extend(records);
             if !preserve_translation {
                 lg.translation = (0.0, 0.0);

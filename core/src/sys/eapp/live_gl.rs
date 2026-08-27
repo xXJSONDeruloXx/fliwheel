@@ -173,6 +173,9 @@ pub struct LiveGlState {
     /// wraps each cell material's tile draws in paired translations.
     pub frame_base_translation: (f32, f32),
     pub board_base_translation_valid: bool,
+    /// Low-draw Tetris frames alternate matrix-cell and active-cell material
+    /// groups while carrying the local tile deltas between draws.
+    pub frame_material_bound: bool,
     /// Draw count of the preceding frame. Tetris changes from full board
     /// composition to low-draw incremental updates at this boundary.
     pub previous_frame_draw_count: usize,
@@ -280,6 +283,7 @@ impl LiveGlState {
             translation: (0.0, 0.0),
             frame_base_translation: (0.0, 0.0),
             board_base_translation_valid: false,
+            frame_material_bound: false,
             previous_frame_draw_count: 0,
             use_incremental_translation: false,
             clear_color: Rgba8::rgba(0, 0, 0, 255),
@@ -333,8 +337,15 @@ impl LiveGlState {
         self.arrays.clear();
         self.enabled_arrays.clear();
         self.translation = (0.0, 0.0);
-        self.frame_base_translation = (0.0, 0.0);
-        self.board_base_translation_valid = false;
+        self.frame_material_bound = false;
+        // Tetris composes the initial board once, then submits only the
+        // changed cell materials on later frames. Keep the learned origin
+        // available for centered non-incremental frames; incremental frames
+        // capture their own already-composed guest base at the first bind.
+        if self.game_id != "66666" {
+            self.frame_base_translation = (0.0, 0.0);
+            self.board_base_translation_valid = false;
+        }
         self.use_incremental_translation = self.game_id == "66666"
             && (1..=16).contains(&self.previous_frame_draw_count);
         self.pointer_text_carry_handle = None;
@@ -1851,9 +1862,14 @@ mod tests {
         assert_eq!(lg.framebuffer[0], blue);
 
         lg.framebuffer[0] = Rgba8::rgba(40, 50, 60, 255);
+        lg.frame_base_translation = (102.0, 7.0);
+        lg.board_base_translation_valid = true;
         lg.previous_frame_draw_count = 12;
         lg.reset_for_frame();
         assert_eq!(lg.framebuffer[0], Rgba8::rgba(40, 50, 60, 255));
+        assert_eq!(lg.frame_base_translation, (102.0, 7.0));
+        assert!(lg.board_base_translation_valid);
+        assert!(!lg.frame_material_bound);
         assert!(lg.use_incremental_translation);
     }
 

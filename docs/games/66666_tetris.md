@@ -64,6 +64,9 @@ See [`20260826_tetris_gameplay_controls.md`](../game_tests/20260826_tetris_gamep
 for the gameplay timing and control evidence.
 See [`20260826_tetris_board_origin.md`](../game_tests/20260826_tetris_board_origin.md)
 for the centered-board fix and long-run renderer checkpoint.
+See [`20260826_tetris_incremental_transform_regression.md`](../game_tests/20260826_tetris_incremental_transform_regression.md)
+for the byte-identical A/B receipt covering the full-to-incremental draw
+transition.
 
 ## Texture Details
 | File | Format | Dimensions | Notes |
@@ -113,4 +116,5 @@ automatic for bundle `66666`; no preservation override is required.
 - Text/name-entry evidence: [`20260825_tetris_text_and_name_entry.md`](../game_tests/20260825_tetris_text_and_name_entry.md)
 - Gameplay controls evidence: [`20260826_tetris_gameplay_controls.md`](../game_tests/20260826_tetris_gameplay_controls.md)
 - Board-origin and long-run evidence: [`20260826_tetris_board_origin.md`](../game_tests/20260826_tetris_board_origin.md)
+- Incremental-transform regression: [`20260826_tetris_incremental_transform_regression.md`](../game_tests/20260826_tetris_incremental_transform_regression.md)
 - Frame capture produces PPM files visible with `open /tmp/tetris_capture_*.ppm`
