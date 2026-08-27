@@ -81,6 +81,23 @@ The Pool run exercised the same pointer-valued RLB path and completed 12
 staged reads in 15 seconds, but did not emit the readiness-probe write before
 the run ended. No success is inferred from that absence.
 
+## Additional negative probes
+
+The following experiments were kept title-scoped and opt-in:
+
+- `FLIWHEEL_EAPP_SIMS_ASYNC1_STATUS=0` versus `1`, with either zero or
+  63,527 callback bytes, produced the same loading boundary. The callback
+  transition is therefore still modeled as the useful part of this stage;
+  the exact status/byte meaning remains unresolved.
+- `FLIWHEEL_EAPP_SIMS_ZERO_FILL_RSERVER=1` padded the short `rserver.bin`
+  read from 105,020 bytes to its requested 512,000-byte buffer. Bowling still
+  stayed in the same loading/progress path, so this is not sufficient either.
+- With `FLIWHEEL_EAPP_PC_TRACE_DETAIL=1`, the guest resource object moved
+  through its expected open/read/complete/close states and the high-level
+  stream created successive objects. No single pending read or stuck callback
+  explains the eventual stop; the next target is the parser's
+  resource/material construction after those completed reads.
+
 Useful receipts from the focused Bowling run:
 
 - `/tmp/fliwheel_sims_async123_63527_20260827.log`

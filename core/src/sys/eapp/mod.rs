@@ -7029,6 +7029,17 @@ impl Eapp {
                                 bytes.len()
                             };
                             let n = bytes.len().min(requested_len);
+                            let is_sims = self
+                                .metadata
+                                .bundle_dir
+                                .to_str()
+                                .map_or(false, |p| p.contains("1500C") || p.contains("1500E"));
+                            let zero_fill_sims_rserver = is_sims
+                                && fliwheel_var_os("EAPP_SIMS_ZERO_FILL_RSERVER").is_some()
+                                && host_path
+                                    .file_name()
+                                    .and_then(|name| name.to_str())
+                                    .map_or(false, |name| name == "rserver.bin");
                             // Request-object reads provide a destination and a capacity; the
                             // firmware copies the bytes actually read and reports the byte count.
                             // Do NOT zero-fill the full requested capacity here. Texas Hold'em
@@ -7048,6 +7059,21 @@ impl Eapp {
                             let bytes_delivered = should_deliver
                                 && dest != 0
                                 && self.write_guest_bytes(dest, &bytes[..n]);
+                            if bytes_delivered && zero_fill_sims_rserver && requested_len > n {
+                                let padding = vec![0u8; requested_len - n];
+                                let padding_delivered = self.write_guest_bytes(
+                                    dest.wrapping_add(n as u32),
+                                    &padding,
+                                );
+                                info!(
+                                    target: "EAPP_IMPORT",
+                                    "AsyncFileIO:3 Sims rserver zero-fill requested={} file_bytes={} padding={} delivered={}",
+                                    requested_len,
+                                    n,
+                                    padding.len(),
+                                    padding_delivered
+                                );
+                            }
                             let delivered = dest != 0 && (bytes_delivered || !should_deliver);
                             if delivered {
                                 // The async completion callback `0x1801fc68`
@@ -9025,6 +9051,66 @@ impl Eapp {
                 self.read_guest_u8(frame + 7).unwrap_or(0xff),
                 self.read_guest_u8(frame + 8).unwrap_or(0xff),
             ));
+        }
+
+        if (self.metadata.title == "1500C" || self.metadata.title == "1500E")
+            && fliwheel_var_os("EAPP_PC_TRACE_DETAIL").is_some()
+        {
+            let stream_pc = matches!(
+                pc,
+                0x1800_94c4
+                    | 0x1800_95a4
+                    | 0x1800_95d8
+                    | 0x1800_961c
+                    | 0x1800_9850
+                    | 0x1800_98e4
+                    | 0x1803_bd44
+                    | 0x1803_bd80
+            );
+            let resource_pc = matches!(
+                pc,
+                0x1802_6394
+                    | 0x1802_64a0
+                    | 0x1802_64fc
+                    | 0x1802_6610
+                    | 0x1802_6680
+                    | 0x1802_66f8
+                    | 0x1802_67c0
+            );
+            if stream_pc {
+                let stream = regs[0];
+                details.push_str(&format!(
+                    " sims_stream={:#010x} stream_words=[{:#010x},{:#010x},{:#010x},{:#010x},{:#010x},{:#010x},{:#010x},{:#010x},{:#010x},{:#010x}] stream_bytes=[{:#04x},{:#04x},{:#04x}]",
+                    stream,
+                    self.read_guest_u32(stream + 0x0c).unwrap_or(0),
+                    self.read_guest_u32(stream + 0x10).unwrap_or(0),
+                    self.read_guest_u32(stream + 0x18).unwrap_or(0),
+                    self.read_guest_u32(stream + 0x1c).unwrap_or(0),
+                    self.read_guest_u32(stream + 0x20).unwrap_or(0),
+                    self.read_guest_u32(stream + 0x24).unwrap_or(0),
+                    self.read_guest_u32(stream + 0x28).unwrap_or(0),
+                    self.read_guest_u32(stream + 0x30).unwrap_or(0),
+                    self.read_guest_u32(stream + 0x38).unwrap_or(0),
+                    self.read_guest_u32(stream + 0x3c).unwrap_or(0),
+                    self.read_guest_u8(stream + 0x2c).unwrap_or(0xff),
+                    self.read_guest_u8(stream + 0x2e).unwrap_or(0xff),
+                    self.read_guest_u8(stream + 0x34).unwrap_or(0xff),
+                ));
+            }
+            if resource_pc {
+                let resource = regs[0];
+                details.push_str(&format!(
+                    " sims_resource={:#010x} resource_handle={:#010x} resource_state={:#04x} resource_flags=[{:#04x},{:#04x}] resource_words=[{:#010x},{:#010x},{:#010x}]",
+                    resource,
+                    self.read_guest_u32(resource).unwrap_or(0),
+                    self.read_guest_u8(resource + 0x108).unwrap_or(0xff),
+                    self.read_guest_u8(resource + 0x104).unwrap_or(0xff),
+                    self.read_guest_u8(resource + 0x105).unwrap_or(0xff),
+                    self.read_guest_u32(resource + 0x10c).unwrap_or(0),
+                    self.read_guest_u32(resource + 0x110).unwrap_or(0),
+                    self.read_guest_u32(resource + 0x114).unwrap_or(0),
+                ));
+            }
         }
 
         info!(
