@@ -9113,6 +9113,73 @@ impl Eapp {
             }
         }
 
+        if self.metadata.title == "66666" && fliwheel_var_os("EAPP_PC_TRACE_DETAIL").is_some()
+        {
+            // Tetris' movement helpers pass either the active piece object or
+            // the piece manager in r0. Keep this dump diagnostic-only: the
+            // object layout is still being derived from the decrypted guest,
+            // and reading the candidate fields must never affect execution.
+            let object = regs[0];
+            let object_words = (0..16u32)
+                .map(|index| {
+                    self.read_guest_u32(object.wrapping_add(index * 4))
+                        .unwrap_or(0xdead_beef)
+                })
+                .map(|value| format!("{:#010x}", value))
+                .collect::<Vec<_>>()
+                .join(",");
+            let board = self.read_guest_u32(object.wrapping_add(0x1c)).unwrap_or(0);
+            let board_array = self.read_guest_u32(board.wrapping_add(0x10)).unwrap_or(0);
+            let board_words = if board != 0 {
+                (0..12u32)
+                    .map(|index| {
+                        self.read_guest_u32(board.wrapping_add(index * 4))
+                            .unwrap_or(0xdead_beef)
+                    })
+                    .map(|value| format!("{:#010x}", value))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            } else {
+                String::new()
+            };
+            let board_array_words = if board_array != 0 {
+                (0..40u32)
+                    .map(|index| {
+                        self.read_guest_u32(board_array.wrapping_add(index * 4))
+                            .unwrap_or(0xdead_beef)
+                    })
+                    .map(|value| format!("{:#010x}", value))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            } else {
+                String::new()
+            };
+            let board_row_masks = if board_array != 0 {
+                (0..40u32)
+                    .map(|index| {
+                        let row = self
+                            .read_guest_u32(board_array.wrapping_add(index * 4))
+                            .unwrap_or(0);
+                        self.read_guest_u32(row.wrapping_add(8)).unwrap_or(0)
+                    })
+                    .map(|value| format!("{:#06x}", value))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            } else {
+                String::new()
+            };
+            details.push_str(&format!(
+                " tetris_object={:#010x} object_words=[{}] tetris_board={:#010x} board_array={:#010x} board_words=[{}] board_array_words=[{}] board_row_masks=[{}]",
+                object,
+                object_words,
+                board,
+                board_array,
+                board_words,
+                board_array_words,
+                board_row_masks
+            ));
+        }
+
         info!(
             target: "EAPP_PC_TRACE",
             "pc={:#010x} hit={} frame={} title={} {}",

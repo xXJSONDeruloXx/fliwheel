@@ -82,14 +82,15 @@ manifest. They measure visual activity, not correctness.
 | `50513` | Sudoku | Reversed-register event heads drain cleanly; an opt-in RLB completion honors the late resource seek/read path and reaches coherent `PLAYER NAME`, `GAME SETUP`, `TUTORIAL`, and populated 9×9 puzzle-board scenes. The board cursor and numbered palette render; the default path remains unchanged | Puzzle-board/input partial under title-scoped gates; legal cell entry, audio, and save parity not verified | Calibrate board cursor/number controls, then verify error checking, audio, and persistence |
 | `50514` | Royal Solitaire | 700 frames, 26 hashes and 59 changes; the character splash is spatially coherent, scripted event nodes are consumed, and the savefile request completes. An opt-in diagnostic stages `Solitaire.rlb` and delivers its 4,096-byte plus 98,216-byte reads, but the linked callback probe faults | Coherent splash; RLB payload path proven diagnostically, readiness/object contract unresolved and board not reached | Reconstruct the firmware dispatcher continuation and first resource completion, then validate card/selection interaction |
 | `55555` | Bejeweled | Normalized wheel input reaches the tutorial and live 8×8 board; a deterministic `[8,6]` to `[8,7]` swap enters the guest swap path, displays “EXCELLENT!”, changes/refills tiles, and opens the score-bar overlay; the runner maps arrow keys to the four tap quadrants | Single live match verified; headed/mode/audio/save coverage remains | Confirm the arrow-key gesture in a headed run, then repeat across modes and verify audio/persistence |
-| `66666` | Tetris | Corrected run reaches frame 501 with 20 hashes and up to 382 draws; fresh evidence proves the board, pause/resume, opposite side-button rotations, signed wheel movement, hard drop, and indexed `Menu.wav`/`Move.wav`/`Drop.wav` events. A longer controlled replay also reached `Lock.wav` but not `Clear.wav`; a headed smoke run logged `Menu.wav` as played | Best current target; core controls verified, interactive partial, not complete | Finish wall/kick and line clears, persistence, long-run visual parity, and sound mixing |
+| `66666` | Tetris | Fresh controlled evidence proves the board, pause/resume, opposite side-button rotations, signed wheel movement, hard drop, a guest row clear, indexed `Menu.wav`/`Move.wav`/`Drop.wav`/`Lock.wav`/`Clear.wav` events, and headed sink playback including `Clear.wav` | Best current target; core gameplay/audio path verified, interactive partial, not complete | Finish wall/kick behavior, piece sequencing/scoring, persistence, long-run visual parity, and physical mixer parity |
 | `77777` | Mahjong | 700 frames, 71 hashes, up to eight draws; mostly dotted/garbled title output | Texture/UV partial | Decode the `main.rlb` resource path and tile atlas |
 | `88888` | Mini Golf | 700 frames, two hashes, five draws; mostly black with a loading/progress outline | Splash/loading only | Load the compact course resources and reach the menu |
 | `99999` | Cubis 2 | 700 frames, 26 hashes and 27 changes, up to 49 draws; black/loading state despite many staged assets | Asset/renderer blocked | Decode the `.raw`/`.pix` image path and material handles |
 | `AAAAA` | PAC-MAN | 425 frames, two hashes, up to 58 draws; recognizable Namco loading screen, content not reached | Loading screen only | Advance through menu and verify maze/D-pad movement |
 
-No row is marked fully playable. Tetris and Bejeweled now have content-level
-control evidence, but both remain incomplete under the project goal.
+No row is marked fully playable. Tetris now has a guest-driven line-clear and
+headed audio receipt, while Bejeweled has content-level match evidence; both
+remain incomplete under the project goal.
 
 ## Scoped Hold'em progress (excluded from the default matrix)
 
@@ -140,9 +141,10 @@ Evidence is retained at `/tmp/fliwheel_holdem_ok_sweep_20260826/` and
   globally. Royal Solitaire's small character/UI quads no longer get stretched
   to the full viewport; the change was regression-tested against Sudoku, both
   Sims titles, and Tetris.
-- The desktop host sink remains headless-unverified. Tetris has a persistent
-  `rodio` sink and a guest-indexed event queue, but physical output, overlap,
-  timing, and mixer parity still need a headed test and waveform regression.
+- The desktop host sink is now headed-verified for Tetris's indexed menu,
+  movement, drop, lock, and clear WAV events through the persistent `rodio`
+  sink. Physical output, overlap, timing, volume, and mixer parity still need
+  a headed waveform regression against an iPod/reference recording.
 - The reference eApp lifecycle's one-time init vector is implemented behind
   `FLIWHEEL_EAPP_INIT_VECTORS=1` with valid scratch contexts. It remains opt-in:
   forcing it exposed unresolved init/render-server contracts in `14004`,

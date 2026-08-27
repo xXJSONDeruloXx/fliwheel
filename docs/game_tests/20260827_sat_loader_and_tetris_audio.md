@@ -69,6 +69,16 @@ Evidence:
 /tmp/fliwheel_tetris_headed_audio_20260827.UzIsc5/run.log
 ```
 
-Tetris remains the strongest title, but its full parity gates still include a
-repeatable line clear, wall/kick behavior, piece sequencing, save/load, and
-long-run visual/audio comparison.
+### Follow-up line-clear receipt
+
+A calibrated five-piece replay subsequently placed Z/O/S/L/T through the
+guest's normal input path. The headless trace emitted `Drop.wav` and
+`Clear.wav` at frame 570 and entered the guest row-clear path at frame 576.
+The corresponding headed replay logged `played sound` for `Clear.wav` through
+the persistent sink. See the dedicated [line-clear probe](20260827_tetris_line_clear_probe.md)
+for the exact script and board-state evidence; this supersedes the earlier
+`Clear.wav = 0` result for the current Tetris status.
+
+Tetris remains the strongest title, but its full parity gates still include
+additional line-clear sequences, wall/kick behavior, piece sequencing,
+save/load, and long-run visual/audio comparison.
