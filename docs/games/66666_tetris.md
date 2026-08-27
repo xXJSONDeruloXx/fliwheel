@@ -59,9 +59,10 @@ visual analysis now proves that the two side-button edges rotate the active
 piece in opposite directions, while the wheel moves it horizontally and Down
 performs the hard-drop/lock transition. Later piece/line-clear transforms,
 exact display-relative direction naming, persistence, and full long-run parity
-are still open. The 2026-08-27 controlled drop replay produced `Drop.wav` and
-later `Lock.wav` events but no `Clear.wav`, so line-clear reachability remains
-unverified.
+are still open. The dedicated 2026-08-27 placement replay also produces a
+genuine guest row clear with `Clear.wav`, and a headed run confirms that sound
+reaches the host sink. Wall/kick behavior, piece sequencing, scoring/level
+timing, persistence, and full long-run parity remain open.
 
 The old no-input probe used a diagnostic `FLIWHEEL_EAPP_HOST_EVENT_FLAGS=0x10`
 injection and is not evidence that ordinary no-input execution reaches the
@@ -82,6 +83,8 @@ transition.
 See [`20260827_tetris_rotation_probe.md`](../game_tests/20260827_tetris_rotation_probe.md)
 for the fresh visual and static-input evidence for rotation, wheel movement,
 and hard drop.
+See [`20260827_tetris_line_clear_probe.md`](../game_tests/20260827_tetris_line_clear_probe.md)
+for the guest-driven row clear and headed `Clear.wav` playback evidence.
 See [`20260827_sat_loader_and_tetris_audio.md`](../game_tests/20260827_sat_loader_and_tetris_audio.md)
 for the headed audio-sink and controlled line-clear checkpoint.
 
