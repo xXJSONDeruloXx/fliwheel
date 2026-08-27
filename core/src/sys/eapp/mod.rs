@@ -7041,6 +7041,45 @@ impl Eapp {
                                 }
                             }
                         }
+                        // Royal Solitaire's RLB preload uses the same
+                        // manager callback shape, but its guest callback
+                        // reads the payload pointer from context+0x174 before
+                        // the manager callback copies it to +0x11c. The
+                        // retail request initializes that field to -1; keep
+                        // the pointer handoff opt-in until the post-RLB scene
+                        // is independently verified.
+                        if royal_complete {
+                            if let Some(result_spec) =
+                                fliwheel_var_os("EAPP_ROYAL_ASYNC0_OWNER_RESULT")
+                            {
+                                let result_spec = result_spec.to_string_lossy();
+                                let result = if result_spec == "length" {
+                                    Some(n)
+                                } else if result_spec == "payload" {
+                                    Some(payload_addr)
+                                } else if let Some(hex) = result_spec.strip_prefix("0x") {
+                                    u32::from_str_radix(hex, 16).ok()
+                                } else {
+                                    result_spec.parse::<u32>().ok()
+                                };
+                                let request =
+                                    self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
+                                let resource_context = request.checked_sub(0x16c).unwrap_or(0);
+                                if let (Some(result), true) = (result, resource_context != 0) {
+                                    self.write_guest_u32(
+                                        resource_context.wrapping_add(0x174),
+                                        result,
+                                    );
+                                    info!(
+                                        target: "EAPP_IMPORT",
+                                        "AsyncFileIO:0 Royal owner result override owner={:#010x} context={:#010x} result={:#010x}",
+                                        owner,
+                                        resource_context,
+                                        result
+                                    );
+                                }
+                            }
+                        }
                         // Hold'em uses the same ordinal for its first-run save probe and
                         // ordinary resource loads.  A missing save should report an error,
                         // while a resource such as constant.blob must still report success;
