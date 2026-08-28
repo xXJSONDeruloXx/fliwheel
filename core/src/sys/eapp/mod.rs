@@ -440,6 +440,7 @@ struct StartupArtifactCapture {
     max_frames: u64,
     max_dumps: u64,
     dump_start_frame: u64,
+    target_frames: Vec<u64>,
     manifest_rows: u64,
     dump_count: u64,
     last_hash: Option<u64>,
@@ -467,6 +468,20 @@ impl StartupArtifactCapture {
         let dump_start_frame = fliwheel_var_os("STARTUP_CAPTURE_DUMP_START_FRAME")
             .and_then(|v| v.to_string_lossy().parse::<u64>().ok())
             .unwrap_or(0);
+        // Explicit checkpoints are useful for oracle comparisons where a
+        // title's framebuffer changes every frame. When present, only these
+        // frames are dumped instead of consuming the dump budget on every
+        // hash change after `dump_start_frame`.
+        let mut target_frames = fliwheel_var_os("STARTUP_CAPTURE_TARGET_FRAMES")
+            .map(|v| {
+                v.to_string_lossy()
+                    .split(',')
+                    .filter_map(|raw| raw.trim().parse::<u64>().ok())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        target_frames.sort_unstable();
+        target_frames.dedup();
         if enabled {
             let _ = fs::create_dir_all(&dir);
             let _ = fs::write(
@@ -482,6 +497,7 @@ impl StartupArtifactCapture {
             max_frames,
             max_dumps,
             dump_start_frame,
+            target_frames,
             manifest_rows: 0,
             dump_count: 0,
             last_hash: None,
@@ -6086,9 +6102,17 @@ impl Eapp {
         let hash_changed = self.startup_capture.last_hash != Some(frame.presented_hash);
         let periodic = self.frame_counter % self.startup_capture.periodic_interval == 0;
         let dump_allowed = self.frame_counter >= self.startup_capture.dump_start_frame;
-        let reason = if dump_allowed && hash_changed {
+        let target = self
+            .startup_capture
+            .target_frames
+            .binary_search(&self.frame_counter)
+            .is_ok();
+        let targeted = !self.startup_capture.target_frames.is_empty();
+        let reason = if dump_allowed && target {
+            "target"
+        } else if dump_allowed && !targeted && hash_changed {
             "hash_change"
-        } else if dump_allowed && periodic {
+        } else if dump_allowed && !targeted && periodic {
             "periodic"
         } else {
             ""
