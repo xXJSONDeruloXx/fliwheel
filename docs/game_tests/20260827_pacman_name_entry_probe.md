@@ -4,7 +4,7 @@ Date: 2026-08-27 UTC
 Bundle: `AAAAA`  
 Corpus: `/Volumes/NO NAME/fliwheel-decrypted-corpus-20260826/20 iPod games/Games_RO/AAAAA`
 
-## Result
+## Name-entry result
 
 PAC-MAN's ordinary resource path completes all 20 observed asynchronous
 requests and reaches the guest's name-entry screen. The clickwheel path is
@@ -14,14 +14,55 @@ route visibly reaches `A`, `AB`, `ABG`, and `ABGL`, and a longer route reaches
 the eight-character string `ABGLQVO5` with the next-character cursor still
 active.
 
-The title does not reach its main menu or maze in this probe. The name-entry
-screen is also missing the check/arrow artwork seen in the sister Ms. PAC-MAN
-title. The bundle contains `tex_menu1.tga` and `tex_ig.tga`, but not the
-`tex_menu.tga` referenced by the executable. Supplying an isolated copy of
-`tex_menu1.tga` under that missing name did not change the run, and the guest
-did not issue an AsyncFileIO request for `tex_menu.tga` on this route. That
-makes the absent asset a confirmed preservation gap, but not yet a proven
-cause of the state-transition failure.
+The name-entry screen is missing the check/arrow artwork seen in the sister
+Ms. PAC-MAN title. The bundle contains `tex_menu1.tga` and `tex_ig.tga`, but
+not the `tex_menu.tga` referenced by the executable. Supplying an isolated copy
+of `tex_menu1.tga` under that missing name did not change the run, and the
+guest did not issue an AsyncFileIO request for `tex_menu.tga` on this route.
+That makes the absent asset a confirmed preservation gap, but not yet a proven
+cause of the transition or startup fault.
+
+## Follow-up gameplay gate
+
+The guest's name-entry object stores delete at selector `0x2b` and confirm at
+selector `0x2c`. A continuous positive wheel route reaches selector `0x2c`,
+and a Select edge drives the actual confirm handler:
+
+```text
+wheel=1:100-252,action:260-265
+```
+
+The follow-up route reaches the informational prompt, then the guest main menu
+with `PLAY GAME` selected, and then the `START GAME / MODE / STAGE / BACK`
+screen:
+
+```text
+wheel=1:100-252,action:260-265,action:300-305,action:350-355
+```
+
+The start action was then tested with:
+
+```text
+wheel=1:100-252,action:260-265,action:300-305,action:350-355,action:750-755
+```
+
+The root object advances through guest initialization states `2`, `3`, `4`,
+`5`, `6`, `7`, `8`, and `9`, but the first maze frame is not rendered. The
+guest faults at `PC 0x1801628c` while reading offset `0x58` through a null
+nested pointer. The experimental live-GL run faults at frame 785; the legacy
+fill-color run reaches the same fault at frame 791 in the saved rerun. This
+makes the current
+boundary a missing/uninitialized guest object or service contract, rather than
+a missed input edge or a live-GL-only failure.
+
+Evidence:
+
+- Confirm/menu route log: `/tmp/fliwheel_pacman_postname_route_20260827.log`
+- Start-screen route log: `/tmp/fliwheel_pacman_play_route_20260827.log`
+- Live-GL start-gate log: `/tmp/fliwheel_pacman_maze_pc_trace_20260827.log`
+- Legacy-path start-gate log: `/tmp/fliwheel_pacman_maze_legacy_20260827.log`
+- Menu capture: `/tmp/fliwheel-pacman-postname.Bg9iA2`
+- Start-screen capture: `/tmp/fliwheel-pacman-play.30TuYa`
 
 ## Reproduction
 
@@ -82,7 +123,7 @@ Evidence:
 
 ## Next gate
 
-Determine how PAC-MAN selects its name-confirm control and whether the missing
-menu atlas is loaded only after that transition. Then reach `START GAME` and
-compare the shared maze/input path with the already-proven Ms. PAC-MAN
-diagnostic route.
+Identify which guest object should populate the null nested pointer during the
+start-state initialization, then compare its resource/service setup with the
+already-proven Ms. PAC-MAN diagnostic route. After that, verify maze rendering,
+D-pad movement, collisions, audio, and persistence.
