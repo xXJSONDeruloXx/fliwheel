@@ -1,0 +1,9 @@
+# Direct PR #3 oracle: fill the five-character Vortex name field.
+500: select
+600: select
+620: select
+640: select
+660: select
+680: select
+730: shot
+731: quit

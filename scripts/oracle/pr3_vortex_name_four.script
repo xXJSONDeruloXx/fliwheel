@@ -1,0 +1,8 @@
+# Direct PR #3 oracle: four default letters, the minimum useful completion probe.
+500: select
+600: select
+620: select
+640: select
+660: select
+700: shot
+701: quit

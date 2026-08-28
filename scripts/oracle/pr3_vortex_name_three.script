@@ -1,0 +1,7 @@
+# Direct PR #3 oracle: select the default A three times from name entry.
+500: select
+600: select
+620: select
+640: select
+650: shot
+651: quit
