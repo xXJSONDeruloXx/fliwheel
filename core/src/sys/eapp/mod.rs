@@ -2594,6 +2594,10 @@ impl Eapp {
                 self.live_handle_enable_array(args);
                 0
             }
+            36 => {
+                self.live_handle_disable_array(args);
+                0
+            }
             169 => {
                 self.live_handle_translate(args);
                 0
@@ -2800,7 +2804,7 @@ impl Eapp {
                 0
             }
             // Draw-adjacent state ordinals; recorded by observation only.
-            175 | 149 | 125 | 36 => 0,
+            175 | 149 | 125 => 0,
             // Ordinal 4: glBindTexture(target, texture).
             // r0=target (e.g. 0xDE1=GL_TEXTURE_2D), r1=texture_name.
             // Capture the texture name so that the next ordinal-99 upload
@@ -3724,6 +3728,20 @@ impl Eapp {
         debug!(target: "EAPP_GL", "live_enable_array idx={}", array_index);
     }
 
+    /// Ordinal 36: disable/select an array by index (direct arg r0 only).
+    ///
+    /// Vortex disables its colour array before the alpha-only outer-ring draw.
+    /// Leaving that client-state bit latched makes the fliwheel combiner treat
+    /// the stale colour array as the primary colour and, more importantly,
+    /// suppresses the PR runner's alpha-only current-colour modulation.
+    fn live_handle_disable_array(&mut self, args: [u32; 4]) {
+        let array_index = args[0];
+        if let Some(lg) = self.live_gl.as_mut() {
+            lg.enabled_arrays.remove(&array_index);
+        }
+        debug!(target: "EAPP_GL", "live_disable_array idx={}", array_index);
+    }
+
     /// Ordinal 169: accumulate the guest's two-component draw transform
     /// (r1=first component, r2=second component as floats). Normal sprite
     /// groups reset this state after each draw; Tetris' cell groups restore
@@ -4370,6 +4388,7 @@ impl Eapp {
                 explicit.as_deref(),
                 tint,
                 vertex_colors.as_deref(),
+                Some(modulate),
             ),
             None => return,
         };
@@ -4566,6 +4585,7 @@ impl Eapp {
                                 *colors.get(base + 3)?,
                             ])
                         }),
+                        Some(modulate),
                     ),
                     None => return,
                 };
@@ -4599,6 +4619,7 @@ impl Eapp {
                 explicit.as_deref(),
                 tint,
                 vertex_colors.as_deref(),
+                Some(modulate),
             ),
             None => return,
         };
@@ -4971,6 +4992,7 @@ impl Eapp {
                     tint,
                     used_generated_uvs,
                     vertex_colors,
+                    Some(modulate),
                 ),
                 None => return,
             };

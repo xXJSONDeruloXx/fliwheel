@@ -1266,6 +1266,7 @@ impl LiveGlState {
             tint,
             used_generated_uvs,
             None,
+            None,
         )
     }
 
@@ -1286,6 +1287,7 @@ impl LiveGlState {
         tint: Rgba8,
         used_generated_uvs: bool,
         vertex_colors: Option<[[f32; 4]; 4]>,
+        current_color: Option<Rgba8>,
     ) -> LiveDrawRecord {
         let bounds = bounds_for(&positions);
         let inferred_dim = if has_uv {
@@ -1406,9 +1408,23 @@ impl LiveGlState {
             ));
             return record;
         };
+        let alpha_only_texture = self
+            .uploads
+            .get(upload_idx)
+            .is_some_and(|upload| upload.format == Some(TextureFormat::A8));
         let Some(texture) = self.uploads.get(upload_idx).and_then(|u| u.texture.clone()) else {
             record.skipped_reason = Some(format!("upload #{upload_idx} has no decoded texture"));
             return record;
+        };
+
+        // The direct PR runner leaves ordinary RGBA draws unmodulated, but
+        // applies the guest's current colour register to GL_ALPHA textures
+        // when no primary colour array is enabled. Vortex's translucent
+        // outer ring relies on this distinction.
+        let effective_tint = if alpha_only_texture && vertex_colors.is_none() {
+            current_color.unwrap_or(tint)
+        } else {
+            tint
         };
 
         record.coverage = if let Some(vertex_colors) = vertex_colors.as_ref() {
@@ -1419,7 +1435,7 @@ impl LiveGlState {
                 &texture,
                 &pixel_positions,
                 &uvs,
-                tint,
+                effective_tint,
                 Some(vertex_colors),
             )
         } else {
@@ -1430,7 +1446,7 @@ impl LiveGlState {
                 &texture,
                 &pixel_positions,
                 &uvs,
-                tint,
+                effective_tint,
             )
         };
         record
@@ -1457,6 +1473,7 @@ impl LiveGlState {
             uvs,
             tint,
             None,
+            None,
         )
     }
 
@@ -1472,6 +1489,7 @@ impl LiveGlState {
         uvs: Option<&[(f32, f32)]>,
         tint: Rgba8,
         vertex_colors: Option<&[[f32; 4]]>,
+        current_color: Option<Rgba8>,
     ) -> LiveDrawRecord {
         let positions4 = first_four_positions(positions);
         let uvs4 = uvs.map(first_four_uvs).unwrap_or([(0.0, 0.0); 4]);
@@ -1524,9 +1542,18 @@ impl LiveGlState {
             ));
             return record;
         };
+        let alpha_only_texture = self
+            .uploads
+            .get(upload_idx)
+            .is_some_and(|upload| upload.format == Some(TextureFormat::A8));
         let Some(texture) = self.uploads.get(upload_idx).and_then(|u| u.texture.clone()) else {
             record.skipped_reason = Some(format!("upload #{upload_idx} has no decoded texture"));
             return record;
+        };
+        let effective_tint = if alpha_only_texture && vertex_colors.is_none() {
+            current_color.unwrap_or(tint)
+        } else {
+            tint
         };
 
         // NDC-to-pixel scaling for the normalized-coordinate engine family.
@@ -1572,7 +1599,7 @@ impl LiveGlState {
                         FB_HEIGHT,
                         &texture,
                         &tri,
-                        tint,
+                        effective_tint,
                         Some(tri_colors),
                     )
                 } else {
@@ -1582,7 +1609,7 @@ impl LiveGlState {
                         FB_HEIGHT,
                         &texture,
                         &tri,
-                        tint,
+                        effective_tint,
                     )
                 };
             }
