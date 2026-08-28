@@ -851,6 +851,75 @@ impl LiveGlState {
         }
     }
 
+    /// Implement the observed `glCopyTexImage2D` path used by Vortex and
+    /// Mini Golf. The guest's framebuffer is kept in native render order;
+    /// GL's bottom-left source origin therefore reads it bottom-up before the
+    /// copied pixels are sampled by a later textured draw.
+    pub fn copy_framebuffer_to_texture(
+        &mut self,
+        tex_name: u32,
+        x: i64,
+        y: i64,
+        width: usize,
+        height: usize,
+    ) {
+        if tex_name == 0 || width == 0 || height == 0 || width > 2048 || height > 2048 {
+            return;
+        }
+
+        let mut pixels = Vec::with_capacity(width.saturating_mul(height));
+        for row in 0..height {
+            let source_y = FB_HEIGHT as i64 - 1 - (y + row as i64);
+            for col in 0..width {
+                let source_x = x + col as i64;
+                if source_x < 0
+                    || source_y < 0
+                    || source_x >= FB_WIDTH as i64
+                    || source_y >= FB_HEIGHT as i64
+                {
+                    pixels.push(Rgba8::rgba(0, 0, 0, 255));
+                    continue;
+                }
+                pixels.push(self.framebuffer[source_y as usize * FB_WIDTH + source_x as usize]);
+            }
+        }
+
+        let texture = Texture { width, height, pixels };
+        if let Some(upload) = self
+            .uploads
+            .iter_mut()
+            .rev()
+            .find(|upload| upload.tex_name == Some(tex_name))
+        {
+            upload.width = width;
+            upload.height = height;
+            upload.source_format = 0x1908;
+            upload.pixel_type = 0x1401;
+            upload.source_ptr = 0;
+            upload.source_file = None;
+            upload.source_file_offset = None;
+            upload.format = Some(TextureFormat::Rgba8888);
+            upload.texture = Some(texture);
+            return;
+        }
+
+        let index = self.uploads.len();
+        self.uploads.push(LiveGlUpload {
+            index,
+            target: 0,
+            width,
+            height,
+            source_format: 0x1908,
+            pixel_type: 0x1401,
+            source_ptr: 0,
+            source_file: None,
+            source_file_offset: None,
+            format: Some(TextureFormat::Rgba8888),
+            texture: Some(texture),
+            tex_name: Some(tex_name),
+        });
+    }
+
     /// Select the best-supported live texture by matching decoded draw
     /// dimensions. This is an *inferred* association (logged as such); it
     /// prefers live upload evidence (dimensions/format) over filenames.
@@ -1648,6 +1717,32 @@ mod tests {
         let upload = LiveGlState::build_upload(0, 0x0de1, 2, 2, 0xdead, 0xbeef, 0x1000_0000, &[], None);
         assert!(upload.format.is_none());
         assert!(upload.texture.is_none());
+    }
+
+    #[test]
+    fn copy_framebuffer_updates_bound_texture_in_gl_row_order() {
+        let mut lg = LiveGlState::new(false, false, false, "test".to_string());
+        lg.framebuffer[(FB_HEIGHT - 1) * FB_WIDTH] = Rgba8::rgba(1, 2, 3, 255);
+        lg.framebuffer[(FB_HEIGHT - 2) * FB_WIDTH] = Rgba8::rgba(4, 5, 6, 255);
+        lg.uploads.push(LiveGlState::build_upload(
+            0,
+            0x0de1,
+            2,
+            2,
+            0x1907,
+            0x8363,
+            0,
+            &[0; 8],
+            Some(0x38),
+        ));
+
+        lg.copy_framebuffer_to_texture(0x38, 0, 0, 1, 2);
+
+        let texture = lg.uploads[0].texture.as_ref().expect("copied texture");
+        assert_eq!(texture.width, 1);
+        assert_eq!(texture.height, 2);
+        assert_eq!(texture.pixels[0], Rgba8::rgba(1, 2, 3, 255));
+        assert_eq!(texture.pixels[1], Rgba8::rgba(4, 5, 6, 255));
     }
 
     #[test]

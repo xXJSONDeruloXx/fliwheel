@@ -2578,6 +2578,10 @@ impl Eapp {
                 self.live_handle_upload(args);
                 0
             }
+            21 => {
+                self.live_handle_copy_texture(args);
+                0
+            }
             137 => {
                 self.live_handle_array_def(args);
                 0
@@ -2836,6 +2840,23 @@ impl Eapp {
             let outcome = lg.begin_frame();
             if matches!(outcome, live_gl::BeginOutcome::DoubleBegin) {
                 warn!(target: "EAPP_GL", "candidate_begin double-begin detected");
+            }
+        }
+    }
+
+    /// OpenGLES ordinal 21: `glCopyTexImage2D`. Vortex binds a screen-sized
+    /// texture, copies the current title frame into it, and samples that
+    /// texture on the following frame's menu composition.
+    fn live_handle_copy_texture(&mut self, args: [u32; 4]) {
+        let sp = self.cpu.reg_get(self.cpu.mode(), reg::SP);
+        let y = self.read_guest_u32(sp).unwrap_or(0) as i32 as i64;
+        let width = self.read_guest_u32(sp.wrapping_add(0x04)).unwrap_or(0) as usize;
+        let height = self.read_guest_u32(sp.wrapping_add(0x08)).unwrap_or(0) as usize;
+        let x = args[3] as i32 as i64;
+        let tex_name = self.live_gl.as_ref().and_then(|lg| lg.bound_tex_name);
+        if let Some(tex_name) = tex_name {
+            if let Some(lg) = self.live_gl.as_mut() {
+                lg.copy_framebuffer_to_texture(tex_name, x, y, width, height);
             }
         }
     }
