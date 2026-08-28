@@ -1,0 +1,11 @@
+# Direct PR #3 oracle: fill six default letters, activate DONE, and capture the game screen.
+500: select
+600: select
+620: select
+640: select
+660: select
+680: select
+700: select
+720: select
+900: shot
+901: quit
