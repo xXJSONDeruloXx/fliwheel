@@ -9,16 +9,18 @@ Executable: `Bejeweled_1_1_2563296.bin`
 The normal Bejeweled menu path now has a reproducible Action-mode entry. A
 positive wheel step moves the menu underline from `START CLASSIC GAME` to
 `START ACTION GAME`; Select then enters the same built-in tutorial and a live
-8×8 board. The live Action frame visibly contains the vertical green timer
-bar, which distinguishes it from the Classic route. The run also produced a
-rejected swap and `bad.wav` without a fatal signature.
+8×8 board. The first Action-board tap is accepted: the guest enters its swap
+path at frame 1004, emits `swap.wav`, follows with `gotset.wav` and
+`gemongem.wav`, shows a score of `50`, and reaches the guest's `Well done!`
+overlay. Select dismisses that overlay back to a live Action board with the
+vertical green timer bar. A separate follow-up still produces a rejected swap
+and `bad.wav` without a fatal signature.
 
-This is mode-entry and live-rendering evidence, not a claim that Action mode
-is complete. A separate idle replay reached frame `4000` and showed the green
+This is one accepted Action-mode match, not a claim that Action mode is
+complete. A separate idle replay reached frame `4000` and showed the green
 timer gauge decrementing: its top edge moved from `y=152` at frame `1160` to
-`y=159` at frame `3986`. That run did not yet reach timeout/game-over, and no
-accepted Action-mode match was reproduced. Multiple moves, save persistence,
-and physical mixer parity remain open.
+`y=159` at frame `3986`. That run did not yet reach timeout/game-over.
+Multiple moves, save persistence, and physical mixer parity remain open.
 
 ## Reproduction
 
@@ -40,8 +42,15 @@ Receipt:
 
 The late capture shows the Action timer bar and live board at frames 1160,
 1200, 1214, 1230, 1265, and 1300. The run completed through frame 1349 with
-78 draws per live frame and no fatal, panic, decoder, or sink error. The audio
-receipt includes `swap.wav` at frame 1215 and `bad.wav` at frame 1239.
+78 draws per live frame and no fatal, panic, decoder, or sink error. Its first
+Action match is recorded in
+`/tmp/fliwheel_bej_action_mode_confirmed_late_20260828.log`: `swap.wav` at
+frame 1004, `gotset.wav` at 1015, and `gemongem.wav` at 1022. The early-window
+capture `/tmp/fliwheel_bej_action_early_capture_20260828/` shows the score-50
+resolution effect; the later frame 1120 capture shows the `Well done!` prompt
+before the settled Action board. The separate rejected follow-up emits
+`swap.wav` at frame 1229 and `bad.wav` at frame 1251 in
+`/tmp/fliwheel_bej_action_match2_20260828.log`.
 
 The menu-direction A/B receipts are:
 
