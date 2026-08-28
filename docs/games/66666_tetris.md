@@ -1,6 +1,6 @@
 # Tetris (Bundle 66666)
 
-**Status:** 🟡 CENTERED BOARD + CORE CONTROLS VERIFIED | **Gameplay:** gravity, opposite side-button rotations, wheel movement, and hard drop smoke verified; parity open | **Engine:** Tetris Runtime
+**Status:** 🟡 CORE GAMEPLAY PATH + COLLISION ROTATIONS VERIFIED | **Gameplay:** gravity, line clear, opposite side-button rotations, wheel movement, hard drop, and collision-blocked rotations verified; parity open | **Engine:** Tetris Runtime
 
 ## Quick Start
 ```bash
@@ -87,6 +87,8 @@ See [`20260828_tetris_edge_rotation_probe.md`](../game_tests/20260828_tetris_edg
 for the wall-adjacent rotation smoke at both outer playable columns.
 See [`20260828_tetris_collision_rotation_probe.md`](../game_tests/20260828_tetris_collision_rotation_probe.md)
 for the controlled-stack accepted/blocked rotation trace.
+See [`20260828_tetris_save_probe.md`](../game_tests/20260828_tetris_save_probe.md)
+for the gameplay-plus-Menu persistence negative result.
 See [`20260827_tetris_line_clear_probe.md`](../game_tests/20260827_tetris_line_clear_probe.md)
 for the guest-driven row clear and headed `Clear.wav` playback evidence.
 See [`20260827_sat_loader_and_tetris_audio.md`](../game_tests/20260827_sat_loader_and_tetris_audio.md)
