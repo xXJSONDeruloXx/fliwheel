@@ -4430,6 +4430,12 @@ impl Eapp {
                 record.coverage
             );
         }
+        if self
+            .gl_trace_frames
+            .is_some_and(|(start, end)| self.frame_counter >= start && self.frame_counter <= end)
+        {
+            self.live_log_draw_record(&record);
+        }
         self.live_finalize_draws(vec![record]);
     }
 
