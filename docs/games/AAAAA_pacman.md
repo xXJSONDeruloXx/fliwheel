@@ -1,6 +1,6 @@
 # Pac-Man (Bundle AAAAA)
 
-**Status:** 🟡 DIAGNOSTIC GAMEPLAY | **Evidence:** the default path reaches the menu/start screen; an opt-in TGA completion path reaches a rendered, controllable Stage 1 maze; default handoff, audio, collisions/lives, and persistence remain open | **Engine:** Tetris Runtime
+**Status:** 🟡 DIAGNOSTIC GAMEPLAY + HEADED AUDIO | **Evidence:** the default path reaches the menu/start screen; an opt-in TGA completion path reaches a rendered, controllable Stage 1 maze and the headed WAV sink accepts gameplay events; default handoff, physical mixer parity, collisions/lives, and persistence remain open | **Engine:** Tetris Runtime
 
 ## Quick Start
 ```bash
@@ -47,8 +47,10 @@ renders a stable 33-37-draw maze from frame 775 through frame 1048. Captures
 show `READY`, moving Pac-Man and animated ghosts; the tested wheel route moves
 the player and advances the score from `0` at frame 800 to `30` at frame 880
 and `40` at frame 890, with no fatal signature through the bounded run.
-Audio assets and guest audio events were observed during the probe, but audio
-output was disabled, so audible playback is not yet verified.
+Audio assets and guest audio events were observed during the headless probe. A
+matching headed replay emitted 12 mapped events and 12 `played sound` receipts
+through the desktop WAV sink, with no decoder or sink errors. Physical speaker
+output, overlap/mixing, volume controls, and timing parity remain unverified.
 
 Without the flag, selecting `START GAME` retains the earlier boundary: the
 guest advances through initialization states 2 through 9, then faults before

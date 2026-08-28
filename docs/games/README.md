@@ -13,7 +13,7 @@ older pages retain historical investigation notes and are not completion claims.
 | Cubis 2 | 99999 | ❌ Asset/renderer blocked | [→](99999_cubis2.md) |
 | Texas Hold'em | 33333 | 🟡 Default loading-only; scoped experiment reaches partial first scene | [→](33333_holdem.md) |
 | Ms. PAC-MAN | 14004 | 🟡 Diagnostic path reaches controllable Stage 1; default handoff open | [→](14004_mspacman.md) |
-| PAC-MAN | AAAAA | 🟡 Diagnostic path reaches rendered, controllable Stage 1; default handoff and full play open | [→](AAAAA_pacman.md) |
+| PAC-MAN | AAAAA | 🟡 Diagnostic Stage 1 + headed WAV sink; default handoff and full play open | [→](AAAAA_pacman.md) |
 | Mahjong | 77777 | 🟡 Texture/UV partial | [→](77777_mahjong.md) |
 | Mini Golf | 88888 | 🟡 Loading/progress only | [→](88888_minigolf.md) |
 | The Sims Bowling | 1500C | 🟡 Coherent title screen; follow-up/gameplay open | [→](1500C_simsbowling.md) |

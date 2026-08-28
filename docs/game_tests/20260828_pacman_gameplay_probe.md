@@ -25,7 +25,13 @@ The route reaches the first maze and remains stable through the bounded probe:
 This is the first PAC-MAN evidence of actual in-maze control in fliwheel. It
 is diagnostic-only: the completion flag is not enabled by the normal launcher,
 and this run disabled audio output. Collision/life behavior, pause/exit,
-audible playback, persistence, and long-run play remain open.
+physical speaker/mixer behavior, persistence, and long-run play remain open.
+
+A matching headed replay with the desktop sink enabled emitted 12 mapped
+`AudioEvent` records and 12 `played sound` receipts. The sink accepted
+`start.wav`, `siren1.wav`, `eatopen.wav`, and `eatclose.wav` among the observed
+events, with no decoder, sink, fault, or fatal records. This proves host
+dispatch and decoding, not physical speaker output or mixer parity.
 
 ## Reproduction
 
@@ -65,13 +71,13 @@ confirm it, enter Play Game, and start Stage 1.
 
 - Log: `/tmp/fliwheel_pacman_movement_20260828.log`
 - Capture manifest: `/tmp/fliwheel_pacman_movement_20260828/manifest.tsv`
+- Headed audio log: `/tmp/fliwheel_pacman_audio_headed_mapped_20260828.log`
 - Visual captures include frames 800, 840, 880, and 890 in
   `/tmp/fliwheel_pacman_movement_20260828/`.
 - The 880 and 890 captures visibly show the score changing from `30` to `40`
   while the maze and sprites remain coherent.
-- Audio imports/events for PAC-MAN's WAV set were observed in the log, but
-  `FLIWHEEL_EAPP_AUDIO_DISABLE=1` means this probe does not prove audible
-  playback.
+- The headless probe used `FLIWHEEL_EAPP_AUDIO_DISABLE=1`; the separate headed
+  log proves mapped WAV dispatch through the desktop sink.
 
 ## Default-path boundary
 

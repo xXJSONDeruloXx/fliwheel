@@ -541,6 +541,10 @@ pub struct Eapp {
     /// WAV header read. Keep the most recent source until that read supplies
     /// the host path, then bind the path to the synthetic handle.
     audio_pending_asset_handle: Option<u32>,
+    /// PAC-MAN allocates its sixteen sound handles first, then requests the
+    /// sixteen WAV headers in the same order. Keep that FIFO separate from
+    /// PopCap's interleaved registration/read contract.
+    audio_pacman_pending_handles: VecDeque<u32>,
     /// Resource-indexed audio assets retained after the guest releases its
     /// startup table handles. Gameplay uses the resource index again later,
     /// so this shadow catalog is what lets the host sink resolve a sound.
@@ -875,6 +879,7 @@ impl Eapp {
             audio_handles: HashMap::new(),
             next_audio_handle: 1,
             audio_pending_asset_handle: None,
+            audio_pacman_pending_handles: VecDeque::new(),
             audio_resource_paths: HashMap::new(),
             audio_last_registration: None,
             audio_events: Arc::new(Mutex::new(VecDeque::new())),
@@ -6116,6 +6121,8 @@ impl Eapp {
                 self.audio_handles.insert(handle, source.clone());
                 if self.uses_wav_audio_source_abi() {
                     self.audio_pending_asset_handle = Some(handle);
+                } else if self.uses_pacman_wav_audio_source_abi() {
+                    self.audio_pacman_pending_handles.push_back(handle);
                 }
                 if fliwheel_var_os("AUDIO_TRACE").is_some() {
                     info!(
@@ -6133,7 +6140,9 @@ impl Eapp {
                 // commit the trigger with Audio:2. The source handle is the
                 // value returned by Audio:0, so resolve the previously bound
                 // WAV only at this final trigger point.
-                if self.uses_wav_audio_source_abi() {
+                if self.uses_wav_audio_source_abi()
+                    || self.uses_pacman_wav_audio_source_abi()
+                {
                     if let Some(source) = self.audio_handles.get(&args[0]).cloned() {
                         if let Some(host_path) = source.host_path {
                             self.queue_audio_event(
@@ -8417,6 +8426,10 @@ impl Eapp {
             self.note_wav_audio_asset_path(host_path);
             return;
         }
+        if self.uses_pacman_wav_audio_source_abi() {
+            self.note_pacman_wav_asset_path(host_path);
+            return;
+        }
         // Keep the provisional Tetris-only resource catalog honest until the
         // other title families have their own Audio ABI derived.
         if self.metadata.title != "66666" {
@@ -8455,6 +8468,10 @@ impl Eapp {
         matches!(self.metadata.title.as_str(), "44444" | "55555")
     }
 
+    fn uses_pacman_wav_audio_source_abi(&self) -> bool {
+        self.metadata.title == "AAAAA"
+    }
+
     fn note_wav_audio_asset_path(&mut self, host_path: &Path) {
         let is_wav = host_path
             .extension()
@@ -8465,6 +8482,34 @@ impl Eapp {
             return;
         }
         let Some(handle) = self.audio_pending_asset_handle.take() else {
+            return;
+        };
+        let Some(source) = self.audio_handles.get_mut(&handle) else {
+            return;
+        };
+        source.host_path = Some(host_path.to_path_buf());
+        if std::env::var_os("EAPP_AUDIO_EVENT_TRACE").is_some() {
+            info!(
+                target: "EAPP_AUDIO",
+                "AudioSourceMap handle={:#010x} type={} slot={} path={}",
+                handle,
+                source.source_type,
+                source.slot_index,
+                host_path.display()
+            );
+        }
+    }
+
+    fn note_pacman_wav_asset_path(&mut self, host_path: &Path) {
+        let is_wav = host_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("wav"))
+            .unwrap_or(false);
+        if !is_wav {
+            return;
+        }
+        let Some(handle) = self.audio_pacman_pending_handles.pop_front() else {
             return;
         };
         let Some(source) = self.audio_handles.get_mut(&handle) else {
