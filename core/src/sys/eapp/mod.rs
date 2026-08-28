@@ -476,6 +476,13 @@ pub struct Eapp {
     /// physical 96-detent position so subsequent deltas and wrap behavior
     /// remain faithful to the hardware.
     wheel_position: u8,
+    /// LOST's direct-runner oracle uses the RetailOS wheel encoder recovered
+    /// in the PR reference: a 120-step raw ring transformed into the low byte
+    /// of an event-present packet. Keep this separate from the shared
+    /// 96-detent model because the two consumers expose different ABIs.
+    lost_wheel_raw: u8,
+    lost_wheel_remainder: f32,
+    lost_wheel_pending: VecDeque<u8>,
     render_state: Arc<Mutex<Vec<u32>>>,
     controls: Option<EappBinds>,
     next_alloc: u32,
@@ -863,6 +870,9 @@ impl Eapp {
             input_event_reversed_owner: None,
             input_event_reversed_clear_pending: false,
             wheel_position: 0,
+            lost_wheel_raw: 0,
+            lost_wheel_remainder: 0.0,
+            lost_wheel_pending: VecDeque::new(),
             render_state,
             controls: Some(controls),
             next_alloc: WORK_RAM_BASE + 0x1000,
@@ -5798,25 +5808,30 @@ impl Eapp {
                     }
                     self.input_event_reversed_clear_pending = false;
                 }
-                let button_bits = if self.metadata.title == "55555" {
-                    // Bejeweled uses the four clickwheel quadrants as a touch
-                    // direction for swapping, not as ordinary D-pad buttons.
-                    // Keep action/menu available, but let the title-specific
-                    // packet carry the directional tap contract.
-                    Self::input_state_bits(&state) & !0x0f
-                } else {
-                    Self::input_state_bits(&state)
+                let button_bits = match self.metadata.title.as_str() {
+                    "55555" => {
+                        // Bejeweled uses the four clickwheel quadrants as a
+                        // touch direction for swapping, not as ordinary D-pad
+                        // buttons. Keep action/menu available, but let the
+                        // title-specific packet carry the directional tap
+                        // contract.
+                        Self::input_state_bits(&state) & !0x0f
+                    }
+                    "1B200" => {
+                        // LOST's direct runner has no flags-word address: its
+                        // button state arrives through the linked event node,
+                        // while InputEvents:0 supplies only the wheel packet.
+                        // Returning the action bit as well changes the title's
+                        // compact input state relative to that oracle.
+                        0
+                    }
+                    _ => Self::input_state_bits(&state),
                 };
-                let bits = button_bits
-                    | self.env_input_script_bits()
-                    | self.wheel_input_bits(state.wheel_delta)
-                    | self.bejeweled_tap_bits(&state);
-                if args[0] != 0 {
-                    self.write_guest_u32(args[0], bits);
-                }
-                if args[1] != 0 {
-                    self.write_guest_u32(args[1], bits);
-                }
+                let wheel_bits = if self.metadata.title == "1B200" {
+                    self.lost_wheel_poll_bits(state.wheel_delta)
+                } else {
+                    self.wheel_input_bits(state.wheel_delta)
+                };
                 let event_state = if self.metadata.title == "55555" {
                     // In Bejeweled the directional keys represent a
                     // clickwheel touch quadrant. Do not also expose them as
@@ -5833,6 +5848,26 @@ impl Eapp {
                     state.clone()
                 };
                 let event_list = self.build_input_event_list(&event_state);
+                let event_wheel_bits = if self.metadata.title == "1B200" && event_list != 0 {
+                    // RetailOS queues the current wheel sample alongside every
+                    // LOST button press/release. The game only enters its
+                    // linked-event dispatcher after seeing bit 30 from this
+                    // poll, so an event node without this packet is ignored.
+                    self.lost_wheel_event_bits()
+                } else {
+                    0
+                };
+                let bits = button_bits
+                    | self.env_input_script_bits()
+                    | wheel_bits
+                    | event_wheel_bits
+                    | self.bejeweled_tap_bits(&state);
+                if args[0] != 0 {
+                    self.write_guest_u32(args[0], bits);
+                }
+                if args[1] != 0 {
+                    self.write_guest_u32(args[1], bits);
+                }
                 let mode = self.cpu.mode();
                 let r4 = self.cpu.reg_get(mode, 4);
                 let r5 = self.cpu.reg_get(mode, 5);
@@ -5855,7 +5890,13 @@ impl Eapp {
                 };
                 let input_ctx = if input_obj == r4 { r5 } else { r4 };
                 let reversed_owner = !r4_is_work_ram && r5_is_work_ram;
-                if input_obj != 0 {
+                if self.metadata.title == "1B200" && self.app_object != 0 {
+                    // LOST's frame manager keeps the event-list head directly in
+                    // its game-heap context. It does not pass that context in a
+                    // work-RAM owner register, so the generic owner inference
+                    // above otherwise leaves the freshly built list unreachable.
+                    self.write_guest_u32(self.app_object.wrapping_add(0x30), event_list);
+                } else if input_obj != 0 {
                     // Tetris' post-import wrapper passes [input_obj+0x30] as
                     // the event-list head to the event consumer. input_ctx+0x20
                     // is a filter/state mask, not the list pointer. Always
@@ -5968,6 +6009,56 @@ impl Eapp {
         Self::wheel_frame_bits(&mut self.wheel_position, delta)
     }
 
+    /// LOST's InputEvents consumer uses the RetailOS encoder recovered in the
+    /// PR #3 direct runner. It exposes a 120-step raw ring through an inverted
+    /// 8-bit transform rather than the normalized 96-detent packet used by
+    /// the other title families.
+    const LOST_WHEEL_DETENTS: i16 = 120;
+
+    fn lost_wheel_byte(raw: u8) -> u8 {
+        ((((0x77i32 - raw as i32) * 8) / 3) & 0xff) as u8
+    }
+
+    fn lost_wheel_packet(raw: u8) -> u32 {
+        (1 << 30) | Self::lost_wheel_byte(raw) as u32
+    }
+
+    fn lost_wheel_poll_bits(&mut self, delta: f32) -> u32 {
+        // The PR runner queues one absolute sample per raw detent and the
+        // guest consumes one sample per InputEvents poll. Preserve that queue
+        // behavior for both scripted and live relative motion.
+        if delta.is_finite() {
+            self.lost_wheel_remainder += delta;
+        }
+        let mut added = 0usize;
+        while self.lost_wheel_remainder.abs() >= 1.0
+            && added < Self::LOST_WHEEL_DETENTS as usize
+        {
+            let step = if self.lost_wheel_remainder > 0.0 { 1 } else { -1 };
+            self.lost_wheel_remainder -= step as f32;
+            self.lost_wheel_raw = ((self.lost_wheel_raw as i16 + step)
+                .rem_euclid(Self::LOST_WHEEL_DETENTS)) as u8;
+            self.lost_wheel_pending.push_back(self.lost_wheel_raw);
+            added += 1;
+        }
+        self.lost_wheel_pending
+            .pop_front()
+            .map(Self::lost_wheel_packet)
+            .unwrap_or(0)
+    }
+
+    fn lost_wheel_event_bits(&mut self) -> u32 {
+        // The oracle appends the current sample after any already queued wheel
+        // reports. If the queue is empty, the current button poll consumes it
+        // immediately; otherwise retain it behind the pending reports.
+        if self.lost_wheel_pending.is_empty() {
+            Self::lost_wheel_packet(self.lost_wheel_raw)
+        } else {
+            self.lost_wheel_pending.push_back(self.lost_wheel_raw);
+            0
+        }
+    }
+
     /// Bejeweled treats a clickwheel-side tap as a touch packet whose angle
     /// selects the adjacent gem. The desktop frontend's arrow keys are the
     /// natural equivalent of those four physical quadrants. This stays
@@ -6077,17 +6168,22 @@ impl Eapp {
         }
 
         let mut events = Vec::new();
-        // Tetris' input wrapper consumes a linked list of button events. Event
-        // byte 0 is button id; byte 1 is 2 for press and 1 for release. Emit
-        // only edges, matching the firmware event-list semantics; held-state
-        // remains available through the compact bits returned by ordinal 0.
+        // Most of the games we have traced use byte 1 = 2 for press and 1 for
+        // release. LOST's event wrapper follows the PR runner's convention:
+        // 1 is down and 2 is up. Emit only edges; titles that use compact
+        // button state keep that state available through ordinal 0 as well.
+        let (pressed_kind, released_kind) = if self.metadata.title == "1B200" {
+            (1u8, 2u8)
+        } else {
+            (2u8, 1u8)
+        };
         for id in 1..=5u8 {
             let bit = 1u8 << id;
             if pressed & bit != 0 {
-                events.push((id, 2u8));
+                events.push((id, pressed_kind));
             }
             if released & bit != 0 {
-                events.push((id, 1u8));
+                events.push((id, released_kind));
             }
         }
 
@@ -11194,6 +11290,15 @@ mod tests {
 
         assert_eq!(Eapp::wheel_frame_bits(&mut position, 0.0), 0);
         assert_eq!(position, 17);
+    }
+
+    #[test]
+    fn lost_wheel_encoder_matches_pr3_direct_runner() {
+        assert_eq!(Eapp::lost_wheel_packet(0), 0x4000_003d);
+        assert_eq!(Eapp::lost_wheel_packet(1), 0x4000_003a);
+        assert_eq!(Eapp::lost_wheel_packet(8), 0x4000_0028);
+        assert_eq!(Eapp::lost_wheel_packet(16), 0x4000_0012);
+        assert_eq!(Eapp::lost_wheel_packet(119), 0x4000_0000);
     }
 
     #[test]

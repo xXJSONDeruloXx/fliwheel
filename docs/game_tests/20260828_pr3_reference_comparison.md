@@ -3,7 +3,7 @@
 Date: 2026-08-28  
 Corpus: `/Volumes/NO NAME/fliwheel-decrypted-corpus-20260826/20 iPod games/Games_RO/`  
 Reference checkout: `/tmp/ipod-emulator-pr3` at `96bfe90`  
-fliwheel baseline before this probe: `593ed09`
+fliwheel baseline before this probe: `f0c8d4e`
 
 ## What is being compared
 
@@ -42,8 +42,17 @@ are not byte-identical at the antialiased logo edges.
 The fliwheel 120-frame extension remains stable and advances through
 resource-driven screens. A 362-frame no-input run completed without a fatal
 signature. Its later draw stream is not yet a parity result: it contains
-unsupported mode-7 primitive records and has not been checked against a
+zero-count mode-7 submissions and unresolved primitive/material records and has not been checked against a
 matching PR no-input capture, so LOST remains partial rather than playable.
+
+The matched interactive probe now also covers the direct runner's input
+contract. PR #3's LOST path queues a wheel sample with each button event; the
+fliwheel HLE mirrors its 120-step raw ring, inverted byte transform, queued
+per-detent samples, and current sample on press/release. The trace matches the
+PR packet sequence at the scripted checkpoints (`0x3d` initially, `0x28` at
+raw position 8, and `0x12` at raw position 16), and both runners reach the same
+volume screen at the frame-340 capture. This does not certify episode
+progression or full gameplay.
 
 ## Changes that enabled the comparison
 
@@ -73,8 +82,8 @@ own status; none of the 20 decrypted bundles is certified fully playable.
 
 1. Decode and rasterize the remaining mode-7 submissions without silently
    skipping them.
-2. Re-run matched scripted wheel/button sequences against PR #3 and compare
-   scene transitions, not only first-frame images.
+2. Extend matched scripted wheel/button sequences against PR #3 beyond the
+   volume screen and compare scene transitions, not only first-frame images.
 3. Trace the episode/resource state machine through the remaining `d*`, `l*`,
    localized resource, and music files.
 4. Verify input, save/reload, sound effects, and long-run stability before

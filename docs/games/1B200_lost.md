@@ -1,6 +1,6 @@
 # Lost (1B200) — Comprehensive Analysis & Experiment Log
 
-**Status:** 🟡 PARTIAL RENDER | **Draws:** 6 at first asset frame, 45–46 in later scenes | **Engine:** Lost Engine (rserver.bin render server)
+**Status:** 🟡 PARTIAL RENDER / SCRIPTED INPUT PATH VERIFIED | **Draws:** 6 at first asset frame, 45–46 in later scenes | **Engine:** Lost Engine (rserver.bin render server)
 **Last updated:** 2026-08-28
 
 > The historical experiments below are retained as provenance. The current
@@ -37,10 +37,34 @@ Observed against the PR #3 direct runner:
 - A 120-frame run reaches Touchstone and subsequent resource-driven scenes,
   remains alive, and presents changing frames. The longer run produced no
   fatal guest fault or emulator crash.
-- Later scenes still issue unsupported mode-7 draws and are not certified
-  pixel-accurate. Input routing, episode progression, save behavior, and
+- Later scenes still issue zero-count mode-7 submissions and unresolved
+  primitive/material records, so they are not certified pixel-accurate. Input routing, episode progression, save behavior, and
   complete music/effect playback remain open. This is meaningful progress,
   not a claim of full playability.
+
+### Matched direct-runner input probe
+
+The PR runner's scripted LOST session also queues a wheel sample alongside
+every button press and release. Without that event-present packet, LOST's
+frame callback walks the linked event list but then skips its button state
+transition. fliwheel now matches the PR encoder and queue behavior for LOST:
+
+```text
+raw position 0   -> 0x4000003d
+raw position 1   -> 0x4000003a
+raw position 8   -> 0x40000028
+raw position 16  -> 0x40000012
+```
+
+It queues one sample per raw detent and consumes one per `InputEvents:0` poll.
+With the PR schedule (`select` at 180, `wheel +8` at 220, `select` at 240,
+`wheel +8` at 280, `select` at 300), the fliwheel trace reaches the same
+volume screen as the PR capture at frame 340. This is behavioral/input parity
+for the tested path; later episode and gameplay coverage is still open.
+
+Evidence: `/tmp/fliwheel_lost_oracleauto.dRqEeY/run.log`,
+`/tmp/fliwheel_lost_oracleauto.dRqEeY/capture/startup_g000340_host000016487473_hashca04ff4836fe8afe.ppm`,
+and the PR frame-340 capture `/tmp/ipod-shot-01.png`.
 
 Evidence roots:
 
