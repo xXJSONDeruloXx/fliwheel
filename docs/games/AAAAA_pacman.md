@@ -1,6 +1,6 @@
 # Pac-Man (Bundle AAAAA)
 
-**Status:** 🟡 NORMAL GAMEPLAY + PAUSE/RESUME + HEADED AUDIO | **Evidence:** the normal path reaches a rendered, controllable Stage 1 maze, pause/resume works after the menu settles, and the headed WAV sink accepts gameplay events; physical mixer parity, collisions/lives, and persistence remain open | **Engine:** Tetris Runtime
+**Status:** 🟡 NORMAL GAMEPLAY + PAUSE/RESUME + COLLISION/LIFE + HEADED AUDIO | **Evidence:** the normal path reaches a rendered, controllable Stage 1 maze, pause/resume works after the menu settles, one collision consumes a life and resets to READY!, and the headed WAV sink accepts gameplay events; repeated lives, physical mixer parity, save/exit, and persistence remain open | **Engine:** Tetris Runtime
 
 ## Quick Start
 ```bash
@@ -51,8 +51,13 @@ The pause route is also functional on the normal path. A Menu edge at frame
 `OPTIONS`, and `ABANDON GAME / SAVE & EXIT`. Once that overlay has settled,
 Select at frame 1180 leaves the pause screen; the transition produces a blank
 frame at 1202 and the live maze is rendering again at frame 1203. Collision/
-life handling, exit/save, full-content coverage, physical mixer behavior, and
-long-run parity remain open.
+life handling was then exercised by a fresh longer replay: the guest queued
+`die.wav` at frame 1500, the late capture measured the visible life count
+changing from three to two at frame 1548, and the game returned to `READY!` by
+frame 1550. Repeated collision/life cycles, exit/save, full-content coverage,
+physical mixer behavior, and long-run parity remain open. See the focused
+[`20260828_pacman_collision_probe.md`](../game_tests/20260828_pacman_collision_probe.md)
+for the exact route and receipts.
 
 Before the measured TGA completion contract was promoted, the default
 `START GAME` route advanced through initialization states 2 through 9 and
@@ -67,8 +72,10 @@ the state and produced no guest request for the missing filename, so the asset
 is a preservation gap but is not yet proven to be the transition blocker. See
 [`20260827_pacman_name_entry_probe.md`](../game_tests/20260827_pacman_name_entry_probe.md)
 for the exact menu route and pre-fix start-gate evidence. The maze, input,
-pause/resume, and audio result is recorded in
+pause/resume, audio, and first collision/life result are recorded in
 [`20260828_pacman_gameplay_probe.md`](../game_tests/20260828_pacman_gameplay_probe.md).
+The collision-specific receipt is in
+[`20260828_pacman_collision_probe.md`](../game_tests/20260828_pacman_collision_probe.md).
 
 ## Environment
 ```bash

@@ -86,14 +86,16 @@ manifest. They measure visual activity, not correctness.
 | `77777` | Mahjong | 700 frames, 71 hashes, up to eight draws; mostly dotted/garbled title output | Texture/UV partial | Decode the `main.rlb` resource path and tile atlas |
 | `88888` | Mini Golf | 700 frames, two hashes, five draws; mostly black with a loading/progress outline | Splash/loading only | Load the compact course resources and reach the menu |
 | `99999` | Cubis 2 | 700 frames, 26 hashes and 27 changes, up to 49 draws; black/loading state despite many staged assets | Asset/renderer blocked | Decode the `.raw`/`.pix` image path and material handles |
-| `AAAAA` | PAC-MAN | Normal path reaches name entry, the guest informational prompt, main menu, and the `START GAME / MODE / STAGE / BACK` screen, then reaches a rendered Stage 1 maze, moves Pac-Man, advances the score 0→30→40 through frame 1048 with no fatal signature, opens the guest `PAUSE` menu, resumes to the live maze after a settled Select edge, and the headed replay records 12 mapped WAV events accepted by the sink; no request for the executable's missing `tex_menu.tga` | Normal-path Stage 1, pause/resume, and headed WAV dispatch verified; physical mixer parity, collisions/lives, exit/save, persistence, and long-run play remain open | Verify collision/life cycles, exit/save, physical audio/mixer behavior, persistence, full content, and long-run play |
+| `AAAAA` | PAC-MAN | Normal path reaches name entry, the guest informational prompt, main menu, and the `START GAME / MODE / STAGE / BACK` screen, then reaches a rendered Stage 1 maze, moves Pac-Man, advances the score 0→30→40 through frame 1048 with no fatal signature, opens the guest `PAUSE` menu, resumes to the live maze after a settled Select edge, and a longer route queues `die.wav`, consumes one visible life, and returns to `READY!`; the headed replay records 12 mapped WAV events accepted by the sink; no request for the executable's missing `tex_menu.tga` | Normal-path Stage 1, pause/resume, one collision/life cycle, and headed WAV dispatch verified; repeated lives, physical mixer parity, exit/save, persistence, and long-run play remain open | Verify repeated collision/life cycles, exit/save, physical audio/mixer behavior, persistence, full content, and long-run play |
 
 No row is marked fully playable. Tetris now has a guest-driven line-clear and
 headed audio receipt, and Ms. PAC-MAN and PAC-MAN have normal-path maze/input
 results; all remain incomplete under the project goal. The Ms. PAC-MAN details are in the
 [gameplay probe](20260827_mspacman_gameplay_probe.md).
 The PAC-MAN follow-up is in the
-[PAC-MAN gameplay probe](20260828_pacman_gameplay_probe.md).
+[PAC-MAN gameplay probe](20260828_pacman_gameplay_probe.md), with the first
+collision/life receipt in
+[the focused collision probe](20260828_pacman_collision_probe.md).
 
 ## Scoped Hold'em progress (excluded from the default matrix)
 
