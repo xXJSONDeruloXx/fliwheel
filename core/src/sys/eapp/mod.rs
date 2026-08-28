@@ -7446,6 +7446,7 @@ impl Eapp {
                     .bundle_dir
                     .to_str()
                     .map_or(false, |p| p.contains("14004"));
+                let is_vortex = self.metadata.title == "12345";
                 let tetris_complete = is_tetris
                     && fliwheel_var("EAPP_ASYNC3_COMPLETE")
                         .map(|v| v == "1" || v == "true")
@@ -7471,6 +7472,7 @@ impl Eapp {
                         .map(|v| v == "1" || v == "true")
                         .unwrap_or(true);
                 let complete = is_lost
+                    || is_vortex
                     || tetris_complete
                     || texas_complete
                     || sudoku_complete
