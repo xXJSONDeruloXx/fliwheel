@@ -1,6 +1,6 @@
 # Ms. Pac-Man (Bundle 14004)
 
-**Status:** 🟡 NORMAL PATH REACHES CONTROLLABLE STAGE 1 + HEADED WAV SINK | **Evidence:** the four measured async-completion contracts now run by default and reach name entry, the main menu, Play Game/tutorial, and a controllable Stage 1 maze; all 20 WAV sources map and the headed sink accepted the observed gameplay events; collisions/lives, persistence, and long-run parity remain open | **Engine:** Tetris Runtime
+**Status:** 🟡 NORMAL PATH REACHES CONTROLLABLE STAGE 1 + COLLISION/LIFE + HEADED WAV SINK | **Evidence:** the four measured async-completion contracts now run by default and reach name entry, the main menu, Play Game/tutorial, and a controllable Stage 1 maze; one guest collision produced `die.wav` and a visible life decrement/reset, while all 20 WAV sources map and the headed sink accepted the observed gameplay events; persistence, full-content, physical-mixer, and long-run parity remain open | **Engine:** Tetris Runtime
 
 ## Quick Start
 ```bash
@@ -24,7 +24,9 @@
 - The normal path now reaches the full maze/HUD and advances the score while
   driving the clickwheel quadrant packet; a focused follow-up maps all 20 WAV
   sources and dispatches the observed Stage 1 events through the headed sink
-- This is not yet a full gameplay, collision/life, physical-mixer, persistence,
+- A bounded route also reaches a guest collision/death transition and returns
+  to `READY!` with the life counter decremented
+- This is not yet a full gameplay, physical-mixer, persistence, full-content,
   or long-run certification
 - The four measured async-completion contracts are title-scoped and enabled by
   default for this bundle

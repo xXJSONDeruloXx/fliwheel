@@ -18,8 +18,11 @@ default for bundle `14004`. The run reached:
 The gameplay probe then injected the clickwheel quadrant packet used by the
 title. Pac-Man moved through the maze and the score advanced from `0` to `160`
 in the captured run. This establishes a controllable gameplay path, but not
-full completion: collision/life behavior, physical mixer behavior, persistence,
-long-run stability, and full content coverage still need work.
+full completion. The same bounded route then reaches a guest collision: the
+game emits `die.wav` at frame 853, shows the death transition, and returns to
+`READY!` by frame 899 with the visible life counter reduced by one. Repeated
+collision/life cycles, physical mixer behavior, persistence, long-run
+stability, and full content coverage still need work.
 
 The follow-up audio replay then mapped all 20 WAV sources using the measured
 temporary-to-persistent handle handoff. It resolved 18 observed Stage 1 events
@@ -65,6 +68,8 @@ events are still used for menu/action edges.
 - Guest frame 620: full Stage 1 maze in `READY!` state, with HUD and lives.
 - Guest frame 720: active maze with score `70`.
 - Guest frame 840: active maze with score `160`.
+- Guest frame 853: collision/death transition with the `die.wav` event.
+- Guest frame 899: reset to `READY!` with one fewer visible life.
 - The run completed its bounded cycle budget without a fatal signature.
 - The audio replay mapped 20/20 sources and produced 18/18 headed sink
   receipts, including `start.wav`, `siren1.wav`, `eat open.wav`, and
