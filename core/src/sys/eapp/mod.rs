@@ -549,6 +549,10 @@ pub struct Eapp {
     /// Total CPU steps executed (for throttling DMA present checks)
     step_counter: u64,
     pending_guest_calls: VecDeque<PendingGuestCall>,
+    /// Number of callbacks that were already due when the current callback
+    /// batch began. Callbacks queued while servicing one of those callbacks
+    /// belong to the next frame, just like RetailOS's completion queue.
+    guest_callback_batch_remaining: usize,
     /// Host file contents staged for delivery to the guest, keyed by the guest
     /// request-object address that asked for them.
     staged_files: HashMap<u32, StagedFile>,
@@ -948,6 +952,7 @@ impl Eapp {
             input_script_wheel_frame: None,
             step_counter: 0,
             pending_guest_calls: VecDeque::new(),
+            guest_callback_batch_remaining: 0,
             staged_files: HashMap::new(),
             dumped_requests: HashSet::new(),
             string_trace_hits: HashMap::new(),
@@ -9624,7 +9629,16 @@ impl Eapp {
     }
 
     fn dispatch_pending_guest_call(&mut self) -> bool {
+        if self.guest_callback_batch_remaining == 0 {
+            self.guest_callback_batch_remaining = self.pending_guest_calls.len();
+        }
+        if self.guest_callback_batch_remaining == 0 {
+            return false;
+        }
         if let Some(call) = self.pending_guest_calls.pop_front() {
+            self.guest_callback_batch_remaining = self
+                .guest_callback_batch_remaining
+                .saturating_sub(1);
             self.guest_callback_invocation_count =
                 self.guest_callback_invocation_count.wrapping_add(1);
             self.async_pending_requests.remove(&call.arg0);
@@ -9665,9 +9679,15 @@ impl Eapp {
     }
 
     fn handle_guest_callback_return(&mut self) {
-        if !self.dispatch_pending_guest_call() {
-            self.queue_next_frame();
+        if self.guest_callback_batch_remaining > 0 && self.dispatch_pending_guest_call() {
+            return;
         }
+        // Any callbacks appended while the just-finished batch was running
+        // stay queued until the next guest frame. This prevents a completion
+        // callback chain from recursively consuming the whole async workload
+        // in one frame.
+        self.guest_callback_batch_remaining = 0;
+        self.queue_next_frame();
     }
 
     fn alloc_zeroed(&mut self, len: u32) -> u32 {
