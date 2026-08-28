@@ -57,12 +57,12 @@ reaches `Drop.wav`, `Lock.wav`, and `GameOver.wav` resource events. A separate
 signed wheel sweep visibly moves the active piece horizontally. Later
 visual analysis now proves that the two side-button edges rotate the active
 piece in opposite directions, while the wheel moves it horizontally and Down
-performs the hard-drop/lock transition. Later piece/line-clear transforms,
-exact display-relative direction naming, persistence, and full long-run parity
-are still open. The dedicated 2026-08-27 placement replay also produces a
-genuine guest row clear with `Clear.wav`, and a headed run confirms that sound
-reaches the host sink. Wall/kick behavior, piece sequencing, scoring/level
-timing, persistence, and full long-run parity remain open.
+performs the hard-drop/lock transition. The dedicated 2026-08-27 placement
+replay also produces a genuine guest row clear with `Clear.wav`, and a headed
+run confirms that sound reaches the host sink. A 2026-08-28 controlled-stack
+probe now reproduces both accepted and collision-blocked rotations against
+settled cells. An unambiguous kick translation, piece sequencing,
+scoring/level timing, persistence, and full long-run parity remain open.
 
 The old no-input probe used a diagnostic `FLIWHEEL_EAPP_HOST_EVENT_FLAGS=0x10`
 injection and is not evidence that ordinary no-input execution reaches the
@@ -85,6 +85,8 @@ for the fresh visual and static-input evidence for rotation, wheel movement,
 and hard drop.
 See [`20260828_tetris_edge_rotation_probe.md`](../game_tests/20260828_tetris_edge_rotation_probe.md)
 for the wall-adjacent rotation smoke at both outer playable columns.
+See [`20260828_tetris_collision_rotation_probe.md`](../game_tests/20260828_tetris_collision_rotation_probe.md)
+for the controlled-stack accepted/blocked rotation trace.
 See [`20260827_tetris_line_clear_probe.md`](../game_tests/20260827_tetris_line_clear_probe.md)
 for the guest-driven row clear and headed `Clear.wav` playback evidence.
 See [`20260827_sat_loader_and_tetris_audio.md`](../game_tests/20260827_sat_loader_and_tetris_audio.md)
@@ -140,6 +142,7 @@ automatic for bundle `66666`; no preservation override is required.
 - Wheel movement evidence: [`20260826_tetris_wheel_probe.md`](../game_tests/20260826_tetris_wheel_probe.md)
 - Rotation and control evidence: [`20260827_tetris_rotation_probe.md`](../game_tests/20260827_tetris_rotation_probe.md)
 - Edge-rotation smoke: [`20260828_tetris_edge_rotation_probe.md`](../game_tests/20260828_tetris_edge_rotation_probe.md)
+- Collision-dependent rotation: [`20260828_tetris_collision_rotation_probe.md`](../game_tests/20260828_tetris_collision_rotation_probe.md)
 - Board-origin and long-run evidence: [`20260826_tetris_board_origin.md`](../game_tests/20260826_tetris_board_origin.md)
 - Incremental-transform regression: [`20260826_tetris_incremental_transform_regression.md`](../game_tests/20260826_tetris_incremental_transform_regression.md)
 - Frame capture produces PPM files visible with `open /tmp/tetris_capture_*.ppm`
