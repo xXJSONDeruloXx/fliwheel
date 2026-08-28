@@ -1,0 +1,15 @@
+# Direct PR #3 oracle: complete the default-name route, then start New Game.
+500: select
+600: select
+620: select
+640: select
+660: select
+680: select
+700: select
+720: select
+900: shot
+920: select
+980: shot
+1100: shot
+1300: shot
+1301: quit
