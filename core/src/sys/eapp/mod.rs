@@ -6371,9 +6371,9 @@ impl Eapp {
             // after AsyncFileIO:2 has advanced the audio-stream entry. Ms.
             // PAC-MAN uses the same transient-owner shape, but its firmware
             // completion trampoline is the guest's 0x180168f8 rather than the
-            // Tetris-specific 0x1801fbfc helper. Keep both completions
-            // title-scoped and opt-in until their post-callback contracts are
-            // fully matched.
+            // Tetris-specific 0x1801fbfc helper. Keep the completion
+            // title-scoped; Ms. PAC-MAN's measured contract is now the normal
+            // path while the other title probes remain opt-in.
             let complete = fliwheel_var("EAPP_ASYNC3_COMPLETE")
                 .map(|v| v == "1" || v == "true")
                 .unwrap_or(false);
@@ -6434,7 +6434,7 @@ impl Eapp {
             let mspacman_complete = is_mspacman
                 && fliwheel_var("EAPP_MSPACMAN_ASYNC1_COMPLETE")
                     .map(|v| v == "1" || v == "true")
-                    .unwrap_or(false);
+                    .unwrap_or(true);
             info!(
                 target: "EAPP_IMPORT",
                 "AsyncFileIO:1 owner={:#010x} req={:#010x} req_cb={:#010x} req_ctx={:#010x} owner_cb={:#010x} owner_ctx={:#010x} internal_cb={:#010x} internal_ctx={:#010x} complete={}",
@@ -6729,7 +6729,7 @@ impl Eapp {
             let mspacman_complete = is_mspacman
                 && fliwheel_var("EAPP_MSPACMAN_ASYNC2_COMPLETE")
                     .map(|v| v == "1" || v == "true")
-                    .unwrap_or(false);
+                    .unwrap_or(true);
             info!(
                 target: "EAPP_IMPORT",
                 "AsyncFileIO:2 owner={:#010x} cb_pc={:#010x} cb_ctx={:#010x} complete={}",
@@ -6925,11 +6925,10 @@ impl Eapp {
                 // and forwards those values to the request callback. The
                 // callback is supplied by the guest in owner+0x34; it is not a
                 // fixed address because every EAPP binary has its own code
-                // layout. Keep whole-file completion title-scoped and
-                // opt-in: Tetris, Texas Hold'em, and Royal Solitaire have
-                // separate probes, while Sudoku's, The Sims', and Ms. PAC-MAN's
-                // completion remain diagnostic experiments until their
-                // post-callback scene contracts are understood.
+                // layout. Keep whole-file completion title-scoped: Tetris,
+                // Texas Hold'em, Royal Solitaire, Sudoku, and The Sims remain
+                // opt-in, while Ms. PAC-MAN's measured contract is enabled by
+                // default.
                 let owner = args[3];
                 let is_tetris = self
                     .metadata
@@ -6984,7 +6983,7 @@ impl Eapp {
                 let mspacman_complete = is_mspacman
                     && fliwheel_var("EAPP_MSPACMAN_ASYNC0_COMPLETE")
                         .map(|v| v == "1" || v == "true")
-                        .unwrap_or(false);
+                        .unwrap_or(true);
                 let complete =
                     tetris_complete
                         || texas_complete
@@ -7366,7 +7365,7 @@ impl Eapp {
                                 let mspacman_resource_read = is_mspacman
                                     && fliwheel_var("EAPP_MSPACMAN_ASYNC3_COMPLETE")
                                         .map(|v| v == "1" || v == "true")
-                                        .unwrap_or(false);
+                                        .unwrap_or(true);
                                 // PAC-MAN's texture completion trampoline reads the
                                 // request status and byte count before handing the
                                 // loaded TGA to its resource owner. The measured

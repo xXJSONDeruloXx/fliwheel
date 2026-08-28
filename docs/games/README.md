@@ -12,7 +12,7 @@ older pages retain historical investigation notes and are not completion claims.
 | Tetris | 66666 | 🟡 Core controls + centered board; gameplay parity open | [→](66666_tetris.md) |
 | Cubis 2 | 99999 | ❌ Asset/renderer blocked | [→](99999_cubis2.md) |
 | Texas Hold'em | 33333 | 🟡 Default loading-only; scoped experiment reaches partial first scene | [→](33333_holdem.md) |
-| Ms. PAC-MAN | 14004 | 🟡 Diagnostic path reaches controllable Stage 1; default handoff open | [→](14004_mspacman.md) |
+| Ms. PAC-MAN | 14004 | 🟡 Normal-path Stage 1; audio, collision/lives, and full play open | [→](14004_mspacman.md) |
 | PAC-MAN | AAAAA | 🟡 Normal-path Stage 1 + headed WAV sink; collision/lives and full play open | [→](AAAAA_pacman.md) |
 | Mahjong | 77777 | 🟡 Texture/UV partial | [→](77777_mahjong.md) |
 | Mini Golf | 88888 | 🟡 Loading/progress only | [→](88888_minigolf.md) |
@@ -33,8 +33,8 @@ older pages retain historical investigation notes and are not completion claims.
 **Summary:** All 20 decrypted bundles launch far enough for a controlled
 interactive probe, but none is yet certified fully playable. Tetris remains the
 strongest default-contract result; Ms. PAC-MAN and PAC-MAN now have the
-strongest title-scoped diagnostic results, reaching controllable Stage 1 mazes
-after their resource callbacks are explicitly completed. The remaining titles need
+strongest arcade results, reaching controllable Stage 1 mazes on their normal
+paths. The remaining titles need
 content-specific input and renderer/asset fixes. The interactive matrix is the
 current default-contract status source.
 

@@ -45,7 +45,9 @@ Observed in `/tmp/fliwheel_mspacman_async03_initialtex_20260827/`:
   followed by the diagnostic `extra life.wav` callback;
 - no fatal signature, menu, maze, or playable input state.
 
-The async completion flags remain diagnostic-only. Completing the observed
-callbacks is not sufficient to make the guest leave its loading state, so the
-next investigation is the post-resource guest handoff rather than making the
-completion behavior default.
+At the time of this texture-only probe, the async completion flags were still
+diagnostic-only and completing the observed callbacks was not sufficient to
+make the guest leave its loading state. The later post-resource investigation
+reached the guest's menus and Stage 1, after which the four measured callback
+contracts were promoted to the default path; see the gameplay probe for the
+current result.
