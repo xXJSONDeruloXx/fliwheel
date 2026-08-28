@@ -22,7 +22,7 @@ older pages retain historical investigation notes and are not completion claims.
 | Royal Solitaire | 50514 | 🟡 Coherent splash; RLB path diagnostic; readiness contract unresolved | [→](50514_royal_solitaire.md) |
 | Bejeweled | 55555 | 🟡 PopCap Classic + two Action matches/timer | [→](55555_bejeweled.md) |
 | Zuma | 44444 | 🟡 Live board + directional aim response; full play open | [→](44444_zuma.md) |
-| Vortex | 12345 | 🟡 Full-color animated title art; gameplay transition open | [probe](../game_tests/20260828_vortex_pr3_vertex_colors.md) |
+| Vortex | 12345 | 🟡 Full-color title art and Select→name-entry transition; gameplay open | [probe](../game_tests/20260828_vortex_select_transition.md) |
 | iQuiz | 11002 | ❌ Pack discovery/content loading blocked | [→](11002_twa.md) |
 | SAT Prep Reading | 11050 | 🟡 Coherent splash/spinner; content handoff open | [SAT checkpoint](../game_tests/20260827_sat_loader_and_tetris_audio.md) |
 | SAT Prep Writing | 11051 | 🟡 Coherent splash/spinner; content handoff open | [SAT checkpoint](../game_tests/20260827_sat_loader_and_tetris_audio.md) |
@@ -169,7 +169,9 @@ For a portable corpus-wide probe, pass the root explicitly:
   `circuits_Door1` asset sequence.
 - Generic GL color-array interpolation restores the colored ring and full title
   composition; no firmware boot is involved in this comparison.
-- Need: drive the title through Select/input into the first content scene, then
+- Select now drives the title into the `ENTER NAME` scene through the measured
+  Vortex flags word; the post-transition scene is stable at 46 draws per frame.
+- Need: map name entry and confirmation, reach the first content scene, then
   compare controls, sound, and long-run behavior.
 
 ## Recent Changes

@@ -1,7 +1,7 @@
 # Vortex PR #3 direct-HLE color-array probe
 
 Date: 2026-08-28 UTC  
-fliwheel commit: `c3e6c84`  
+fliwheel commit: `c3e6c84` plus the subsequent input-bridge checkpoint
 Corpus: `/Volumes/NO NAME/fliwheel-decrypted-corpus-20260826/20 iPod games/Games_RO/12345`  
 Oracle: `/tmp/ipod-emulator-pr3` direct `play` runner at PR #3
 
@@ -55,6 +55,17 @@ red in the existing `eapp_gl_decode` integration test
 `replay_frame4_produces_complete_artifact_and_hash`) on both `c3e6c84` and its
 parent `8b05a7f`; they predate this color-array change and are tracked
 separately.
+
+## Follow-up: Select transition
+
+The next probe found that PR #3's direct runner writes Vortex's discovered
+button-flags word at `0x18063e5c` and maps Select to bit `0x01`. fliwheel's
+generic `InputEvents:0` packet exposes logical action as `0x10`, which was not
+enough to drive this title-local wrapper. A bundle-gated bridge now mirrors
+Select to `0x01` and Menu to `0x10`. The matching run leaves the title screen,
+reaches `ENTER NAME`, settles at 46 draws per frame, and exits cleanly. See
+[`20260828_vortex_select_transition.md`](20260828_vortex_select_transition.md)
+for the command and evidence.
 
 ## Open gates
 

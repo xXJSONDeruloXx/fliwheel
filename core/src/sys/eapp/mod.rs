@@ -45,6 +45,11 @@ const RECENT_PC_LIMIT: usize = 64;
 const BOOTSTRAP_RETURN_PC: u32 = 0x1eff_fffc;
 const GUEST_CALLBACK_RETURN_PC: u32 = 0x1eff_fff8;
 const WORK_RAM_BASE: u32 = 0x1000_0000;
+/// Vortex's input wrapper keeps the physical button state in this guest word.
+/// PR #3's direct runner finds the same word at runtime and maps Select to bit
+/// 0x01; the generic fliwheel InputEvents packet uses logical field bits and
+/// therefore cannot replace this title-local ABI by itself.
+const VORTEX_INPUT_FLAGS: u32 = 0x1806_3e5c;
 /// Separate guest heap used by the RetailOS-style allocator imports. PR #3's
 /// direct runner keeps this arena above the synthetic app RAM, and LOST's
 /// internal pool allocator relies on that separation during initialization.
@@ -6331,6 +6336,23 @@ impl Eapp {
                     | wheel_bits
                     | event_wheel_bits
                     | self.bejeweled_tap_bits(&state);
+                // Vortex's shared input wrapper also keeps a separate
+                // physical-button word in the image. The PR #3 oracle finds
+                // this word at 0x18063e5c and writes Select as bit 0x01 and
+                // Menu as bit 0x10. Preserve the generic packet above for
+                // the rest of the runtime, but mirror the two measured
+                // controls into Vortex's title-local ABI so a Select edge can
+                // leave the animated title screen.
+                if self.metadata.title == "12345" {
+                    let mut vortex_flags = self.env_input_script_bits() & 0x1f;
+                    if state.action {
+                        vortex_flags |= 0x01;
+                    }
+                    if state.menu {
+                        vortex_flags |= 0x10;
+                    }
+                    let _ = self.write_guest_u32(VORTEX_INPUT_FLAGS, vortex_flags);
+                }
                 if args[0] != 0 {
                     self.write_guest_u32(args[0], bits);
                 }

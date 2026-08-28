@@ -339,3 +339,23 @@ fatal signature. This closes the title-screen rendering gap but not gameplay.
 
 Drive Select/input through the title transition, then compare the first content
 scene, controls, sound, and long-run behavior against the direct PR oracle.
+
+## Iteration 31 Update — Select reaches name entry
+
+The direct PR #3 runner reports Vortex's button-flags word at
+`0x18063e5c` and writes Select as bit `0x01`. fliwheel's generic
+`InputEvents:0` packet uses a logical action bit instead, so the title did not
+react even though the host action was visible in the HLE log.
+
+The new bundle-gated bridge mirrors the measured Select and Menu states into
+that word. With `FLIWHEEL_EAPP_INPUT_SCRIPT='action:500-505'`, the colored
+title transitions to `ENTER NAME`, reaches the same name-entry composition as
+the oracle, and remains clean through frame 1199 at 46 draws per frame. The
+reproducible input comparison is in
+[`20260828_vortex_select_transition.md`](../game_tests/20260828_vortex_select_transition.md).
+
+### Current next gate
+
+Map name-entry wheel/select behavior, confirm the name, and compare the first
+playable Vortex scene, controls, sound, pause/return, and long-run behavior
+against the direct PR oracle.
