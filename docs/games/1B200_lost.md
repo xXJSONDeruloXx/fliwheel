@@ -73,6 +73,28 @@ Evidence roots:
 - fliwheel 362-frame run: `/tmp/fliwheel_lost_362.I326Hd/`
 - PR #3 frame-14 screenshot: `/tmp/ipod-shot-01.png`
 
+### Matched LOST episode transition probe (2026-08-28)
+
+The longer matched script now enters the first episode in fliwheel and reaches
+the same moving-jungle transition path as the PR runner. During that path the
+game uploads 320x240 `GL_PALETTE8_R5_G6_B5_OES` frames (`0x8b97`) with
+`image_size=77312` and binds the individual uploads to the four scrolling
+background quads. This was previously decoded as an RGBA8 palette, which made
+the transition use the wrong imagery.
+
+The fix is covered by unit tests for both palette formats and by a direct HLE
+run through guest frame 909. The resulting fliwheel capture has the expected
+jungle background and continues presenting frames after the episode starts.
+The transition is not yet certified pixel-equivalent: fliwheel still needs
+closer parity for texture filtering, alpha/pipeline blending, and the full
+episode/UI interaction path.
+
+Evidence:
+
+- fliwheel aligned run: `/tmp/fliwheel_lost_gameplay_565d/run.log`
+- fliwheel frame 761: `/tmp/fliwheel_lost_gameplay_565d/capture/startup_g000761_host000048126956_hash119a9989d214354e.ppm`
+- PR #3 comparison captures: `/tmp/ipod-shot-02.png`, `/tmp/ipod-shot-03.png`
+
 ---
 
 ## 1. Architecture

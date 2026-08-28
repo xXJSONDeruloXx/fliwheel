@@ -239,6 +239,7 @@ const HLE_OPENGL_FRAMEBUFFER: u32 = 0xff205020;
 const GL_TEXTURE_2D: u32 = 0x0de1;
 const GL_TEXTURE_RECTANGLE: u32 = 0x84f5;
 const GL_PALETTE8_RGBA8_OES: u32 = 0x8b96;
+const GL_PALETTE8_R5_G6_B5_OES: u32 = 0x8b97;
 
 fn ordinal45_resource_format(format: u32) -> Option<TextureFormat> {
     match format {
@@ -250,26 +251,59 @@ fn ordinal45_resource_format(format: u32) -> Option<TextureFormat> {
     }
 }
 
-fn decode_palette8_rgba8(raw: &[u8], width: usize, height: usize) -> Option<Vec<Rgba8>> {
+fn palette8_entry_size(format: u32) -> Option<usize> {
+    match format {
+        GL_PALETTE8_RGBA8_OES => Some(4),
+        GL_PALETTE8_R5_G6_B5_OES => Some(2),
+        _ => None,
+    }
+}
+
+fn decode_palette8(raw: &[u8], width: usize, height: usize, format: u32) -> Option<Vec<Rgba8>> {
     let pixel_count = width.checked_mul(height)?;
-    let expected = 1024usize.checked_add(pixel_count)?;
+    let entry_size = palette8_entry_size(format)?;
+    let expected = 256usize.checked_mul(entry_size)?.checked_add(pixel_count)?;
     if raw.len() < expected {
         return None;
     }
 
+    let palette = &raw[..entry_size * 256];
     Some(
-        raw[1024..expected]
-            .iter()
-            .map(|&index| {
-                let base = index as usize * 4;
-                Rgba8::rgba(raw[base], raw[base + 1], raw[base + 2], raw[base + 3])
+        (0..pixel_count)
+            .map(|pixel| {
+                let index = raw[entry_size * 256 + pixel] as usize;
+                let base = index * entry_size;
+                match format {
+                    GL_PALETTE8_RGBA8_OES => Rgba8::rgba(
+                        palette[base],
+                        palette[base + 1],
+                        palette[base + 2],
+                        palette[base + 3],
+                    ),
+                    // The iPod's palette entries are little-endian RGB565, as in
+                    // the PR #3 runner. These episode frames are opaque.
+                    GL_PALETTE8_R5_G6_B5_OES => {
+                        let value = u16::from_le_bytes([palette[base], palette[base + 1]]);
+                        let red = (value >> 11) & 0x1f;
+                        let green = (value >> 5) & 0x3f;
+                        let blue = value & 0x1f;
+                        Rgba8::rgba(
+                            ((red * 255 + 15) / 31) as u8,
+                            ((green * 255 + 31) / 63) as u8,
+                            ((blue * 255 + 15) / 31) as u8,
+                            255,
+                        )
+                    }
+                    _ => unreachable!("palette format validated above"),
+                }
             })
             .collect(),
     )
 }
 
 fn is_palette8_compressed_upload_call(args: [u32; 4]) -> bool {
-    matches!(args[0], GL_TEXTURE_2D | GL_TEXTURE_RECTANGLE) && args[2] == GL_PALETTE8_RGBA8_OES
+    matches!(args[0], GL_TEXTURE_2D | GL_TEXTURE_RECTANGLE)
+        && palette8_entry_size(args[2]).is_some()
 }
 
 fn quad_from_slice(pts: &[(f32, f32)]) -> [(f32, f32); 4] {
@@ -2650,8 +2684,9 @@ impl Eapp {
             }
             // Ordinal 19 is glCompressedTexImage2D for the clickwheel titles
             // that use paletted artwork. Sims uses the rectangle-texture
-            // target (0x84f5) rather than GL_TEXTURE_2D, but the payload is
-            // the same GL_PALETTE8_RGBA8_OES shape. Keep the old render-server
+            // target (0x84f5) rather than GL_TEXTURE_2D. LOST's episode
+            // frames use the RGB565 palette variant (0x8b97), while the
+            // earlier artwork uses RGBA8 (0x8b96). Keep the old render-server
             // diagnostic fallback for non-texture calls until that alternate
             // ABI is proven.
             19 => {
@@ -3185,12 +3220,13 @@ impl Eapp {
         }
     }
 
-    /// Ordinal 19: GL_PALETTE8_RGBA8_OES / glCompressedTexImage2D.
+    /// Ordinal 19: paletted glCompressedTexImage2D uploads.
     ///
     /// The iPod's compressed texture call uses four register arguments and
     /// four stack arguments: target, level, format, width, then height,
-    /// border, image size, and a pointer to a 1024-byte RGBA palette followed
-    /// by width*height one-byte indices. The data is copied immediately so a
+    /// border, image size, and a pointer to a palette followed by
+    /// width*height one-byte indices. RGBA8 uses a 1024-byte palette and
+    /// RGB565 uses a 512-byte palette. The data is copied immediately so a
     /// later async-file buffer reuse cannot change the captured texture.
     fn live_handle_compressed_upload(&mut self, args: [u32; 4]) {
         let width = args[3] as usize;
@@ -3209,8 +3245,16 @@ impl Eapp {
             );
             return;
         }
+        let Some(entry_size) = palette8_entry_size(args[2]) else {
+            warn!(
+                target: "EAPP_GL",
+                "compressed_upload skipped: unsupported palette format={:#x}",
+                args[2]
+            );
+            return;
+        };
         let pixel_count = width.saturating_mul(height);
-        let expected = 1024usize.saturating_add(pixel_count);
+        let expected = entry_size.saturating_mul(256).saturating_add(pixel_count);
         if image_size < expected {
             warn!(
                 target: "EAPP_GL",
@@ -3232,7 +3276,7 @@ impl Eapp {
             );
             return;
         };
-        let Some(pixels) = decode_palette8_rgba8(&raw, width, height) else {
+        let Some(pixels) = decode_palette8(&raw, width, height, args[2]) else {
             warn!(
                 target: "EAPP_GL",
                 "compressed_upload skipped: palette data is shorter than {}x{}",
@@ -11221,8 +11265,9 @@ fn vma_to_offset(addr: u32) -> Result<u32, EappBuildError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        decode_palette8_rgba8, is_palette8_compressed_upload_call, live_gl_default_present_vflip,
-        Eapp, EappInputState, GL_PALETTE8_RGBA8_OES, GL_TEXTURE_2D, GL_TEXTURE_RECTANGLE,
+        decode_palette8, is_palette8_compressed_upload_call, live_gl_default_present_vflip, Eapp,
+        EappInputState, GL_PALETTE8_R5_G6_B5_OES, GL_PALETTE8_RGBA8_OES, GL_TEXTURE_2D,
+        GL_TEXTURE_RECTANGLE,
     };
 
     #[test]
@@ -11234,7 +11279,7 @@ mod tests {
         raw[1024..].copy_from_slice(&[0, 1, 2]);
 
         assert_eq!(
-            decode_palette8_rgba8(&raw, 3, 1),
+            decode_palette8(&raw, 3, 1, GL_PALETTE8_RGBA8_OES),
             Some(vec![
                 super::Rgba8::rgba(1, 2, 3, 4),
                 super::Rgba8::rgba(10, 20, 30, 40),
@@ -11245,7 +11290,29 @@ mod tests {
 
     #[test]
     fn palette8_rgba8_rejects_short_data() {
-        assert_eq!(decode_palette8_rgba8(&[0; 1024], 1, 1), None);
+        assert_eq!(
+            decode_palette8(&[0; 1024], 1, 1, GL_PALETTE8_RGBA8_OES),
+            None
+        );
+    }
+
+    #[test]
+    fn palette8_rgb565_decodes_two_byte_palette_then_indices() {
+        let mut raw = vec![0; 512 + 3];
+        // Red, green, and blue in little-endian RGB565.
+        raw[0..2].copy_from_slice(&[0x00, 0xf8]);
+        raw[2..4].copy_from_slice(&[0xe0, 0x07]);
+        raw[4..6].copy_from_slice(&[0x1f, 0x00]);
+        raw[512..].copy_from_slice(&[0, 1, 2]);
+
+        assert_eq!(
+            decode_palette8(&raw, 3, 1, GL_PALETTE8_R5_G6_B5_OES),
+            Some(vec![
+                super::Rgba8::rgba(255, 0, 0, 255),
+                super::Rgba8::rgba(0, 255, 0, 255),
+                super::Rgba8::rgba(0, 0, 255, 255),
+            ])
+        );
     }
 
     #[test]
@@ -11260,6 +11327,12 @@ mod tests {
             GL_TEXTURE_RECTANGLE,
             0,
             GL_PALETTE8_RGBA8_OES,
+            1,
+        ]));
+        assert!(is_palette8_compressed_upload_call([
+            GL_TEXTURE_RECTANGLE,
+            0,
+            GL_PALETTE8_R5_G6_B5_OES,
             1,
         ]));
         assert!(!is_palette8_compressed_upload_call([0x84f5, 0, 0x1908, 1]));
