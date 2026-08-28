@@ -771,7 +771,10 @@ impl LiveGlState {
         self.select_upload_by_tex_name(tex_name).filter(|idx| {
             self.uploads
                 .get(*idx)
-                .map(|u| u.width >= need_w && u.height >= need_h)
+                .map(|u| {
+                    texture_extent_contains_uv(u.width, need_w, max_u)
+                        && texture_extent_contains_uv(u.height, need_h, max_v)
+                })
                 .unwrap_or(false)
         })
     }
@@ -890,7 +893,11 @@ impl LiveGlState {
         let need_h = needed_texture_extent_from_centered_uv(max_v);
         self.uploads
             .iter()
-            .filter(|u| u.texture.is_some() && u.width >= need_w && u.height >= need_h)
+            .filter(|u| {
+                u.texture.is_some()
+                    && texture_extent_contains_uv(u.width, need_w, max_u)
+                    && texture_extent_contains_uv(u.height, need_h, max_v)
+            })
             .min_by_key(|u| (u.width * u.height, u.index))
             .map(|u| u.index)
     }
@@ -908,8 +915,8 @@ impl LiveGlState {
             .filter(|u| {
                 u.texture.is_some()
                     && u.tex_name == Some(tex_name)
-                    && u.width >= need_w
-                    && u.height >= need_h
+                    && texture_extent_contains_uv(u.width, need_w, max_u)
+                    && texture_extent_contains_uv(u.height, need_h, max_v)
             })
             .min_by_key(|u| (u.width * u.height, u.index))
             .map(|u| u.index)
@@ -1349,6 +1356,22 @@ fn needed_texture_extent_from_centered_uv(max_coord: f32) -> usize {
     (max_coord - 0.5).ceil().max(1.0) as usize
 }
 
+/// Test whether a decoded upload contains a centered-UV extent.
+///
+/// The normal path requires the upload to contain the computed extent. A few
+/// guest meshes use an integer coordinate for the far edge and rely on the
+/// GL sampler's clamp behavior for that final boundary sample; for those
+/// meshes the computed extent is exactly one pixel larger than the decoded
+/// upload. Accept only that single, integer-edge overrun so a genuinely
+/// oversized UV span cannot steal an unrelated texture.
+fn texture_extent_contains_uv(upload_extent: usize, needed_extent: usize, max_coord: f32) -> bool {
+    upload_extent >= needed_extent
+        || (upload_extent > 0
+            && needed_extent == upload_extent.saturating_add(1)
+            && max_coord.is_finite()
+            && (max_coord - max_coord.round()).abs() <= 0.001)
+}
+
 /// Flip a framebuffer vertically in place. Used only for presentation output.
 pub fn flip_vertical_in_place(fb: &mut [Rgba8], width: usize, height: usize) {
     for y in 0..(height / 2) {
@@ -1407,6 +1430,34 @@ mod tests {
         assert_eq!(needed_texture_extent_from_centered_uv(425.5), 425);
         assert_eq!(needed_texture_extent_from_centered_uv(640.51), 641);
         assert_eq!(needed_texture_extent_from_centered_uv(0.5), 1);
+    }
+
+    #[test]
+    fn uv_containment_allows_only_one_integer_edge_overrun() {
+        assert!(texture_extent_contains_uv(256, 257, 257.0));
+        assert!(!texture_extent_contains_uv(256, 258, 258.0));
+        assert!(!texture_extent_contains_uv(256, 257, 257.25));
+    }
+
+    #[test]
+    fn tex_name_uv_match_accepts_mspacman_maze_edge_convention() {
+        let mut lg = LiveGlState::new(true, false, false, "14004".to_string());
+        lg.uploads.push(LiveGlState::build_upload(
+            0,
+            0x0de1,
+            256,
+            256,
+            0x1908,
+            0x8034,
+            0x1000_0000,
+            &vec![0u8; 256 * 256 * 2],
+            Some(0x0f),
+        ));
+        let maze_uvs = [(0.0, 38.0), (196.0, 38.0), (0.0, 257.0), (196.0, 257.0)];
+        assert_eq!(
+            lg.select_upload_for_uv_slice_with_tex_name(0x0f, &maze_uvs),
+            Some(0)
+        );
     }
 
     #[test]

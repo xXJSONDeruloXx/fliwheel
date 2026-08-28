@@ -21,6 +21,9 @@
 - Classic arcade game with simple but recognizable graphics
 - The live renderer now preserves the untagged 512×256 launch upload for the
   unbound `0x19` material instead of selecting later font/UI atlases by size
+- The maze UV matcher now accepts the guest's observed one-pixel integer edge
+  convention for the 256×256 `tex_maze_blue.bin` upload; the focused route
+  records zero triangle-strip upload skips through guest frame 749
 - The normal path now reaches the full maze/HUD and advances the score while
   driving the clickwheel quadrant packet; a focused follow-up maps all 20 WAV
   sources and dispatches the observed Stage 1 events through the headed sink
@@ -40,4 +43,5 @@ FLIWHEEL_GL_PRESENT_VFLIP=1
 ```
 
 See the [2026-08-27 gameplay probe](../game_tests/20260827_mspacman_gameplay_probe.md)
-for the exact command and captured evidence.
+and [2026-08-28 maze UV-edge probe](../game_tests/20260828_mspacman_uv_edge_probe.md)
+for the exact commands and captured evidence.
