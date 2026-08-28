@@ -72,7 +72,7 @@ manifest. They measure visual activity, not correctness.
 | `11051` | SAT Prep Writing | Same two-resource loader and coherent splash/spinner path as `11050`; clean bounded exit | Coherent splash/loading only; content handoff open | Share the SAT handoff investigation |
 | `11052` | SAT Prep Mathematics | Same two-resource loader and coherent splash/spinner path as `11050`; clean bounded exit | Coherent splash/loading only; content handoff open | Share the SAT handoff investigation |
 | `12345` | Vortex | 700 frames and continuously changing hashes; recognizable Vortex title art, but no content scene | Animated splash/title only | Decode the VBO/vertex indirection around ordinals 175/125 |
-| `14004` | Ms. PAC-MAN | Focused 2026-08-27 probe: 120 stable frames after all 26 resource callbacks plus the diagnostic audio callback; all 12 draws consistently select the untagged 512×256 launch image after the texture-association fix | Clean loading screen only; guest handoff open | Reverse the post-resource loading transition and confirm menu/maze input |
+| `14004` | Ms. PAC-MAN | Default remains clean loading-only; a focused 2026-08-27 title-scoped probe completes the four observed async stages, reaches name entry/main menu/Play Game/tutorial, then reaches a controllable Stage 1 maze and advances the score 0→160 with raw clickwheel quadrant input | Diagnostic gameplay path; default resource/audio contract open | Match the normal callback contract, then verify collisions/lives, audio, persistence, and long-run play |
 | `1500C` | The Sims Bowling | Focused 2026-08-27 release checkpoint: 700 guest frames, 39 hashes/changes, up to two draws, two zero-draw rows, and no fatal signatures; the default path decodes `GL_TEXTURE_RECTANGLE`/`GL_PALETTE8_RGBA8_OES` and shows a small legible `The` follow-up element, but menu/gameplay is not reached | Title + partial follow-up | Decode the `gameLib.rlb`/scene handoff, then exercise bowling controls |
 | `1500E` | The Sims Pool | Focused 2026-08-27 release checkpoint: 700 guest frames, 31 hashes/changes, up to two draws, one zero-draw row, and no fatal signatures; the default path shows a small colored `The` follow-up element through the ordinary `297x75` atlas, but menu/gameplay is not reached | Title + partial follow-up | Decode the `gameLib.rlb`/scene handoff, then exercise aim/power/spin |
 | `1B200` | LOST | 700 frames, zero GL draws, blank framebuffer; rserver loads but no shader output | Shader/render-server blocked | Parse or emulate the `rserver.bin` programmable path |
@@ -89,8 +89,10 @@ manifest. They measure visual activity, not correctness.
 | `AAAAA` | PAC-MAN | Fresh 700-frame probe, 7 visual hashes/13 changes, up to 57 draws; recognizable Namco art and a partial board-like scene, but no confirmed maze/menu transition | Partial board-like scene; gameplay not reached | Decode the shared PAC-family post-load path and verify maze/D-pad movement |
 
 No row is marked fully playable. Tetris now has a guest-driven line-clear and
-headed audio receipt, while Bejeweled has content-level match evidence; both
-remain incomplete under the project goal.
+headed audio receipt, Bejeweled has content-level match evidence, and Ms.
+PAC-MAN has a title-scoped maze/input result; all remain incomplete under the
+project goal. The Ms. PAC-MAN details are in the
+[diagnostic gameplay probe](20260827_mspacman_gameplay_probe.md).
 
 ## Scoped Hold'em progress (excluded from the default matrix)
 

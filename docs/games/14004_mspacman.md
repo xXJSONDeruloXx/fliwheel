@@ -1,6 +1,6 @@
 # Ms. Pac-Man (Bundle 14004)
 
-**Status:** ⚠️ CLEAN LOADING SCREEN ONLY | **Evidence:** title-scoped live-GL probe holds a stable Namco loading screen after all observed resource/audio callbacks; gameplay is not reached | **Engine:** Tetris Runtime
+**Status:** 🟡 DIAGNOSTIC PATH REACHES CONTROLLABLE STAGE 1 | **Evidence:** four title-scoped async-completion probes reach name entry, the main menu, Play Game/tutorial, and a controllable Stage 1 maze; the default contract remains loading-only | **Engine:** Tetris Runtime
 
 ## Quick Start
 ```bash
@@ -21,8 +21,11 @@
 - Classic arcade game with simple but recognizable graphics
 - The live renderer now preserves the untagged 512×256 launch upload for the
   unbound `0x19` material instead of selecting later font/UI atlases by size
-- The guest still remains on the loading screen after the diagnostic completion
-  probes; these overrides are not part of the default contract
+- A title-scoped diagnostic run now reaches the full maze/HUD and advances the
+  score while driving the clickwheel quadrant packet; this is not yet a full
+  gameplay, audio, persistence, or default-contract certification
+- The four async-completion overrides used for that run remain opt-in and are
+  intentionally not part of the default contract
 
 ## Environment
 ```bash
@@ -31,3 +34,6 @@ FLIWHEEL_GL_GATE_B=1
 FLIWHEEL_GL_LIVE_CONTINUOUS=1
 FLIWHEEL_GL_PRESENT_VFLIP=1
 ```
+
+See the [2026-08-27 gameplay probe](../game_tests/20260827_mspacman_gameplay_probe.md)
+for the exact opt-in command and captured evidence.

@@ -12,7 +12,7 @@ older pages retain historical investigation notes and are not completion claims.
 | Tetris | 66666 | 🟡 Core controls + centered board; gameplay parity open | [→](66666_tetris.md) |
 | Cubis 2 | 99999 | ❌ Asset/renderer blocked | [→](99999_cubis2.md) |
 | Texas Hold'em | 33333 | 🟡 Default loading-only; scoped experiment reaches partial first scene | [→](33333_holdem.md) |
-| Ms. PAC-MAN | 14004 | 🟡 Clean loading screen; guest handoff open | [→](14004_mspacman.md) |
+| Ms. PAC-MAN | 14004 | 🟡 Diagnostic path reaches controllable Stage 1; default handoff open | [→](14004_mspacman.md) |
 | PAC-MAN | AAAAA | 🟡 Partial board-like scene; gameplay open | [→](AAAAA_pacman.md) |
 | Mahjong | 77777 | 🟡 Texture/UV partial | [→](77777_mahjong.md) |
 | Mini Golf | 88888 | 🟡 Loading/progress only | [→](88888_minigolf.md) |
@@ -31,11 +31,12 @@ older pages retain historical investigation notes and are not completion claims.
 | musika | 1C300 | 🟡 Splash only | [matrix](../game_tests/20260826_interactive_matrix.md#current-matrix) |
 
 **Summary:** All 20 decrypted bundles launch far enough for a controlled
-interactive probe, but none is yet certified fully playable. Tetris is the
-furthest along; Hold'em's default path runs without a fatal but remains at
-loading, while a title-scoped experiment now reaches an incomplete first game
-scene. The remaining titles need content-specific input and renderer/asset
-fixes. The interactive matrix is the current default-contract status source.
+interactive probe, but none is yet certified fully playable. Tetris remains the
+strongest default-contract result; Ms. PAC-MAN now has the strongest
+title-scoped diagnostic result, reaching a controllable Stage 1 maze after its
+resource callbacks are explicitly completed. The remaining titles need
+content-specific input and renderer/asset fixes. The interactive matrix is the
+current default-contract status source.
 
 Latest interactive reports: `/tmp/fliwheel_interactive_full_{a,b,c,d}/interactive_matrix.md`.
 

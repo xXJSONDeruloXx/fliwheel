@@ -6359,10 +6359,12 @@ impl Eapp {
 
         if ordinal == 1 {
             // No-path owner/read path used by Tetris initiator C (0x1801fd74)
-            // after AsyncFileIO:2 has advanced the audio-stream entry. It has
-            // the same owner-completion shape as ordinal 0: the import receives
-            // the transient owner in r0, and firmware later calls 0x1801fbfc,
-            // which forwards [owner+0x20/0x24] to the linked request callback.
+            // after AsyncFileIO:2 has advanced the audio-stream entry. Ms.
+            // PAC-MAN uses the same transient-owner shape, but its firmware
+            // completion trampoline is the guest's 0x180168f8 rather than the
+            // Tetris-specific 0x1801fbfc helper. Keep both completions
+            // title-scoped and opt-in until their post-callback contracts are
+            // fully matched.
             let complete = fliwheel_var("EAPP_ASYNC3_COMPLETE")
                 .map(|v| v == "1" || v == "true")
                 .unwrap_or(false);
@@ -6391,6 +6393,11 @@ impl Eapp {
                 .bundle_dir
                 .to_str()
                 .map_or(false, |p| p.contains("50514"));
+            let is_mspacman = self
+                .metadata
+                .bundle_dir
+                .to_str()
+                .map_or(false, |p| p.contains("14004"));
             let owner = args[0];
             let req = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
             let req_cb = self.read_guest_u32(req.wrapping_add(0x0c)).unwrap_or(0);
@@ -6415,6 +6422,10 @@ impl Eapp {
                 && fliwheel_var("EAPP_ROYAL_ASYNC1_COMPLETE")
                     .map(|v| v == "1" || v == "true")
                     .unwrap_or(false);
+            let mspacman_complete = is_mspacman
+                && fliwheel_var("EAPP_MSPACMAN_ASYNC1_COMPLETE")
+                    .map(|v| v == "1" || v == "true")
+                    .unwrap_or(false);
             info!(
                 target: "EAPP_IMPORT",
                 "AsyncFileIO:1 owner={:#010x} req={:#010x} req_cb={:#010x} req_ctx={:#010x} owner_cb={:#010x} owner_ctx={:#010x} internal_cb={:#010x} internal_ctx={:#010x} complete={}",
@@ -6430,7 +6441,8 @@ impl Eapp {
                     || texas_complete
                     || sudoku_complete
                     || sims_complete
-                    || royal_complete) as u8
+                    || royal_complete
+                    || mspacman_complete) as u8
             );
             if is_sims {
                 info!(
@@ -6481,6 +6493,43 @@ impl Eapp {
                         self.async_pending_requests.len()
                     );
                 }
+            }
+            if mspacman_complete && owner != 0 && req != 0 {
+                // Ms. PAC-MAN's 0x180169fc path allocates a transient 0x3c
+                // owner, links it to the stream request, stores
+                // 0x180168f8 as the request callback, and then calls
+                // AsyncFileIO:1. The guest trampoline reads status/byte-count
+                // from [owner+0x20/0x24], transitions [owner+4], and forwards
+                // the completion to the stream callback at [owner+0x0c].
+                // Model only that observed ABI; do not complete ordinal 1 for
+                // unrelated titles by default.
+                let status = fliwheel_var("EAPP_MSPACMAN_ASYNC1_STATUS")
+                    .ok()
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .unwrap_or(0);
+                let byte_count = fliwheel_var("EAPP_MSPACMAN_ASYNC1_BYTES")
+                    .ok()
+                    .and_then(|v| v.parse::<u32>().ok())
+                    .unwrap_or(0);
+                self.write_guest_u32(owner.wrapping_add(0x20), status);
+                self.write_guest_u32(owner.wrapping_add(0x24), byte_count);
+                self.async_callback_queued_count = self.async_callback_queued_count.wrapping_add(1);
+                self.pending_guest_calls.push_back(PendingGuestCall {
+                    pc: 0x1801_68f8,
+                    arg0: owner,
+                    arg1: 0,
+                    arg2: 0,
+                    arg3: 0,
+                });
+                info!(
+                    target: "EAPP_IMPORT",
+                    "AsyncFileIO:1 MsPAC-MAN completion owner={:#010x} req={:#010x} cb_pc={:#010x} status={} bytes={}",
+                    owner,
+                    req,
+                    0x1801_68f8u32,
+                    status,
+                    byte_count
+                );
             }
             if sudoku_complete && owner != 0 && owner_internal_cb != 0 {
                 let status = std::env::var("EAPP_SUDOKU_ASYNC1_STATUS")
@@ -6644,6 +6693,11 @@ impl Eapp {
                 .bundle_dir
                 .to_str()
                 .map_or(false, |p| p.contains("50514"));
+            let is_mspacman = self
+                .metadata
+                .bundle_dir
+                .to_str()
+                .map_or(false, |p| p.contains("14004"));
             let owner = args[0];
             let callback_pc = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
             let callback_ctx = self.read_guest_u32(owner.wrapping_add(0x38)).unwrap_or(0);
@@ -6663,6 +6717,10 @@ impl Eapp {
                 && fliwheel_var("EAPP_ROYAL_ASYNC2_COMPLETE")
                     .map(|v| v == "1" || v == "true")
                     .unwrap_or(false);
+            let mspacman_complete = is_mspacman
+                && fliwheel_var("EAPP_MSPACMAN_ASYNC2_COMPLETE")
+                    .map(|v| v == "1" || v == "true")
+                    .unwrap_or(false);
             info!(
                 target: "EAPP_IMPORT",
                 "AsyncFileIO:2 owner={:#010x} cb_pc={:#010x} cb_ctx={:#010x} complete={}",
@@ -6673,7 +6731,8 @@ impl Eapp {
                     || texas_complete
                     || sudoku_complete
                     || sims_complete
-                    || royal_complete) as u8
+                    || royal_complete
+                    || mspacman_complete) as u8
             );
             if complete && is_tetris && owner != 0 && callback_pc != 0 {
                 let _ = self.write_guest_bytes(owner.wrapping_add(0x1c), &[0]);
@@ -6699,7 +6758,11 @@ impl Eapp {
                 }
             }
             let title_async2_complete =
-                texas_complete || sudoku_complete || sims_complete || royal_complete;
+                texas_complete
+                    || sudoku_complete
+                    || sims_complete
+                    || royal_complete
+                    || mspacman_complete;
             if title_async2_complete && owner != 0 && callback_pc != 0 {
                 // Hold'em's resource callback at 0x18004a14 is entered as
                 // (owner, entry). The two pointers are the same object for
@@ -6801,6 +6864,8 @@ impl Eapp {
                         "Sims"
                     } else if royal_complete {
                         "Royal"
+                    } else if mspacman_complete {
+                        "MsPAC-MAN"
                     } else {
                         "Texas"
                     },
