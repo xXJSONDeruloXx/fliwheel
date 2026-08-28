@@ -27,7 +27,7 @@ older pages retain historical investigation notes and are not completion claims.
 | SAT Prep Reading | 11050 | 🟡 Coherent splash/spinner; content handoff open | [SAT checkpoint](../game_tests/20260827_sat_loader_and_tetris_audio.md) |
 | SAT Prep Writing | 11051 | 🟡 Coherent splash/spinner; content handoff open | [SAT checkpoint](../game_tests/20260827_sat_loader_and_tetris_audio.md) |
 | SAT Prep Mathematics | 11052 | 🟡 Coherent splash/spinner; content handoff open | [SAT checkpoint](../game_tests/20260827_sat_loader_and_tetris_audio.md) |
-| LOST | 1B200 | ❌ Shader/render-server blocked | [→](1B200_lost.md) |
+| LOST | 1B200 | 🟡 Direct-HLE partial render; async asset path and first scenes reached; mode-7/input/audio parity open | [→](1B200_lost.md) |
 | musika | 1C300 | 🟡 Splash only | [matrix](../game_tests/20260826_interactive_matrix.md#current-matrix) |
 
 **Summary:** All 20 decrypted bundles launch far enough for a controlled

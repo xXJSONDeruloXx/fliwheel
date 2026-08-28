@@ -45,6 +45,11 @@ const RECENT_PC_LIMIT: usize = 64;
 const BOOTSTRAP_RETURN_PC: u32 = 0x1eff_fffc;
 const GUEST_CALLBACK_RETURN_PC: u32 = 0x1eff_fff8;
 const WORK_RAM_BASE: u32 = 0x1000_0000;
+/// Separate guest heap used by the RetailOS-style allocator imports. PR #3's
+/// direct runner keeps this arena above the synthetic app RAM, and LOST's
+/// internal pool allocator relies on that separation during initialization.
+const GAME_HEAP_BASE: u32 = 0x1900_0000;
+const GAME_HEAP_SIZE: usize = 64 * 1024 * 1024;
 const LEGACY_ENV_PREFIX: &str = "CLICKY_";
 const SAVE_DIR: &str = ".fliwheel-saves";
 const LEGACY_SAVE_DIR: &str = ".clicky-saves";
@@ -211,7 +216,10 @@ const STRING_TRACE_PCS: &[u32] = &[
     0x1801_c95c, // post-save object construction entry
     0x1801_c008, // UI update / scene refresh dispatcher
 ];
-const STACK_TOP: u32 = WORK_RAM_BASE + WORK_RAM_SIZE as u32 - 0x1000;
+// Keep the direct-runner comparison stack aligned with PR #3's 8 MiB RAM
+// window. The backing work-RAM remains 64 MiB; only the initial SP is made
+// comparable so escaped stack pointers cannot become an oracle difference.
+const STACK_TOP: u32 = 0x117f_f000;
 const TRAMPOLINE_BASE: u32 = 0x1f00_0000;
 const TRAMPOLINE_STRIDE: u32 = 0x20;
 const SCREEN_WIDTH: usize = 320;
@@ -471,6 +479,7 @@ pub struct Eapp {
     render_state: Arc<Mutex<Vec<u32>>>,
     controls: Option<EappBinds>,
     next_alloc: u32,
+    game_heap_next: u32,
     bootstrap_phase: BootstrapPhase,
     app_object: u32,
     frame_context: u32,
@@ -517,6 +526,11 @@ pub struct Eapp {
     host_start: Instant,
     misc9_time_diag_count: u64,
     misc9_last_pointed_value: Option<u32>,
+    /// Optional deterministic increment for the miscTBD:9 clock. The PR #3
+    /// runner uses 16,667 microseconds per call in its fixed-clock oracle
+    /// runs; keeping this opt-in preserves fliwheel's normal wall-clock mode.
+    misc9_fixed_step: Option<u32>,
+    misc9_fixed_clock: u32,
     async_request_count: u64,
     async_callback_queued_count: u64,
     guest_callback_invocation_count: u64,
@@ -628,6 +642,7 @@ struct EappBus {
     image: Ram,
     image_len: u32,
     work_ram: Ram,
+    game_heap: Ram,
     dma_framebuf: Ram,
     /// Treat the 0x14000000 window as the PP502x uncached SDRAM alias when
     /// explicitly requested. The default synthetic hardware path is retained
@@ -798,12 +813,16 @@ impl Eapp {
         let zeroes = vec![0u8; WORK_RAM_SIZE];
         work_ram.bulk_write(0, &zeroes);
 
+        let mut game_heap = Ram::new(GAME_HEAP_SIZE);
+        game_heap.bulk_write(0, &vec![0u8; GAME_HEAP_SIZE]);
+
         let mut eapp = Eapp {
             cpu,
             bus: EappBus {
                 image: image_ram,
                 image_len: mapped_image_len as u32,
                 work_ram,
+                game_heap,
                 dma_framebuf: Ram::new(320 * 240 * 2), // RGB565 320×240
                 uncached_sdram_alias: fliwheel_var_os("EAPP_UNCACHED_ALIAS").is_some(),
                 hw_control_value: Self::parse_hw_control_value_env(),
@@ -847,6 +866,7 @@ impl Eapp {
             render_state,
             controls: Some(controls),
             next_alloc: WORK_RAM_BASE + 0x1000,
+            game_heap_next: GAME_HEAP_BASE,
             bootstrap_phase: BootstrapPhase::Entry,
             app_object: 0,
             frame_context: 0,
@@ -873,6 +893,8 @@ impl Eapp {
             host_start: Instant::now(),
             misc9_time_diag_count: 0,
             misc9_last_pointed_value: None,
+            misc9_fixed_step: Self::parse_fixed_clock_step_env(),
+            misc9_fixed_clock: 0,
             async_request_count: 0,
             async_callback_queued_count: 0,
             guest_callback_invocation_count: 0,
@@ -898,6 +920,22 @@ impl Eapp {
             usse_program: None,
             usse_vm: UsseVm::default(),
         };
+        if eapp.metadata.title == "1B200" {
+            // The direct runner starts by calling vector 0 with the shared
+            // context. fliwheel normally starts execution at entry_addr before
+            // it can allocate its host-side context, so prepare that one LOST
+            // context up front to avoid executing vector 0 once with null args
+            // and then calling it a second time after bootstrap returns.
+            // PR #3 first reserves a 0x90-byte Metadata playlist before making
+            // this context. Preserve that heap layout so guest allocations and
+            // the rserver destination are comparable byte-for-byte.
+            let _playlist = eapp.alloc_game_heap(0x90);
+            eapp.app_object = eapp.alloc_game_heap(0x400);
+            eapp.frame_context = eapp.app_object.wrapping_add(0x100);
+            let _ = eapp.write_guest_bytes(eapp.app_object, &[5]);
+            eapp.cpu.reg_set(eapp.cpu.mode(), 0, eapp.app_object);
+            eapp.cpu.reg_set(eapp.cpu.mode(), 1, eapp.frame_context);
+        }
         if eapp.metadata.title == "1B200"
             && fliwheel_var_os("EAPP_LOST_PATCH_RENDER_CALL").is_some()
         {
@@ -2249,6 +2287,25 @@ impl Eapp {
             .filter(|frame| *frame > 0)
     }
 
+    /// Parse `FLIWHEEL_EAPP_FIXED_CLOCK`. A boolean value selects the
+    /// 16,667-microsecond increment used by the PR #3 direct-runner oracle;
+    /// a positive decimal or hexadecimal value selects another increment.
+    /// The option is deliberately opt-in so ordinary runs retain wall time.
+    fn parse_fixed_clock_step_env() -> Option<u32> {
+        let raw = fliwheel_var_os("EAPP_FIXED_CLOCK")?;
+        let value = raw.to_string_lossy();
+        if value == "1" || value.eq_ignore_ascii_case("true") {
+            return Some(16_667);
+        }
+        let trimmed = value.trim();
+        let number = trimmed
+            .strip_prefix("0x")
+            .or_else(|| trimmed.strip_prefix("0X"))
+            .and_then(|hex| u32::from_str_radix(hex, 16).ok())
+            .or_else(|| trimmed.parse::<u32>().ok());
+        number.filter(|step| *step > 0)
+    }
+
     /// Parse a comma-separated list of guest PCs for the bounded diagnostic
     /// trace. This is intentionally opt-in so normal execution has no extra
     /// per-instruction parsing or logging overhead.
@@ -2420,7 +2477,11 @@ impl Eapp {
             }
             159 => {
                 self.live_handle_bind_material(args);
-                0
+                // LOST checks the pipeline-select result before entering its
+                // ordinary vertex-array submission path. PR #3's direct HLE
+                // runner returns success here; leaving the generic zero
+                // result makes the title stop after its clear/present pair.
+                u32::from(self.metadata.title == "1B200")
             }
             37 => {
                 self.live_handle_draw(args);
@@ -2543,7 +2604,11 @@ impl Eapp {
                     let _ = self.write_guest_u32(args[1], 1); // GL_TRUE = link success
                 }
                 if args[2] != 0 {
-                    let _ = self.write_guest_u32(args[2], 4); // size = 4 bytes
+                    // PR #3's direct LOST runner measures this ordinal as the
+                    // render-server start contract: its two output words are
+                    // 1 and 2, not the generic program-query size of 4.
+                    let value = if self.metadata.title == "1B200" { 2 } else { 4 };
+                    let _ = self.write_guest_u32(args[2], value);
                 }
                 info!(target: "EAPP_GL", "ordinal_152: program_query r0={} buf={:#010x} size_ptr={:#010x}", args[0], args[1], args[2]);
                 1u32 // return program handle 1
@@ -2568,7 +2633,10 @@ impl Eapp {
                     }
                 }
                 info!(target: "EAPP_GL", "ordinal_153: viewport x={} y={} w={} h={}", x, y, w, h);
-                0
+                // LOST branches on a successful render-server lifecycle
+                // result. The reference runner returns 1 for this title;
+                // retain the generic viewport result for every other bundle.
+                u32::from(self.metadata.title == "1B200")
             }
             // Ordinal 19 is glCompressedTexImage2D for the clickwheel titles
             // that use paletted artwork. Sims uses the rectangle-texture
@@ -5661,9 +5729,17 @@ impl Eapp {
                 // Runtime allocator. Guest wrappers pass the requested size in
                 // r0; other arg registers are caller scratch and may contain
                 // unrelated values. Using max(r0, r1) made iQuiz's malloc(0xa0)
-                // fail when r1 held a stale large pointer/value.
+                // fail when r1 held a stale large pointer/value. Keep these
+                // LOST follows the direct runner's separate RetailOS-style
+                // heap. Keep the established low work-RAM allocator for the
+                // other titles, whose existing HLE contracts include their
+                // current object addresses.
                 let len = args[0].max(0x10);
-                self.alloc_zeroed(len)
+                if self.metadata.title == "1B200" {
+                    self.alloc_game_heap(len)
+                } else {
+                    self.alloc_zeroed(len)
+                }
             }
             9 => {
                 // Candidate monotonic tick API. Tetris calls this with r0
@@ -6506,6 +6582,11 @@ impl Eapp {
                 .bundle_dir
                 .to_str()
                 .map_or(false, |p| p.contains("14004"));
+            let is_lost = self
+                .metadata
+                .bundle_dir
+                .to_str()
+                .map_or(false, |p| p.contains("1B200"));
             let owner = args[0];
             let req = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
             let req_cb = self.read_guest_u32(req.wrapping_add(0x0c)).unwrap_or(0);
@@ -6550,7 +6631,8 @@ impl Eapp {
                     || sudoku_complete
                     || sims_complete
                     || royal_complete
-                    || mspacman_complete) as u8
+                    || mspacman_complete
+                    || is_lost) as u8
             );
             if is_sims {
                 info!(
@@ -6697,6 +6779,29 @@ impl Eapp {
                     byte_count
                 );
             }
+            if is_lost && owner != 0 && owner_internal_cb != 0 {
+                // PR #3's direct HLE treats AsyncFileIO:1 as the generic
+                // AsyncOp(request=r0): it publishes status zero and drains
+                // request+0x34 with (request, request+0x38). LOST's owner is
+                // that request object, so preserve the same ABI here rather
+                // than inventing a title-specific trampoline.
+                self.write_guest_u32(owner.wrapping_add(0x20), 0);
+                self.write_guest_u32(owner.wrapping_add(0x24), 0);
+                self.async_callback_queued_count = self.async_callback_queued_count.wrapping_add(1);
+                self.pending_guest_calls.push_back(PendingGuestCall {
+                    pc: owner_internal_cb,
+                    arg0: owner,
+                    arg1: owner_internal_ctx,
+                    arg2: 0,
+                    arg3: 0,
+                });
+                info!(
+                    target: "EAPP_IMPORT",
+                    "AsyncFileIO:1 LOST completion owner={:#010x} cb_pc={:#010x} status=0 bytes=0",
+                    owner,
+                    owner_internal_cb
+                );
+            }
             if royal_complete && owner != 0 && owner_internal_cb != 0 {
                 let status = fliwheel_var("EAPP_ROYAL_ASYNC1_STATUS")
                     .ok()
@@ -6806,6 +6911,11 @@ impl Eapp {
                 .bundle_dir
                 .to_str()
                 .map_or(false, |p| p.contains("14004"));
+            let is_lost = self
+                .metadata
+                .bundle_dir
+                .to_str()
+                .map_or(false, |p| p.contains("1B200"));
             let owner = args[0];
             let callback_pc = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
             let callback_ctx = self.read_guest_u32(owner.wrapping_add(0x38)).unwrap_or(0);
@@ -6840,8 +6950,85 @@ impl Eapp {
                     || sudoku_complete
                     || sims_complete
                     || royal_complete
-                    || mspacman_complete) as u8
+                    || mspacman_complete
+                    || is_lost) as u8
             );
+            if is_lost && owner != 0 && callback_pc != 0 {
+                // PR #3 maps AsyncFileIO:2 to AsyncRead(request=r0). The
+                // request points at the shared file object and the staged
+                // payload created by LOST's preceding #0 open is keyed by
+                // that object. Reproduce the direct runner's copy, result,
+                // and generic (request, context) completion ABI here.
+                let req = owner;
+                let object = self.read_guest_u32(req.wrapping_add(0x08)).unwrap_or(0);
+                let destination = self.read_guest_u32(req.wrapping_add(0x14)).unwrap_or(0);
+                let requested = self.read_guest_u32(req.wrapping_add(0x18)).unwrap_or(0) as usize;
+                let stream = self.read_guest_u32(req.wrapping_add(0x2c)).unwrap_or(0);
+                let staged_range = self.staged_files.get(&object).and_then(|staged| {
+                    Some((
+                        staged.payload_addr,
+                        staged.len as usize,
+                        staged.offset,
+                        staged.host_path.clone(),
+                    ))
+                });
+                let mut delivered = 0usize;
+                if destination != 0 && requested != 0 {
+                    if let Some((payload_addr, payload_len, file_offset, host_path)) = staged_range {
+                        let source_offset = file_offset.min(payload_len);
+                        let available = payload_len.saturating_sub(source_offset);
+                        let count = requested.min(available);
+                        if let Some(payload) = self.read_guest_bytes(
+                            payload_addr.wrapping_add(source_offset as u32),
+                            count,
+                        ) {
+                            if self.write_guest_bytes(destination, &payload) {
+                                delivered = count;
+                                if let Some(staged) = self.staged_files.get_mut(&object) {
+                                    staged.offset = staged.offset.saturating_add(count);
+                                }
+                                info!(
+                                    target: "EAPP_IMPORT",
+                                    "AsyncFileIO:2 LOST staged read req={:#010x} object={:#010x} stream={:#010x} source={:#010x}+{} dest={:#010x} requested={} delivered={} path={}",
+                                    req,
+                                    object,
+                                    stream,
+                                    payload_addr,
+                                    source_offset,
+                                    destination,
+                                    requested,
+                                    count,
+                                    host_path.display()
+                                );
+                            }
+                        }
+                    }
+                }
+                self.write_guest_u32(req.wrapping_add(0x24), delivered as u32);
+                self.write_guest_u32(req.wrapping_add(0x28), delivered as u32);
+                if object != 0 {
+                    self.write_guest_u32(object.wrapping_add(0x08), delivered as u32);
+                }
+                let ok = requested == 0 || delivered == requested;
+                self.write_guest_u32(req.wrapping_add(0x20), if ok { 0 } else { u32::MAX });
+                self.async_callback_queued_count = self.async_callback_queued_count.wrapping_add(1);
+                self.pending_guest_calls.push_back(PendingGuestCall {
+                    pc: callback_pc,
+                    arg0: req,
+                    arg1: callback_ctx,
+                    arg2: 0,
+                    arg3: 0,
+                });
+                info!(
+                    target: "EAPP_IMPORT",
+                    "AsyncFileIO:2 LOST completion req={:#010x} cb_pc={:#010x} status={} bytes={}",
+                    req,
+                    callback_pc,
+                    if ok { 0 } else { u32::MAX },
+                    delivered
+                );
+                return 1;
+            }
             if complete && is_tetris && owner != 0 && callback_pc != 0 {
                 let _ = self.write_guest_bytes(owner.wrapping_add(0x1c), &[0]);
                 self.async_callback_queued_count = self.async_callback_queued_count.wrapping_add(1);
@@ -7027,8 +7214,16 @@ impl Eapp {
                 // layout. Keep whole-file completion title-scoped: Tetris,
                 // Texas Hold'em, Royal Solitaire, Sudoku, and The Sims remain
                 // opt-in, while Ms. PAC-MAN's measured contract is enabled by
-                // default.
+                // default. LOST follows the PR #3 direct-runner contract too:
+                // its options.sav probe completes and invokes the owner
+                // callback before the render loop can advance to the next
+                // asynchronous asset.
                 let owner = args[3];
+                let is_lost = self
+                    .metadata
+                    .bundle_dir
+                    .to_str()
+                    .map_or(false, |p| p.contains("1B200"));
                 let is_tetris = self
                     .metadata
                     .bundle_dir
@@ -7083,18 +7278,32 @@ impl Eapp {
                     && fliwheel_var("EAPP_MSPACMAN_ASYNC0_COMPLETE")
                         .map(|v| v == "1" || v == "true")
                         .unwrap_or(true);
-                let complete =
-                    tetris_complete
-                        || texas_complete
-                        || sudoku_complete
-                        || sims_complete
-                        || royal_complete
-                        || mspacman_complete;
+                let complete = is_lost
+                    || tetris_complete
+                    || texas_complete
+                    || sudoku_complete
+                    || sims_complete
+                    || royal_complete
+                    || mspacman_complete;
                 let callback_pc = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
                 if let Some(host_path) = self.resolve_or_create_host_path(&path) {
                     self.note_audio_asset_path(&host_path);
+                    let lost_handle = if is_lost {
+                        let handle = self.next_async_file_handle;
+                        self.next_async_file_handle =
+                            self.next_async_file_handle.wrapping_add(1).max(1);
+                        self.async_open_files.insert(handle, host_path.clone());
+                        Some(handle)
+                    } else {
+                        None
+                    };
                     let bytes = fs::read(&host_path).unwrap_or_else(|e| {
-                        warn!(target: "EAPP_IMPORT", "AsyncFileIO:0 read error for {}: {}", host_path.display(), e);
+                        warn!(
+                            target: "EAPP_IMPORT",
+                            "AsyncFileIO:0 read error for {}: {}",
+                            host_path.display(),
+                            e
+                        );
                         Vec::new()
                     });
                     let n = bytes.len() as u32;
@@ -7131,7 +7340,15 @@ impl Eapp {
                         let payload_written = existing_stage.is_some()
                             || (payload_addr != 0 && self.write_guest_bytes(payload_addr, &bytes));
                         if payload_written {
-                            self.write_guest_u32(owner.wrapping_add(0x2c), payload_addr);
+                            // LOST uses the same generic AsyncOpen contract as
+                            // PR #3: +0x2c is the small stream handle. Keep the
+                            // staged payload separately for its later #2 read;
+                            // the guest completion callback copies +0x2c into
+                            // the shared file object's descriptor slot.
+                            self.write_guest_u32(
+                                owner.wrapping_add(0x2c),
+                                lost_handle.unwrap_or(payload_addr),
+                            );
                             let req = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
                             if req != 0 {
                                 self.staged_file_generation =
@@ -7159,6 +7376,29 @@ impl Eapp {
                                 "AsyncFileIO:0 could not stage {} bytes for {}",
                                 n,
                                 host_path.display()
+                            );
+                        }
+                        if is_lost {
+                            // PR #3's AsyncOpen publishes the operation result
+                            // in the file object. For a bufferless open this is
+                            // the file size, while the stream handle remains in
+                            // the request's +0x2c field above.
+                            let object = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
+                            let buf = self.read_guest_u32(owner.wrapping_add(0x14)).unwrap_or(0);
+                            let len = self.read_guest_u32(owner.wrapping_add(0x18)).unwrap_or(0);
+                            if object != 0 {
+                                self.write_guest_u32(object.wrapping_add(0x08), n);
+                            }
+                            if buf == 0 || len == 0 {
+                                self.write_guest_u32(owner.wrapping_add(0x24), 0);
+                            }
+                            info!(
+                                target: "EAPP_IMPORT",
+                                "AsyncFileIO:0 LOST generic open owner={:#010x} handle={:#010x} result_bytes={} object={:#010x}",
+                                owner,
+                                lost_handle.unwrap_or(0),
+                                n,
+                                object
                             );
                         }
                         if let Some(result_spec) = fliwheel_var_os("EAPP_ASYNC0_RESULT") {
@@ -7286,8 +7526,8 @@ impl Eapp {
                         self.pending_guest_calls.push_back(PendingGuestCall {
                             pc: callback_pc,
                             arg0: owner,
-                            arg1: status,
-                            arg2: n,
+                            arg1: if is_lost { 0 } else { status },
+                            arg2: if is_lost { 0 } else { n },
                             arg3: 0,
                         });
                         if self.startup_progress.enabled {
@@ -7479,6 +7719,19 @@ impl Eapp {
                                         || popcap_resource_read
                                         || mspacman_resource_read
                                         || pacman_texture_read;
+                                // LOST uses the same request completion callback as the
+                                // reference runner's direct HLE path, but its callback consumes
+                                // the transfer count through the owner object rather than through
+                                // the generic resource cases above.  The subsequent render-server
+                                // setup passes that value as OpenGLES:164's length argument.  If
+                                // it is left at the request initializer's 0xffffffff sentinel,
+                                // the game reaches the parser but treats the server image as
+                                // invalid and never enters its ordinary draw path.
+                                let lost_rserver_read = self.metadata.title == "1B200"
+                                    && host_path
+                                        .file_name()
+                                        .and_then(|name| name.to_str())
+                                        .map_or(false, |name| name == "rserver.bin");
                                 if complete {
                                     let status = if texas_complete {
                                         std::env::var("EAPP_TEXAS_ASYNC3_STATUS")
@@ -7495,6 +7748,25 @@ impl Eapp {
                                     };
                                     self.write_guest_u32(req.wrapping_add(0x20), status);
                                     self.write_guest_u32(req.wrapping_add(0x24), n as u32);
+                                }
+                                if lost_rserver_read {
+                                    self.write_guest_u32(req.wrapping_add(0x20), 0);
+                                    self.write_guest_u32(req.wrapping_add(0x24), n as u32);
+                                    let owner = self.read_guest_u32(req.wrapping_add(0x08)).unwrap_or(0);
+                                    if owner != 0 {
+                                        // LOST's 0x1803c814 completion callback returns the
+                                        // owner pointer in r0 and the byte count in r2, while
+                                        // the owner itself is read by the game's loader as the
+                                        // completed operation result at +8.
+                                        self.write_guest_u32(owner.wrapping_add(0x08), n as u32);
+                                    }
+                                    info!(
+                                        target: "EAPP_IMPORT",
+                                        "AsyncFileIO:3 LOST rserver result req={:#010x} owner={:#010x} status=0 bytes={}",
+                                        req,
+                                        owner,
+                                        n
+                                    );
                                 }
                                 info!(
                                     target: "EAPP_IMPORT",
@@ -7782,7 +8054,12 @@ impl Eapp {
     fn handle_misc9_time_api(&mut self, args: [u32; 4]) -> u32 {
         self.misc9_time_diag_count = self.misc9_time_diag_count.wrapping_add(1);
         let before = self.read_guest_u32(args[0]).unwrap_or(0xffff_ffff);
-        let host_us = self.host_start.elapsed().as_micros() as u64;
+        let host_us = if let Some(step) = self.misc9_fixed_step {
+            self.misc9_fixed_clock = self.misc9_fixed_clock.wrapping_add(step);
+            self.misc9_fixed_clock as u64
+        } else {
+            self.host_start.elapsed().as_micros() as u64
+        };
         let guest_tick = host_us as u32;
         let wrote = args[0] != 0 && self.write_guest_u32(args[0], guest_tick);
         let after = self.read_guest_u32(args[0]).unwrap_or(0xffff_ffff);
@@ -7791,7 +8068,15 @@ impl Eapp {
             .map(|prev| prev != after)
             .unwrap_or(false);
         self.misc9_last_pointed_value = Some(after);
-        let ret = args[0];
+        // The direct PR #3 runner returns the generated tick in R0 as well as
+        // storing it through the pointer. Keep the historical pointer return
+        // in wall-clock mode for compatibility, but match the oracle exactly
+        // when its fixed-clock comparison mode is enabled.
+        let ret = if self.misc9_fixed_step.is_some() {
+            guest_tick
+        } else {
+            args[0]
+        };
         let log_limit = fliwheel_var_os("EAPP_TIME_DIAG_LIMIT")
             .and_then(|v| v.to_string_lossy().parse::<u64>().ok())
             .unwrap_or(80);
@@ -8173,8 +8458,22 @@ impl Eapp {
                 let entry_r2 = self.cpu.reg_get(self.cpu.mode(), 2);
                 let entry_r3 = self.cpu.reg_get(self.cpu.mode(), 3);
                 let entry_r1_preview = self.preview_words(entry_r1, 12);
-                self.app_object = self.alloc_zeroed(0x2000);
-                self.frame_context = self.alloc_zeroed(0x80);
+                let is_lost = self.metadata.title == "1B200";
+                let context_prepared = self.app_object != 0;
+                if context_prepared {
+                    // LOST's shared context was prepared before the initial
+                    // vector call so it could receive non-null arguments.
+                } else if is_lost {
+                    // PR #3's direct runner allocates its shared context from the
+                    // RetailOS heap and passes manager+0x100 as the second argument.
+                    // LOST only needs the first 0x400-byte context window here; using
+                    // the same object for both arguments also preserves that ABI.
+                    self.app_object = self.alloc_game_heap(0x400);
+                    self.frame_context = self.app_object.wrapping_add(0x100);
+                } else {
+                    self.app_object = self.alloc_zeroed(0x2000);
+                    self.frame_context = self.alloc_zeroed(0x80);
+                }
                 info!(
                     target: "EAPP",
                     "bootstrap entry returned; entry_ret=[{:#010x},{:#010x},{:#010x},{:#010x}] entry_r1_words=[{}] app_object={:#010x} frame_context={:#010x} aux={:#010x}",
@@ -8187,6 +8486,24 @@ impl Eapp {
                     self.frame_context,
                     self.header.aux_addr
                 );
+                if is_lost && !context_prepared && self.header.entry_addr != 0 {
+                    // The reference lifecycle calls vector 0 once before the
+                    // vector at aux_addr becomes the repeating frame callback.
+                    // The terminate vector at header.init_addr is deliberately not
+                    // called here; it is vector 1 in this bundle.
+                    let _ = self.write_guest_bytes(self.app_object, &[5]);
+                    self.cpu.reg_set(self.cpu.mode(), 0, self.app_object);
+                    self.cpu
+                        .reg_set(self.cpu.mode(), 1, self.frame_context);
+                    self.cpu.reg_set(self.cpu.mode(), 2, 0);
+                    self.cpu.reg_set(self.cpu.mode(), 3, 0);
+                    self.bootstrap_phase = BootstrapPhase::Init;
+                    self.cpu
+                        .reg_set(self.cpu.mode(), reg::PC, self.header.entry_addr);
+                    self.cpu
+                        .reg_set(self.cpu.mode(), reg::LR, BOOTSTRAP_RETURN_PC);
+                    return;
+                }
                 let run_init_vectors = fliwheel_var_os("EAPP_INIT_VECTORS").is_some();
                 if self.header.init_addr != 0 && run_init_vectors {
                     // RetailOS supplies valid context pointers for each lifecycle vector.  The
@@ -8268,8 +8585,32 @@ impl Eapp {
     }
 
     fn queue_next_frame(&mut self) {
+        let frame_context = if self.metadata.title == "1B200" {
+            // PR #3 measures RetailOS passing one manager object in r0 and
+            // its frame context at manager+0x100 in r1 for LOST. Keep the
+            // established independent context used by the other titles.
+            self.app_object.wrapping_add(0x100)
+        } else {
+            self.frame_context
+        };
+        // LOST's frame vector uses the first argument's +0 byte as a two-state reason
+        // handshake. The reference runner's measured path presents reason 0 for the
+        // one-time initialization call, then refreshes it to 1 before every normal
+        // frame; leaving our zeroed context untouched strands the title in its
+        // present-only path and it never reaches its ordinary GL draws.
+        if self.metadata.title == "1B200" {
+            // PR #3 calls vector 4 once with its seeded context before the
+            // scripted frame loop. The first real frame then uses reason 0,
+            // followed by reason 1 for the steady-state path.
+            let reason = match self.frame_counter {
+                0 => 5,
+                1 => 0,
+                _ => 1,
+            };
+            let _ = self.write_guest_bytes(self.app_object, &[reason]);
+        }
         self.cpu.reg_set(self.cpu.mode(), 0, self.app_object);
-        self.cpu.reg_set(self.cpu.mode(), 1, self.frame_context);
+        self.cpu.reg_set(self.cpu.mode(), 1, frame_context);
         self.cpu
             .reg_set(self.cpu.mode(), reg::LR, BOOTSTRAP_RETURN_PC);
         self.cpu
@@ -8333,6 +8674,23 @@ impl Eapp {
         } else {
             0
         }
+    }
+
+    /// Allocate a zeroed RetailOS-style heap block. The reference runner
+    /// reserves an eight-byte size header immediately before the pointer it
+    /// returns; LOST's game allocator uses the returned backing block to
+    /// create its own sub-arenas and expects the high heap address space.
+    fn alloc_game_heap(&mut self, want: u32) -> u32 {
+        let size = (want + 7) & !7;
+        let total = size.saturating_add(8);
+        let block = self.game_heap_next;
+        let end = block.saturating_add(total);
+        if end > GAME_HEAP_BASE + GAME_HEAP_SIZE as u32 {
+            return 0;
+        }
+        self.game_heap_next = end;
+        let _ = self.write_guest_u32(block, total);
+        block + 8
     }
 
     fn read_guest_u8(&mut self, addr: u32) -> Option<u8> {
@@ -10245,6 +10603,13 @@ impl Device for EappBus {
                     next: Box::new(self.work_ram.probe(offset - WORK_RAM_BASE)),
                 }
             }
+            GAME_HEAP_BASE..=u32::MAX if offset - GAME_HEAP_BASE < GAME_HEAP_SIZE as u32 => {
+                Probe::Device {
+                    kind: "Ram",
+                    label: Some("eapp-game-heap"),
+                    next: Box::new(self.game_heap.probe(offset - GAME_HEAP_BASE)),
+                }
+            }
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
                 Probe::Device {
                     kind: "HWStub",
@@ -10278,6 +10643,11 @@ impl Memory for EappBus {
                 // rserver_watch removed (too noisy) — use ordinal-level tracing instead
                 self.trace_watch_read(4, offset, val);
                 Ok(val)
+            }
+            GAME_HEAP_BASE..=u32::MAX if offset - GAME_HEAP_BASE < GAME_HEAP_SIZE as u32 => {
+                let value = self.game_heap.r32(offset - GAME_HEAP_BASE)?;
+                self.trace_watch_read(4, offset, value);
+                Ok(value)
             }
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
                 let rel = offset - HW_STUB_BASE;
@@ -10317,6 +10687,9 @@ impl Memory for EappBus {
             }
             WORK_RAM_BASE..=u32::MAX if offset - WORK_RAM_BASE < WORK_RAM_SIZE as u32 => {
                 self.work_ram.w32(offset - WORK_RAM_BASE, val)
+            }
+            GAME_HEAP_BASE..=u32::MAX if offset - GAME_HEAP_BASE < GAME_HEAP_SIZE as u32 => {
+                self.game_heap.w32(offset - GAME_HEAP_BASE, val)
             }
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
                 self.trace_hw_write(4, offset, val);
@@ -10384,6 +10757,11 @@ impl Memory for EappBus {
                 self.trace_watch_read(1, offset, value as u32);
                 Ok(value)
             }
+            GAME_HEAP_BASE..=u32::MAX if offset - GAME_HEAP_BASE < GAME_HEAP_SIZE as u32 => {
+                let value = self.game_heap.r8(offset - GAME_HEAP_BASE)?;
+                self.trace_watch_read(1, offset, value as u32);
+                Ok(value)
+            }
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
                 let rel = offset - HW_STUB_BASE;
                 if self.uncached_sdram_alias {
@@ -10424,6 +10802,11 @@ impl Memory for EappBus {
                 self.trace_watch_read(2, offset, value as u32);
                 Ok(value)
             }
+            GAME_HEAP_BASE..=u32::MAX if offset - GAME_HEAP_BASE < GAME_HEAP_SIZE as u32 => {
+                let value = self.game_heap.r16(offset - GAME_HEAP_BASE)?;
+                self.trace_watch_read(2, offset, value as u32);
+                Ok(value)
+            }
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
                 let rel = offset - HW_STUB_BASE;
                 if self.uncached_sdram_alias {
@@ -10461,6 +10844,9 @@ impl Memory for EappBus {
             WORK_RAM_BASE..=u32::MAX if offset - WORK_RAM_BASE < WORK_RAM_SIZE as u32 => {
                 self.work_ram.w8(offset - WORK_RAM_BASE, val)
             }
+            GAME_HEAP_BASE..=u32::MAX if offset - GAME_HEAP_BASE < GAME_HEAP_SIZE as u32 => {
+                self.game_heap.w8(offset - GAME_HEAP_BASE, val)
+            }
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
                 self.trace_hw_write(1, offset, val as u32);
                 let rel = offset - HW_STUB_BASE;
@@ -10496,6 +10882,9 @@ impl Memory for EappBus {
             }
             WORK_RAM_BASE..=u32::MAX if offset - WORK_RAM_BASE < WORK_RAM_SIZE as u32 => {
                 self.work_ram.w16(offset - WORK_RAM_BASE, val)
+            }
+            GAME_HEAP_BASE..=u32::MAX if offset - GAME_HEAP_BASE < GAME_HEAP_SIZE as u32 => {
+                self.game_heap.w16(offset - GAME_HEAP_BASE, val)
             }
             HW_STUB_BASE..=u32::MAX if offset - HW_STUB_BASE < HW_STUB_SIZE as u32 => {
                 self.trace_hw_write(2, offset, val as u32);

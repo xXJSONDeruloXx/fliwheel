@@ -1,7 +1,53 @@
 # Lost (1B200) — Comprehensive Analysis & Experiment Log
 
-**Status:** ❌ NO GFX | **Draws:** 0 | **Engine:** Lost Engine (rserver.bin render server)  
-**Last updated:** 2026-06-26
+**Status:** 🟡 PARTIAL RENDER | **Draws:** 6 at first asset frame, 45–46 in later scenes | **Engine:** Lost Engine (rserver.bin render server)
+**Last updated:** 2026-08-28
+
+> The historical experiments below are retained as provenance. The current
+> direct-eApp HLE result is recorded first; it supersedes the old “0 draws”
+> conclusions where the two sections disagree.
+
+## Current direct-HLE status (2026-08-28)
+
+fliwheel now reaches the same direct decrypted-eApp lifecycle used by PR #3 of
+`siggifly/ipod-emulator`; this is not a firmware cold boot. The current run
+uses the game bundle plus HLE implementations for RetailOS-style allocation,
+async files, OpenGLES, timing, audio, and presentation.
+
+Reproducible 20-frame probe:
+
+```bash
+FLIWHEEL_EAPP_STOP_FRAME=20 \
+FLIWHEEL_EAPP_FIXED_CLOCK=1 \
+FLIWHEEL_EXPERIMENTAL_GL_HLE=1 \
+FLIWHEEL_GL_GATE_B=1 \
+FLIWHEEL_GL_LIVE_CONTINUOUS=1 \
+target/release/eapp \
+  '/Volumes/NO NAME/fliwheel-decrypted-corpus-20260826/20 iPod games/Games_RO/1B200' \
+  --headless --cycles 500000000
+```
+
+Observed against the PR #3 direct runner:
+
+- `rserver.bin`, `options.sav`, `/l`, and `/d5` complete through the generic
+  async request/callback ABI rather than stopping at the first save probe.
+- The first OpenGLES draw frame is frame 14. It produces six rasterized
+  quads and the GameLoft splash is visually the same as the PR screenshot
+  captured at its frame 14.
+- A 120-frame run reaches Touchstone and subsequent resource-driven scenes,
+  remains alive, and presents changing frames. The longer run produced no
+  fatal guest fault or emulator crash.
+- Later scenes still issue unsupported mode-7 draws and are not certified
+  pixel-accurate. Input routing, episode progression, save behavior, and
+  complete music/effect playback remain open. This is meaningful progress,
+  not a claim of full playability.
+
+Evidence roots:
+
+- fliwheel 20-frame trace: `/tmp/fliwheel_lost_async2.SU5lQQ/run.log`
+- fliwheel 120-frame capture: `/tmp/fliwheel_lost_capture2.YIQPW6/`
+- fliwheel 362-frame run: `/tmp/fliwheel_lost_362.I326Hd/`
+- PR #3 frame-14 screenshot: `/tmp/ipod-shot-01.png`
 
 ---
 
