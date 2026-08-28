@@ -6301,7 +6301,7 @@ impl Eapp {
                     }
                     _ => Self::input_state_bits(&state),
                 };
-                let wheel_bits = if self.metadata.title == "1B200" {
+                let wheel_bits = if matches!(self.metadata.title.as_str(), "1B200" | "12345") {
                     self.lost_wheel_poll_bits(state.wheel_delta)
                 } else {
                     self.wheel_input_bits(state.wheel_delta)
@@ -6500,10 +6500,10 @@ impl Eapp {
         Self::wheel_frame_bits(&mut self.wheel_position, delta)
     }
 
-    /// LOST's InputEvents consumer uses the RetailOS encoder recovered in the
-    /// PR #3 direct runner. It exposes a 120-step raw ring through an inverted
-    /// 8-bit transform rather than the normalized 96-detent packet used by
-    /// the other title families.
+    /// LOST and Vortex's InputEvents consumers use the RetailOS encoder
+    /// recovered in the PR #3 direct runner. It exposes a 120-step raw ring
+    /// through an inverted 8-bit transform rather than the normalized
+    /// 96-detent packet used by the other title families.
     const LOST_WHEEL_DETENTS: i16 = 120;
 
     fn lost_wheel_byte(raw: u8) -> u8 {

@@ -1,0 +1,6 @@
+# Direct PR #3 oracle: enter the name screen, rotate once, then select.
+500: select
+560: wheel +1
+600: select
+650: shot
+651: quit

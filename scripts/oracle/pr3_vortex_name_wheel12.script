@@ -1,0 +1,5 @@
+# Direct PR #3 oracle: move the Vortex name-entry selection by a visible wheel delta.
+500: select
+560: wheel +12
+600: shot
+601: quit
