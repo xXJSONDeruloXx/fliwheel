@@ -920,6 +920,64 @@ impl LiveGlState {
         });
     }
 
+    /// Apply a `glTexSubImage2D` patch to the most recent decoded upload for
+    /// a texture name. The guest keeps the same GL object alive while
+    /// replacing a complete screen-sized image during Vortex's level
+    /// transition, so appending a second upload would make name selection
+    /// ambiguous. Patch the existing decoded pixels in GL row order instead.
+    pub fn sub_image_to_texture(
+        &mut self,
+        tex_name: u32,
+        x: usize,
+        y: usize,
+        width: usize,
+        height: usize,
+        source_format: u32,
+        pixel_type: u32,
+        payload: &[u8],
+    ) -> bool {
+        if tex_name == 0 || width == 0 || height == 0 || width > 4096 || height > 4096 {
+            return false;
+        }
+        let Some(format) = format_from_gl(source_format, pixel_type) else {
+            return false;
+        };
+        let expected = pix_payload_size(format, width, height);
+        if payload.len() < expected {
+            return false;
+        }
+        let patch = Texture::from_bytes(
+            &payload[..expected],
+            width,
+            height,
+            format,
+            Rgba8::rgba(255, 255, 255, 255),
+        );
+        let Some(upload) = self
+            .uploads
+            .iter_mut()
+            .rev()
+            .find(|upload| upload.tex_name == Some(tex_name) && upload.texture.is_some())
+        else {
+            return false;
+        };
+        let (dest_width, dest_height) = (upload.width, upload.height);
+        let Some(texture) = upload.texture.as_mut() else {
+            return false;
+        };
+        for row in 0..height.min(dest_height.saturating_sub(y)) {
+            for col in 0..width.min(dest_width.saturating_sub(x)) {
+                let source_index = row * width + col;
+                let dest_index = (y + row) * dest_width + (x + col);
+                texture.pixels[dest_index] = patch.pixels[source_index];
+            }
+        }
+        upload.source_format = source_format;
+        upload.pixel_type = pixel_type;
+        upload.format = Some(format);
+        true
+    }
+
     /// Select the best-supported live texture by matching decoded draw
     /// dimensions. This is an *inferred* association (logged as such); it
     /// prefers live upload evidence (dimensions/format) over filenames.
@@ -1743,6 +1801,34 @@ mod tests {
         assert_eq!(texture.height, 2);
         assert_eq!(texture.pixels[0], Rgba8::rgba(1, 2, 3, 255));
         assert_eq!(texture.pixels[1], Rgba8::rgba(4, 5, 6, 255));
+    }
+
+    #[test]
+    fn sub_image_updates_existing_texture_region_in_upload_row_order() {
+        let mut lg = LiveGlState::new(false, false, false, "test".to_string());
+        lg.uploads.push(LiveGlState::build_upload(
+            0,
+            0x0de1,
+            4,
+            4,
+            0x1907,
+            0x8363,
+            0,
+            &[0; 32],
+            Some(0x36),
+        ));
+        let patch = [
+            0x00, 0xf8, // red
+            0xe0, 0x07, // green
+        ];
+
+        assert!(lg.sub_image_to_texture(0x36, 1, 2, 2, 1, 0x1907, 0x8363, &patch));
+
+        let texture = lg.uploads[0].texture.as_ref().expect("patched texture");
+        assert_eq!(texture.pixels[2 * 4 + 1].r, 255);
+        assert_eq!(texture.pixels[2 * 4 + 1].g, 0);
+        assert_eq!(texture.pixels[2 * 4 + 2].g, 255);
+        assert_eq!(texture.pixels[2 * 4 + 2].r, 0);
     }
 
     #[test]

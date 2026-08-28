@@ -2582,6 +2582,10 @@ impl Eapp {
                 self.live_handle_copy_texture(args);
                 0
             }
+            105 => {
+                self.live_handle_sub_upload(args);
+                0
+            }
             137 => {
                 self.live_handle_array_def(args);
                 0
@@ -2858,6 +2862,90 @@ impl Eapp {
             if let Some(lg) = self.live_gl.as_mut() {
                 lg.copy_framebuffer_to_texture(tex_name, x, y, width, height);
             }
+        }
+    }
+
+    /// OpenGLES ordinal 105: `glTexSubImage2D`. The PR #3 oracle uses this
+    /// to refill existing screen-sized textures when Vortex switches from
+    /// the menu scene to the first level.
+    fn live_handle_sub_upload(&mut self, args: [u32; 4]) {
+        let sp = self.cpu.reg_get(self.cpu.mode(), reg::SP);
+        let x = args[2] as usize;
+        let y = args[3] as usize;
+        let width = self.read_guest_u32(sp).unwrap_or(0) as usize;
+        let height = self.read_guest_u32(sp.wrapping_add(0x04)).unwrap_or(0) as usize;
+        let source_format = self.read_guest_u32(sp.wrapping_add(0x08)).unwrap_or(0);
+        let pixel_type = self.read_guest_u32(sp.wrapping_add(0x0c)).unwrap_or(0);
+        let source_ptr = self.read_guest_u32(sp.wrapping_add(0x10)).unwrap_or(0);
+        let Some(format) = format_from_gl(source_format, pixel_type) else {
+            warn!(
+                target: "EAPP_GL",
+                "live_sub_upload skipped: unsupported format src_fmt={:#x} pix_type={:#x}",
+                source_format,
+                pixel_type
+            );
+            return;
+        };
+        let expected = pix_payload_size(format, width, height);
+        let Some(payload) = self.read_guest_bytes(source_ptr, expected) else {
+            warn!(
+                target: "EAPP_GL",
+                "live_sub_upload skipped: short/invalid source ptr {:#010x} want={} bytes",
+                source_ptr,
+                expected
+            );
+            return;
+        };
+        let tex_name = self.live_gl.as_ref().and_then(|lg| lg.bound_tex_name);
+        let Some(tex_name) = tex_name else {
+            warn!(
+                target: "EAPP_GL",
+                "live_sub_upload skipped: no bound texture {}x{} at ({},{})",
+                width,
+                height,
+                x,
+                y
+            );
+            return;
+        };
+        let updated = self
+            .live_gl
+            .as_mut()
+            .map(|lg| {
+                lg.sub_image_to_texture(
+                    tex_name,
+                    x,
+                    y,
+                    width,
+                    height,
+                    source_format,
+                    pixel_type,
+                    &payload,
+                )
+            })
+            .unwrap_or(false);
+        if updated {
+            info!(
+                target: "EAPP_GL",
+                "live_sub_upload tex#{:#x} {}x{} at ({},{}) fmt={:#x} type={:#x}",
+                tex_name,
+                width,
+                height,
+                x,
+                y,
+                source_format,
+                pixel_type
+            );
+        } else {
+            warn!(
+                target: "EAPP_GL",
+                "live_sub_upload skipped: no decoded texture tex#{:#x} {}x{} at ({},{})",
+                tex_name,
+                width,
+                height,
+                x,
+                y
+            );
         }
     }
 
