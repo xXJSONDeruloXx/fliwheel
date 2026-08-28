@@ -18,12 +18,15 @@ default for bundle `14004`. The run reached:
 The gameplay probe then injected the clickwheel quadrant packet used by the
 title. Pac-Man moved through the maze and the score advanced from `0` to `160`
 in the captured run. This establishes a controllable gameplay path, but not
-full completion: collision/life behavior, audio output, persistence, long-run
-stability, and full content coverage still need work.
+full completion: collision/life behavior, physical mixer behavior, persistence,
+long-run stability, and full content coverage still need work.
 
-The normal path proves startup, menu handoff, and a controllable Stage 1, but
-not full completion: audio output, collision/life behavior, persistence,
-long-run stability, and full content coverage remain open.
+The follow-up audio replay then mapped all 20 WAV sources using the measured
+temporary-to-persistent handle handoff. It resolved 18 observed Stage 1 events
+to named paths, and the headed replay produced 18 matching `played sound`
+receipts with no decoder, sink, or fatal error. This verifies the current
+headed dispatch path, not physical mixer/volume parity or complete sound-bank
+coverage.
 
 ## Reproduction
 
@@ -56,11 +59,16 @@ events are still used for menu/action edges.
 
 - Capture directory: `/tmp/fliwheel_mspacman_default_20260828/`
 - Log: `/tmp/fliwheel_mspacman_default_20260828.log`
+- Audio replay capture directory: `/tmp/fliwheel_mspacman_audio_headed_20260828/`
+- Audio replay log: `/tmp/fliwheel_mspacman_audio_headed_20260828.log`
 - Earlier diagnostic capture: `/tmp/fliwheel_mspacman_gameplay_input_20260827/`
 - Guest frame 620: full Stage 1 maze in `READY!` state, with HUD and lives.
 - Guest frame 720: active maze with score `70`.
 - Guest frame 840: active maze with score `160`.
 - The run completed its bounded cycle budget without a fatal signature.
+- The audio replay mapped 20/20 sources and produced 18/18 headed sink
+  receipts, including `start.wav`, `siren1.wav`, `eat open.wav`, and
+  `eat close.wav`.
 
 The earlier texture-only evidence remains in the
 [texture-association probe](20260827_mspacman_texture_probe.md); this document

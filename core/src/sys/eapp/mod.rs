@@ -545,6 +545,11 @@ pub struct Eapp {
     /// sixteen WAV headers in the same order. Keep that FIFO separate from
     /// PopCap's interleaved registration/read contract.
     audio_pacman_pending_handles: VecDeque<u32>,
+    /// Ms. PAC-MAN allocates a temporary source for each WAV header, releases
+    /// it, then allocates the persistent source that gameplay uses. The WAV
+    /// read therefore arrives before the handle that must receive the path;
+    /// retain the measured source key until that second allocation appears.
+    audio_mspacman_pending_asset_paths: VecDeque<(u32, u32, u32, PathBuf)>,
     /// Resource-indexed audio assets retained after the guest releases its
     /// startup table handles. Gameplay uses the resource index again later,
     /// so this shadow catalog is what lets the host sink resolve a sound.
@@ -880,6 +885,7 @@ impl Eapp {
             next_audio_handle: 1,
             audio_pending_asset_handle: None,
             audio_pacman_pending_handles: VecDeque::new(),
+            audio_mspacman_pending_asset_paths: VecDeque::new(),
             audio_resource_paths: HashMap::new(),
             audio_last_registration: None,
             audio_events: Arc::new(Mutex::new(VecDeque::new())),
@@ -6112,18 +6118,53 @@ impl Eapp {
                 // ABI layer; staged PCM binding remains a separate step.
                 let handle = self.next_audio_handle.max(1);
                 self.next_audio_handle = self.next_audio_handle.wrapping_add(1).max(1);
-                let source = AudioHandle {
+                let mut source = AudioHandle {
                     source_type: args[0],
                     slot_index: args[1],
                     table_base: args[2],
                     host_path: None,
                 };
-                self.audio_handles.insert(handle, source.clone());
                 if self.uses_wav_audio_source_abi() {
                     self.audio_pending_asset_handle = Some(handle);
                 } else if self.uses_pacman_wav_audio_source_abi() {
                     self.audio_pacman_pending_handles.push_back(handle);
+                } else if self.uses_mspacman_wav_audio_source_abi() {
+                    // Ms. PAC-MAN's persistent source is allocated after its
+                    // matching temporary header source has been released.
+                    // Bind the path captured during that header read here.
+                    if let Some(position) = self
+                        .audio_mspacman_pending_asset_paths
+                        .iter()
+                        .position(|(source_type, slot_index, table_base, _)| {
+                            *source_type == source.source_type
+                                && *slot_index == source.slot_index
+                                && *table_base == source.table_base
+                        })
+                    {
+                        let (_, _, _, host_path) = self
+                            .audio_mspacman_pending_asset_paths
+                            .remove(position)
+                            .expect("audio Ms. PAC-MAN pending path position");
+                        source.host_path = Some(host_path.clone());
+                        if std::env::var_os("EAPP_AUDIO_EVENT_TRACE").is_some() {
+                            let resource_index = source.table_base;
+                            info!(
+                                target: "EAPP_AUDIO",
+                                "AudioSourceMap handle={:#010x} type={} slot={} path={}",
+                                handle,
+                                source.source_type,
+                                resource_index,
+                                host_path.display()
+                            );
+                        }
+                        self.audio_pending_asset_handle = None;
+                    } else {
+                        // This is the temporary source whose header read will
+                        // identify the next persistent source allocation.
+                        self.audio_pending_asset_handle = Some(handle);
+                    }
                 }
+                self.audio_handles.insert(handle, source.clone());
                 if fliwheel_var_os("AUDIO_TRACE").is_some() {
                     info!(
                         target: "EAPP_AUDIO",
@@ -6142,12 +6183,18 @@ impl Eapp {
                 // WAV only at this final trigger point.
                 if self.uses_wav_audio_source_abi()
                     || self.uses_pacman_wav_audio_source_abi()
+                    || self.uses_mspacman_wav_audio_source_abi()
                 {
                     if let Some(source) = self.audio_handles.get(&args[0]).cloned() {
                         if let Some(host_path) = source.host_path {
+                            let resource_index = if self.uses_mspacman_wav_audio_source_abi() {
+                                source.table_base
+                            } else {
+                                source.slot_index
+                            };
                             self.queue_audio_event(
                                 source.source_type,
-                                source.slot_index,
+                                resource_index,
                                 Some(host_path),
                             );
                         }
@@ -8427,6 +8474,10 @@ impl Eapp {
             self.note_pacman_wav_asset_path(host_path);
             return;
         }
+        if self.uses_mspacman_wav_audio_source_abi() {
+            self.note_mspacman_wav_asset_path(host_path);
+            return;
+        }
         // Keep the provisional Tetris-only resource catalog honest until the
         // other title families have their own Audio ABI derived.
         if self.metadata.title != "66666" {
@@ -8467,6 +8518,10 @@ impl Eapp {
 
     fn uses_pacman_wav_audio_source_abi(&self) -> bool {
         self.metadata.title == "AAAAA"
+    }
+
+    fn uses_mspacman_wav_audio_source_abi(&self) -> bool {
+        self.metadata.title == "14004"
     }
 
     fn note_wav_audio_asset_path(&mut self, host_path: &Path) {
@@ -8522,6 +8577,36 @@ impl Eapp {
                 source.slot_index,
                 host_path.display()
             );
+        }
+    }
+
+    fn note_mspacman_wav_asset_path(&mut self, host_path: &Path) {
+        let is_wav = host_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("wav"))
+            .unwrap_or(false);
+        if !is_wav {
+            return;
+        }
+        let Some(handle) = self.audio_pending_asset_handle.take() else {
+            return;
+        };
+        let Some((source_type, slot_index, table_base)) = self
+            .audio_handles
+            .get(&handle)
+            .map(|source| (source.source_type, source.slot_index, source.table_base))
+        else {
+            return;
+        };
+        self.audio_mspacman_pending_asset_paths.push_back((
+            source_type,
+            slot_index,
+            table_base,
+            host_path.to_path_buf(),
+        ));
+        if let Some(source) = self.audio_handles.get_mut(&handle) {
+            source.host_path = Some(host_path.to_path_buf());
         }
     }
 
