@@ -21,7 +21,7 @@ older pages retain historical investigation notes and are not completion claims.
 | Sudoku | 50513 | 🟡 Populated puzzle board/input partial under opt-in gates | [→](50513_sudoku.md) |
 | Royal Solitaire | 50514 | 🟡 Coherent splash; RLB path diagnostic; readiness contract unresolved | [→](50514_royal_solitaire.md) |
 | Bejeweled | 55555 | 🟡 PopCap Classic + Action board entry | [→](55555_bejeweled.md) |
-| Zuma | 44444 | 🟡 PopCap partial | [→](44444_zuma.md) |
+| Zuma | 44444 | 🟡 Live board + directional aim response; full play open | [→](44444_zuma.md) |
 | Vortex | 12345 | 🟡 Animated splash/VBO open | [matrix](../game_tests/20260826_interactive_matrix.md#current-matrix) |
 | iQuiz | 11002 | ❌ Pack discovery/content loading blocked | [→](11002_twa.md) |
 | SAT Prep Reading | 11050 | 🟡 Coherent splash/spinner; content handoff open | [SAT checkpoint](../game_tests/20260827_sat_loader_and_tetris_audio.md) |
