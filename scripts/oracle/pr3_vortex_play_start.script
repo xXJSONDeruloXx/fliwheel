@@ -1,0 +1,20 @@
+# Direct PR #3 oracle: complete the default-name route, show the level prompt,
+# then press Select to enter the first playable Vortex scene.
+500: select
+600: select
+620: select
+640: select
+660: select
+680: select
+700: select
+720: select
+900: shot
+920: select
+1100: shot
+1300: shot
+1400: select
+1500: shot
+1700: shot
+2000: shot
+2400: shot
+2401: quit
