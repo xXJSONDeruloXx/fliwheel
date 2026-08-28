@@ -135,6 +135,75 @@ pub fn sample_nearest(texture: &Texture, u: f32, v: f32) -> Rgba8 {
     texture.pixels[y * texture.width + x]
 }
 
+/// Sample at texel centres using the filtering behavior observed in the PR
+/// direct runner. RGB is interpolated in premultiplied-alpha space so keyed
+/// transparent texels do not bleed their hidden colour into scaled edges.
+pub fn sample_bilinear_premultiplied(texture: &Texture, u: f32, v: f32) -> Rgba8 {
+    if texture.width == 0 || texture.height == 0 {
+        return Rgba8::rgba(0, 0, 0, 0);
+    }
+    let sx = (u - 0.5).clamp(0.0, (texture.width - 1) as f32);
+    let sy = (v - 0.5).clamp(0.0, (texture.height - 1) as f32);
+    let x0 = sx.floor() as usize;
+    let y0 = sy.floor() as usize;
+    let x1 = (x0 + 1).min(texture.width - 1);
+    let y1 = (y0 + 1).min(texture.height - 1);
+    let dx = sx - x0 as f32;
+    let dy = sy - y0 as f32;
+    let weights = [
+        ((1.0 - dx) * (1.0 - dy), x0, y0),
+        (dx * (1.0 - dy), x1, y0),
+        ((1.0 - dx) * dy, x0, y1),
+        (dx * dy, x1, y1),
+    ];
+    let mut alpha_sum = 0.0;
+    let mut channel_sum = [0.0; 3];
+    for (weight, x, y) in weights {
+        let pixel = texture.pixels[y * texture.width + x];
+        let alpha = pixel.a as f32;
+        alpha_sum += weight * alpha;
+        for (channel, sum) in channel_sum.iter_mut().enumerate() {
+            let value = [pixel.r, pixel.g, pixel.b][channel] as f32;
+            *sum += weight * alpha * value;
+        }
+    }
+    let alpha = alpha_sum.round().clamp(0.0, 255.0) as u8;
+    if alpha_sum <= 0.0 {
+        return Rgba8::rgba(0, 0, 0, alpha);
+    }
+    let channel = |sum: f32| (sum / alpha_sum).round().clamp(0.0, 255.0) as u8;
+    Rgba8::rgba(
+        channel(channel_sum[0]),
+        channel(channel_sum[1]),
+        channel(channel_sum[2]),
+        alpha,
+    )
+}
+
+fn one_to_one_mapping(verts: &[(f32, f32, f32, f32); 3]) -> bool {
+    let extent = |index: usize| {
+        let (lo, hi): (f32, f32) = verts
+            .iter()
+            .map(|vertex| match index {
+                0 => vertex.0,
+                1 => vertex.1,
+                2 => vertex.2,
+                3 => vertex.3,
+                _ => unreachable!("vertex extent index"),
+            })
+            .fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), value| {
+                (lo.min(value), hi.max(value))
+            });
+        hi - lo
+    };
+    let (position_w, position_h) = (extent(0), extent(1));
+    let (uv_w, uv_h) = (extent(2), extent(3));
+    position_w > 0.5
+        && position_h > 0.5
+        && (uv_w / position_w - 1.0).abs() < 0.02
+        && (uv_h / position_h - 1.0).abs() < 0.02
+}
+
 pub fn blend_src_over(dst: Rgba8, src: Rgba8) -> Rgba8 {
     let sa = src.a as u32;
     let da = dst.a as u32;
@@ -243,7 +312,12 @@ pub fn rasterize_triangle_tinted(
             let w2 = e2 * inv_area;
             let u = v[0].2 * w0 + v[1].2 * w1 + v[2].2 * w2;
             let vv = v[0].3 * w0 + v[1].3 * w1 + v[2].3 * w2;
-            let src = modulate(sample_nearest(tex, u, vv), tint);
+            let sample = if one_to_one_mapping(&v) {
+                sample_nearest(tex, u, vv)
+            } else {
+                sample_bilinear_premultiplied(tex, u, vv)
+            };
+            let src = modulate(sample, tint);
             let idx = y as usize * fb_width + x as usize;
             fb[idx] = blend_src_over(fb[idx], src);
             coverage += 1;
@@ -420,5 +494,52 @@ mod tests {
         );
         assert_eq!(cov, 1);
         assert_eq!(fb[0], Rgba8::rgba(64, 128, 255, 128));
+    }
+
+    #[test]
+    fn bilinear_sampling_weights_rgb_by_alpha() {
+        let tex = Texture::from_bytes(
+            &[255, 0, 0, 255, 0, 255, 0, 0],
+            2,
+            1,
+            TextureFormat::Rgba8888,
+            Rgba8::rgba(255, 255, 255, 255),
+        );
+        assert_eq!(
+            sample_bilinear_premultiplied(&tex, 0.5, 0.5),
+            Rgba8::rgba(255, 0, 0, 255)
+        );
+        assert_eq!(
+            sample_bilinear_premultiplied(&tex, 1.25, 0.5),
+            Rgba8::rgba(255, 0, 0, 64)
+        );
+    }
+
+    #[test]
+    fn scaled_quad_uses_bilinear_but_one_to_one_stays_nearest() {
+        let tex = Texture::from_bytes(
+            &[255, 0, 0, 255, 0, 0, 255, 255],
+            2,
+            1,
+            TextureFormat::Rgba8888,
+            Rgba8::rgba(255, 255, 255, 255),
+        );
+        let scaled = [
+            (0.0, 0.0, 0.0, 0.0),
+            (4.0, 0.0, 2.0, 0.0),
+            (4.0, 1.0, 2.0, 1.0),
+        ];
+        let one_to_one = [
+            (0.0, 0.0, 0.0, 0.0),
+            (2.0, 0.0, 2.0, 0.0),
+            (2.0, 1.0, 2.0, 1.0),
+        ];
+        assert!(!one_to_one_mapping(&scaled));
+        assert!(one_to_one_mapping(&one_to_one));
+        assert_eq!(sample_nearest(&tex, 0.75, 0.5), Rgba8::rgba(255, 0, 0, 255));
+        assert_eq!(
+            sample_bilinear_premultiplied(&tex, 0.75, 0.5),
+            Rgba8::rgba(191, 0, 64, 255)
+        );
     }
 }
