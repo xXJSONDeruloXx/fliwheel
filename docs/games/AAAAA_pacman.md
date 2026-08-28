@@ -37,10 +37,14 @@ and the `START GAME / MODE / STAGE / BACK` screen.
 The PAC-MAN TGA callback now receives the request status and byte count that
 the resource manager expects, and the guest's own TGA parser populates the
 texture dimensions on the normal path. The 2026-08-28 probe renders a stable
-33-37-draw maze from frame 775 through frame 1048. Captures show `READY`,
+maze from frame 775 through frame 1048. The indexed-quad follow-up restores
+the pellet field from PAC-MAN's ordinal-38 `mode=7` batch, starting at 240
+pellet quads and falling as the route consumes them. Captures show `READY`,
 moving Pac-Man and animated ghosts; the tested wheel route moves the player
 and advances the score from `0` at frame 800 to `30` at frame 880 and `40` at
-frame 890, with no fatal signature through the bounded run.
+frame 890, with no fatal signature through the bounded run. See the focused
+[`20260828_pacman_indexed_quads_probe.md`](../game_tests/20260828_pacman_indexed_quads_probe.md)
+for the indexed draw evidence.
 Audio assets and guest audio events were observed during the headless probe. A
 matching headed replay emitted 12 mapped events and 12 `played sound` receipts
 through the desktop WAV sink, with no decoder or sink errors. Physical speaker

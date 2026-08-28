@@ -42,7 +42,8 @@ fn ndc_to_pixel_position((x, y): (f32, f32)) -> (f32, f32) {
 pub const GL_FIXED: u32 = 0x140c;
 
 /// GL_UNSIGNED_SHORT (0x1403), observed as the index type for ordinal-38
-/// `DrawElements` triangle strips in the Sims/Sudoku/Solitaire engine family.
+/// `DrawElements` calls across the indexed triangle-strip and indexed-quad
+/// engine families.
 pub const GL_UNSIGNED_SHORT: u32 = 0x1403;
 
 /// Confirmed DrawArrays quad mode token observed at most ordinal-37 call sites.
@@ -60,6 +61,17 @@ pub const GL_COLOR_BUFFER_BIT: u32 = 0x4000;
 /// positive multiple of 4, and the existing Tetris path is the 1-quad case.
 pub fn quad_group_count(mode: u32, first: usize, count: usize) -> Option<usize> {
     if mode != DRAW_MODE || first != 0 || count < 4 || count % 4 != 0 {
+        None
+    } else {
+        Some(count / 4)
+    }
+}
+
+/// Return the number of four-index GL_QUADS groups in an indexed draw.
+/// `DrawElements` has no `first` argument, so the index stream itself must be
+/// a complete sequence of four-corner primitives.
+pub fn indexed_quad_group_count(mode: u32, count: usize) -> Option<usize> {
+    if mode != DRAW_MODE || count < 4 || count % 4 != 0 {
         None
     } else {
         Some(count / 4)
@@ -2068,5 +2080,18 @@ mod tests {
         assert_eq!(quad_group_count(DRAW_MODE, 0, 3), None);
         assert_eq!(quad_group_count(DRAW_MODE, 0, 10), None);
         assert_eq!(quad_group_count(4, 0, 4), None);
+    }
+
+    #[test]
+    fn indexed_quad_group_count_accepts_complete_index_streams() {
+        assert_eq!(indexed_quad_group_count(DRAW_MODE, 4), Some(1));
+        assert_eq!(indexed_quad_group_count(DRAW_MODE, 960), Some(240));
+    }
+
+    #[test]
+    fn indexed_quad_group_count_rejects_triangle_strips_and_partial_quads() {
+        assert_eq!(indexed_quad_group_count(DRAW_MODE_TRIANGLE_STRIP, 4), None);
+        assert_eq!(indexed_quad_group_count(DRAW_MODE, 3), None);
+        assert_eq!(indexed_quad_group_count(DRAW_MODE, 10), None);
     }
 }

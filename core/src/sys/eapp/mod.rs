@@ -3945,21 +3945,23 @@ impl Eapp {
         self.live_finalize_draws(vec![record]);
     }
 
-    /// Ordinal 38: observed in the Sims/Sudoku/Solitaire engine family as
-    /// `DrawElements(mode=5, count=N, type=GL_UNSIGNED_SHORT, indices=ptr)`.
-    /// Decode indexed triangle strips using the currently enabled client
-    /// arrays. Malformed pointers/types fail safely and record a skipped draw.
+    /// Ordinal 38: observed as indexed triangle strips in the
+    /// Sims/Sudoku/Solitaire engine family and as indexed GL_QUADS batches in
+    /// PAC-MAN-family titles. Decode the index stream using the currently
+    /// enabled client arrays. Malformed pointers/types fail safely and record
+    /// a skipped draw.
     fn live_handle_draw_elements(&mut self, args: [u32; 4]) {
         let mode = args[0];
         let count = args[1] as usize;
         let index_type = args[2];
         let indices_ptr = args[3];
-        if mode != live_gl::DRAW_MODE_TRIANGLE_STRIP
-            || index_type != live_gl::GL_UNSIGNED_SHORT
-            || count < 3
-            || count > 4096
-            || indices_ptr == 0
-        {
+        let indexed_quad_groups = live_gl::indexed_quad_group_count(mode, count);
+        let valid_mode = if mode == live_gl::DRAW_MODE_TRIANGLE_STRIP {
+            (3..=4096).contains(&count)
+        } else {
+            indexed_quad_groups.is_some() && count <= 4096
+        };
+        if !valid_mode || index_type != live_gl::GL_UNSIGNED_SHORT || indices_ptr == 0 {
             warn!(
                 target: "EAPP_GL",
                 "draw-elements skipped: unsupported mode={} count={} type={:#x} indices={:#010x}",
@@ -4069,6 +4071,56 @@ impl Eapp {
         let explicit =
             self.live_decode_uvs_indices(&explicit_uv_def, explicit_uv_enabled, &indices);
         let tint = Rgba8::rgba(255, 255, 255, 255);
+
+        if let Some(quad_groups) = indexed_quad_groups {
+            let mut records = Vec::with_capacity(quad_groups);
+            for quad_idx in 0..quad_groups {
+                let base = quad_idx * 4;
+                let positions = quad_from_slice(&positions[base..base + 4]);
+                let (uvs, has_uv, active_uv_def) = if let Some(explicit) = explicit.as_ref() {
+                    (
+                        quad_from_slice(&explicit[base..base + 4]),
+                        true,
+                        explicit_uv_def.clone(),
+                    )
+                } else {
+                    ([(0.0, 0.0); 4], false, explicit_uv_def.clone())
+                };
+                let mut record = match self.live_gl.as_mut() {
+                    Some(lg) => lg.rasterize_draw(
+                        draw_index + quad_idx,
+                        handle,
+                        state_ptr,
+                        bound_tex_name,
+                        translation,
+                        positions,
+                        uvs,
+                        has_uv,
+                        None,
+                        tint,
+                        false,
+                    ),
+                    None => return,
+                };
+                record.position_array = pos_def.clone();
+                record.uv_array = active_uv_def;
+                record.enabled_arrays = enabled_arrays.clone();
+                record.state_words = state_words.clone();
+                self.live_log_draw_record(&record);
+                records.push(record);
+            }
+            info!(
+                target: "EAPP_GL",
+                "draw{} rasterized draw-elements quads handle={:#x} indices={} quads={}",
+                draw_index + 1,
+                handle,
+                count,
+                quad_groups
+            );
+            self.live_finalize_draws(records);
+            return;
+        }
+
         let mut record = match self.live_gl.as_mut() {
             Some(lg) => lg.rasterize_triangle_strip_record(
                 draw_index,
