@@ -1,6 +1,6 @@
 # Pac-Man (Bundle AAAAA)
 
-**Status:** 🟡 DIAGNOSTIC GAMEPLAY + HEADED AUDIO | **Evidence:** the normal path reaches a rendered, controllable Stage 1 maze and the headed WAV sink accepts gameplay events; physical mixer parity, collisions/lives, and persistence remain open | **Engine:** Tetris Runtime
+**Status:** 🟡 NORMAL GAMEPLAY + PAUSE/RESUME + HEADED AUDIO | **Evidence:** the normal path reaches a rendered, controllable Stage 1 maze, pause/resume works after the menu settles, and the headed WAV sink accepts gameplay events; physical mixer parity, collisions/lives, and persistence remain open | **Engine:** Tetris Runtime
 
 ## Quick Start
 ```bash
@@ -46,6 +46,14 @@ matching headed replay emitted 12 mapped events and 12 `played sound` receipts
 through the desktop WAV sink, with no decoder or sink errors. Physical speaker
 output, overlap/mixing, volume controls, and timing parity remain unverified.
 
+The pause route is also functional on the normal path. A Menu edge at frame
+1100 produces the guest-rendered `PAUSE` screen with `RESUME GAME`, `VOLUME`,
+`OPTIONS`, and `ABANDON GAME / SAVE & EXIT`. Once that overlay has settled,
+Select at frame 1180 leaves the pause screen; the transition produces a blank
+frame at 1202 and the live maze is rendering again at frame 1203. Collision/
+life handling, exit/save, full-content coverage, physical mixer behavior, and
+long-run parity remain open.
+
 Before the measured TGA completion contract was promoted, the default
 `START GAME` route advanced through initialization states 2 through 9 and
 faulted before the first maze frame at `PC 0x1801628c` while reading `0x58`
@@ -58,8 +66,8 @@ The executable references `tex_menu.tga`, but the decrypted bundle only has
 the state and produced no guest request for the missing filename, so the asset
 is a preservation gap but is not yet proven to be the transition blocker. See
 [`20260827_pacman_name_entry_probe.md`](../game_tests/20260827_pacman_name_entry_probe.md)
-for the exact menu route and pre-fix start-gate evidence. The opt-in maze and
-input result is recorded in
+for the exact menu route and pre-fix start-gate evidence. The maze, input,
+pause/resume, and audio result is recorded in
 [`20260828_pacman_gameplay_probe.md`](../game_tests/20260828_pacman_gameplay_probe.md).
 
 ## Environment

@@ -1,4 +1,4 @@
-# PAC-MAN diagnostic gameplay probe
+# PAC-MAN gameplay probe
 
 Date: 2026-08-28 UTC  
 Bundle: `AAAAA`  
@@ -24,14 +24,22 @@ The route reaches the first maze and remains stable through the bounded probe:
 
 This is the first PAC-MAN evidence of actual in-maze control in fliwheel. The
 bounded capture run disabled audio output; the separate headed replay below
-enabled the sink. Collision/life behavior, pause/exit, physical speaker/mixer
-behavior, persistence, and long-run play remain open.
+enabled the sink. Collision/life behavior, exit/save, physical speaker/mixer
+behavior, persistence, full content, and long-run play remain open.
 
 A matching headed replay with the desktop sink enabled emitted 12 mapped
 `AudioEvent` records and 12 `played sound` receipts. The sink accepted
 `start.wav`, `siren1.wav`, `eatopen.wav`, and `eatclose.wav` among the observed
 events, with no decoder, sink, fault, or fatal records. This proves host
 dispatch and decoding, not physical speaker output or mixer parity.
+
+The normal pause route is now verified as well. A Menu edge at guest frame
+1100 produces the `PAUSE` overlay with `RESUME GAME`, `VOLUME`, `OPTIONS`, and
+`ABANDON GAME / SAVE & EXIT`. Select at frame 1180, after the overlay has
+settled, resumes the maze: the capture is blank at frame 1202 and shows the
+live maze again at frame 1203. The earlier immediate Select attempt at frame
+1150 is retained as evidence that the menu needs time to settle before the
+action edge is accepted.
 
 ## Reproduction
 
@@ -65,12 +73,26 @@ The quadrant values used here are `0xf0`, `0x30`, `0x70`, and `0xb0`, each
 with the clickwheel-touch bit `0x40000000`. Menu/action edges select the name,
 confirm it, enter Play Game, and start Stage 1.
 
+For the pause/resume follow-up, the same startup prefix was used with this
+additional input script and stop frame:
+
+```bash
+FLIWHEEL_EAPP_INPUT_SCRIPT='wheel=1:100-252,action:260-265,action:300-305,action:350-355,action:750-755,menu:1100-1105,action:1180-1185'
+FLIWHEEL_EAPP_STOP_FRAME=1220
+```
+
+The pause overlay begins at frame 1102. The settled Select edge is accepted
+at frame 1180; frame 1202 is the transition blank and frame 1203 is the live
+maze again.
+
 ## Evidence
 
 - Log: `/tmp/fliwheel_pacman_movement_20260828.log`
 - Default-path promotion log: `/tmp/fliwheel_pacman_default_maze_20260828.log`
 - Capture manifest: `/tmp/fliwheel_pacman_movement_20260828/manifest.tsv`
 - Headed audio log: `/tmp/fliwheel_pacman_audio_headed_mapped_20260828.log`
+- Pause/resume log: `/tmp/fliwheel_pacman_pause_resume_20260828.log`
+- Pause/resume capture manifest: `/tmp/fliwheel_pacman_pause_resume_20260828/manifest.tsv`
 - Visual captures include frames 800, 840, 880, and 890 in
   `/tmp/fliwheel_pacman_movement_20260828/`.
 - The 880 and 890 captures visibly show the score changing from `30` to `40`
@@ -84,6 +106,7 @@ The pre-promotion default regression is retained in
 `/tmp/fliwheel_pacman_default_regression_20260828.log`; it reaches guest
 initialization states 2-9 and faults at `PC 0x1801628c` before the maze. The
 current normal path uses the measured title-specific completion contract, as
-captured in `/tmp/fliwheel_pacman_default_maze_20260828.log`, so the remaining
-gates are pause/exit, collision/life behavior, physical audio/mixer behavior,
-persistence, and long-run play.
+captured in `/tmp/fliwheel_pacman_default_maze_20260828.log`; pause/resume is
+verified by `/tmp/fliwheel_pacman_pause_resume_20260828.log`. The remaining
+gates are exit/save, collision/life behavior, physical audio/mixer behavior,
+persistence, full content, and long-run play.
