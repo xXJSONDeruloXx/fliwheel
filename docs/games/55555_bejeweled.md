@@ -1,6 +1,6 @@
 # Bejeweled (Bundle 55555)
 
-**Status:** 🟡 CLASSIC + ACTION MATCH/TIMER + WAV EVENTS PARTIAL | **Evidence:** the legacy filesystem contract reaches the menu, 8×8 board, and built-in tutorial; normalized wheel input reaches the guest; Classic mode has a scripted live-board match that changes/refills tiles and emits `combo2.wav`; Action mode now has one accepted match with score-50 resolution, a `Well done!` overlay, and a live timer bar; the title-specific WAV ABI maps all 27 sources and reaches the headed desktop sink | **Engine:** PopCap Engine
+**Status:** 🟡 CLASSIC + ACTION MATCH/TIMER + WAV EVENTS PARTIAL | **Evidence:** the legacy filesystem contract reaches the menu, 8×8 board, and built-in tutorial; normalized wheel input reaches the guest; Classic mode has a scripted live-board match that changes/refills tiles and emits `combo2.wav`; Action mode now has two accepted matches with score-50 resolution, `Well done!` overlays, and a live timer bar; the title-specific WAV ABI maps all 27 sources and reaches the headed desktop sink | **Engine:** PopCap Engine
 
 ## Quick Start
 ```bash
@@ -16,9 +16,9 @@ selectable menu, builds the 8×8 gem board, and presents the built-in tutorial.
 The corrected wheel scale and sector mapping now drive a complete scripted
 Classic-mode match: the guest selects the board cell at `[8,6]`, swaps it with
 `[8,7]`, shows “EXCELLENT!”, changes the board contents, and opens the
-score-bar overlay. A separate Action-mode route now accepts its first board
-swap, produces a score-50 resolution and `Well done!` prompt, and returns to
-the live board with its timer bar. Multi-move Action play, timeout/game-over,
+score-bar overlay. A separate Action-mode route now accepts two board swaps,
+each producing a score-50 resolution and `Well done!` prompt, and returns to
+the live board with its timer bar. Further Action play, timeout/game-over,
 save behavior, and physical mixer parity remain open.
 
 ## Bundle Info
@@ -26,9 +26,8 @@ save behavior, and physical mixer parity remain open.
 - **Asset Format:** `.pix` + `.tga` (1 file)
 
 ## Fix Needed
-Verify the translated wheel/tap gesture in a headed run, repeat Action through
-multiple accepted moves and its timeout/game-over boundary, and cover the
-title's audio/save behavior. The
+Continue the translated wheel/tap gesture through more accepted Action moves
+and its timeout/game-over boundary, and cover the title's audio/save behavior. The
 HLE preserves the physical 96-detent position but emits the guest's
 normalized 256-unit wheel ring. `0x1402000c` is part of the observed
 pixel-write stream, so it should not be treated as a guessed completion
@@ -92,10 +91,10 @@ This is a verified playable Classic core path under the deterministic input
 script, and the desktop runner now exposes the same directional tap mapping
 through the arrow keys. A fresh current-tree replay also reproduces an
 accepted swap and `combo2.wav`; see the [current match replay](../game_tests/20260827_bejeweled_current_match_replay.md).
-The Action menu entry, one accepted Action-mode match, and timer-bar board are
-now verified. An idle replay confirms that the timer gauge decrements through
-frame 4000; multiple Action moves, timeout/game-over, save path, and broader
-audio coverage are still open.
+The Action menu entry, two accepted Action-mode matches, and timer-bar board
+are now verified. An idle replay confirms that the timer gauge decrements
+through frame 4000; further Action moves, timeout/game-over, save path, and
+broader audio coverage are still open.
 
 The title-specific audio receipt is in the [Bejeweled WAV ABI report](../game_tests/20260827_bejeweled_audio_abi.md).
 The earlier exact replay maps 27/27 startup WAV sources and emits
