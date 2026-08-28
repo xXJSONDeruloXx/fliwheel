@@ -3,7 +3,7 @@
 Date: 2026-08-28  
 Corpus: `/Volumes/NO NAME/fliwheel-decrypted-corpus-20260826/20 iPod games/Games_RO/`  
 Reference checkout: `/tmp/ipod-emulator-pr3` at `96bfe90`  
-fliwheel baseline before this probe: `f0c8d4e`
+fliwheel baseline before this probe: `c3e6c84`
 
 ## What is being compared
 
@@ -69,6 +69,33 @@ progression or full gameplay.
 - Kept the older vendored ARMv4T core after an A/B: it reaches the same LOST
   callbacks, OpenGLES calls, six-draw frame, and presented hash. No external
   `/tmp` CPU dependency is part of the fliwheel change.
+
+## Vortex direct-HLE color-array follow-up
+
+The Vortex A/B was rerun after matching the PR #3 startup context and the
+title-scoped `OpenGLES:165` contract. Both runners selected the same late
+resource sequence:
+
+```text
+Backgrounds/circuits.ipd
+Backgrounds/bgAlpha.ipd
+Backgrounds/lava.ipd
+Backgrounds/circuits_Door1.ipd
+```
+
+The remaining visual difference was not firmware state or texture selection.
+Vortex defines position, UV, and RGBA arrays (`GL_FIXED`, stride 40); PR #3
+interpolates array 2's RGB values across each textured triangle. fliwheel was
+discarding that array and therefore rendered the ring mostly grayscale. Commit
+`c3e6c84` adds generic primary-color decoding for DrawArrays, DrawElements, and
+triangle strips and applies it in the software rasterizer. A 320x240 capture at
+guest frame 610 now shows the full colored ring, green circuit background,
+Vortex logo, and `PRESS SELECT`, with 165 draws per frame and no fatal
+signature.
+
+This is visual title-screen parity, not a playable-game claim. The next gate is
+to send the Select/input transition and compare the first content scene,
+controls, sound, and long-run stability against the same direct-HLE oracle.
 
 ## Current per-title reference note
 

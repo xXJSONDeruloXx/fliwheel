@@ -315,3 +315,27 @@ Vortex GL object model. It is much less arbitrary than the first surface-buffer
 redirect because the new block matches the decoded initializer writes, but the
 long-term cleanup should replace the PC ranges with a principled model of the
 Vortex mutable GL state objects if more titles share this pattern.
+
+## Iteration 30 Update — direct-HLE title parity and vertex colors
+
+The current oracle comparison is against PR #3's direct `play` path, which
+runs the decrypted eApp inside a synthetic RetailOS-like HLE. It does not boot
+the downloaded IPSW firmware image. The firmware path remains a separate
+reference for later work.
+
+After matching the PR allocator/context layout and the title-scoped
+`OpenGLES:165` contract, fliwheel selected the same late assets as the PR
+runner: `circuits.ipd`, `bgAlpha.ipd`, `lava.ipd`, and `circuits_Door1.ipd`.
+The remaining grayscale title mismatch was caused by dropping Vortex's enabled
+array 2, a four-component GL_FIXED per-vertex color array with stride 40.
+Commit `c3e6c84` adds generic color-array decoding and interpolation to the
+software rasterizer.
+
+The resulting 320x240 capture now has the full colored ring, green circuit
+background, Vortex logo, and `PRESS SELECT`, with 165 draws per frame and no
+fatal signature. This closes the title-screen rendering gap but not gameplay.
+
+### Current next gate
+
+Drive Select/input through the title transition, then compare the first content
+scene, controls, sound, and long-run behavior against the direct PR oracle.

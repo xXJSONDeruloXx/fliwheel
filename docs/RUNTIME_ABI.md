@@ -76,6 +76,13 @@ literal target array (module, ordinal) -> function
 
 ## 4. Graphics API (Apple GL-like, not raw GLES 1.1)
 
+The client-array roles are not fixed solely by array index. In the direct-HLE
+traces, slot 1 is usually a two-component GL_FIXED UV array, but some titles
+use slot 1 for four-component primary RGBA colours. Vortex keeps UVs in slot 1
+and supplies its per-vertex RGBA colour in slot 2. Textured draws must preserve
+and interpolate that primary colour; treating every enabled non-position array
+as UVs produces a grayscale Vortex ring even when texture selection is correct.
+
 ### Confirmed call-site evidence
 
 | Ordinal | Status | Evidence |

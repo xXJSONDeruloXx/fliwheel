@@ -1,7 +1,7 @@
 # Decrypted clickwheel-game interactive matrix
 
-Date: 2026-08-26 UTC; renderer checkpoint: 2026-08-27 UTC; follow-up probes:
-2026-08-27 UTC
+Date: 2026-08-26 UTC; renderer checkpoint: 2026-08-28 UTC; follow-up probes:
+2026-08-27 to 2026-08-28 UTC
 Repository: `fliwheel`  
 Corpus: `/Volumes/NO NAME/fliwheel-decrypted-corpus-20260826/20 iPod games/Games_RO`
 Runner: `target/release/eapp` with experimental live GL HLE  
@@ -71,7 +71,7 @@ manifest. They measure visual activity, not correctness.
 | `11050` | SAT Prep Reading | Two completed resource callbacks (`rserver.bin`, `Fonts/Roman/fontinfo.txt`), then a coherent full-screen splash plus animated 34x34 spinner in steady state 6; Audio:47/input A/B did not transition it | Coherent splash/loading only; content handoff open | Identify the SAT content/runtime handoff |
 | `11051` | SAT Prep Writing | Same two-resource loader and coherent splash/spinner path as `11050`; clean bounded exit | Coherent splash/loading only; content handoff open | Share the SAT handoff investigation |
 | `11052` | SAT Prep Mathematics | Same two-resource loader and coherent splash/spinner path as `11050`; clean bounded exit | Coherent splash/loading only; content handoff open | Share the SAT handoff investigation |
-| `12345` | Vortex | 700 frames and continuously changing hashes; recognizable Vortex title art, but no content scene | Animated splash/title only | Decode the VBO/vertex indirection around ordinals 175/125 |
+| `12345` | Vortex | Direct-HLE oracle comparison now reaches the same `circuits.ipd`, `bgAlpha.ipd`, `lava.ipd`, and `circuits_Door1.ipd` asset sequence as PR #3; generic GL color-array interpolation restores the colored ring, circuit background, logo, and `PRESS SELECT` title capture with 165 draws per frame and no fatal signature | Full-color animated title art is visually coherent; gameplay/content transition, input, sound, and long-run parity remain open | Drive the title through its Select/input transition and compare the first content scene against PR #3 |
 | `14004` | Ms. PAC-MAN | Normal path completes the four measured async stages, reaches name entry/main menu/Play Game/tutorial, then reaches a controllable Stage 1 maze and advances the score 0→160 with raw clickwheel quadrant input; the maze UV-edge matcher now selects the 256×256 `tex_maze_blue.bin` upload despite the guest's integer `v=257` boundary, with zero triangle-strip upload skips through guest frame 749; a bounded route produces `die.wav`, visibly decrements the life counter, and resets to `READY!`; a follow-up maps all 20 WAV sources and dispatches 18 observed events through the headed sink | Normal-path Stage 1, zero maze UV/upload skips, one collision/life cycle, and headed WAV dispatch verified; persistence, full-content, physical-mixer, and long-run play remain open | Verify repeated collision/life cycles, persistence, full content, and long-run play |
 | `1500C` | The Sims Bowling | Focused 2026-08-27 release checkpoint: 700 guest frames, 39 hashes/changes, up to two draws, two zero-draw rows, and no fatal signatures; the default path decodes `GL_TEXTURE_RECTANGLE`/`GL_PALETTE8_RGBA8_OES` and shows a small legible `The` follow-up element, but menu/gameplay is not reached | Title + partial follow-up | Decode the `gameLib.rlb`/scene handoff, then exercise bowling controls |
 | `1500E` | The Sims Pool | Focused 2026-08-27 release checkpoint: 700 guest frames, 31 hashes/changes, up to two draws, one zero-draw row, and no fatal signatures; the default path shows a small colored `The` follow-up element through the ordinary `297x75` atlas, but menu/gameplay is not reached | Title + partial follow-up | Decode the `gameLib.rlb`/scene handoff, then exercise aim/power/spin |
@@ -93,6 +93,9 @@ headed audio receipt, and Ms. PAC-MAN and PAC-MAN have normal-path maze/input
 results; all remain incomplete under the project goal. The Ms. PAC-MAN details are in the
 [gameplay probe](20260827_mspacman_gameplay_probe.md), with the maze texture-selection
 follow-up in the [UV-edge probe](20260828_mspacman_uv_edge_probe.md).
+The Vortex direct-HLE and renderer follow-up is in the
+[PR #3 comparison](20260828_pr3_reference_comparison.md) and
+[vertex-color probe](20260828_vortex_pr3_vertex_colors.md).
 The PAC-MAN follow-ups are in the
 [PAC-MAN gameplay probe](20260828_pacman_gameplay_probe.md) and the
 [indexed-quad probe](20260828_pacman_indexed_quads_probe.md), with the first
