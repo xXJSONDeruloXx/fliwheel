@@ -467,10 +467,11 @@ impl LiveGlState {
         self.pointer_text_carry_handle = None;
         self.pointer_text_carry = (0.0, 0.0);
         // Most titles redraw a complete scene every frame. Tetris instead
-        // submits only changed cells after its initial board composition, so
-        // its real GL surface must retain prior pixels until the guest issues
-        // an explicit color clear.
-        if self.game_id != "66666" {
+        // submits only changed cells after its initial board composition, and
+        // Vortex's transition/menu frames overlay partial scenes without
+        // issuing a clear. Those GL surfaces must retain prior pixels until
+        // the guest explicitly clears them.
+        if !matches!(self.game_id.as_str(), "66666" | "12345") {
             self.framebuffer = vec![Rgba8::rgba(0, 0, 0, 0); FB_PIXELS];
         }
         self.draws.clear();
@@ -2470,6 +2471,11 @@ mod tests {
         assert!(lg.board_base_translation_valid);
         assert!(!lg.frame_material_bound);
         assert!(lg.use_incremental_translation);
+
+        let mut vortex = LiveGlState::new(true, false, false, "12345".to_string());
+        vortex.framebuffer[0] = Rgba8::rgba(70, 80, 90, 255);
+        vortex.reset_for_frame();
+        assert_eq!(vortex.framebuffer[0], Rgba8::rgba(70, 80, 90, 255));
     }
 
     #[test]
