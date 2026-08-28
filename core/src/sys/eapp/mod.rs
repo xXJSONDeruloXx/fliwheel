@@ -6853,7 +6853,7 @@ impl Eapp {
                 // fixed address because every EAPP binary has its own code
                 // layout. Keep whole-file completion title-scoped and
                 // opt-in: Tetris, Texas Hold'em, and Royal Solitaire have
-                // separate probes, while Sudoku's and The Sims' RLB
+                // separate probes, while Sudoku's, The Sims', and Ms. PAC-MAN's
                 // completion remain diagnostic experiments until their
                 // post-callback scene contracts are understood.
                 let owner = args[3];
@@ -6882,6 +6882,11 @@ impl Eapp {
                     .bundle_dir
                     .to_str()
                     .map_or(false, |p| p.contains("50514"));
+                let is_mspacman = self
+                    .metadata
+                    .bundle_dir
+                    .to_str()
+                    .map_or(false, |p| p.contains("14004"));
                 let tetris_complete = is_tetris
                     && fliwheel_var("EAPP_ASYNC3_COMPLETE")
                         .map(|v| v == "1" || v == "true")
@@ -6902,12 +6907,17 @@ impl Eapp {
                     && fliwheel_var("EAPP_ROYAL_ASYNC0_COMPLETE")
                         .map(|v| v == "1" || v == "true")
                         .unwrap_or(false);
+                let mspacman_complete = is_mspacman
+                    && fliwheel_var("EAPP_MSPACMAN_ASYNC0_COMPLETE")
+                        .map(|v| v == "1" || v == "true")
+                        .unwrap_or(false);
                 let complete =
                     tetris_complete
                         || texas_complete
                         || sudoku_complete
                         || sims_complete
-                        || royal_complete;
+                        || royal_complete
+                        || mspacman_complete;
                 let callback_pc = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
                 if let Some(host_path) = self.resolve_or_create_host_path(&path) {
                     self.note_audio_asset_path(&host_path);
@@ -7251,6 +7261,11 @@ impl Eapp {
                                     self.metadata.bundle_dir.to_str().map_or(false, |p| {
                                         p.contains("44444") || p.contains("55555")
                                     });
+                                let is_mspacman = self
+                                    .metadata
+                                    .bundle_dir
+                                    .to_str()
+                                    .map_or(false, |p| p.contains("14004"));
                                 let tetris_complete = is_tetris
                                     && fliwheel_var("EAPP_ASYNC3_COMPLETE")
                                         .map(|v| v == "1" || v == "true")
@@ -7269,15 +7284,22 @@ impl Eapp {
                                 // still use their separately proven contracts.
                                 let popcap_resource_read = is_popcap
                                     && host_path.extension().map_or(false, |ext| ext == "ro");
+                                let mspacman_resource_read = is_mspacman
+                                    && fliwheel_var("EAPP_MSPACMAN_ASYNC3_COMPLETE")
+                                        .map(|v| v == "1" || v == "true")
+                                        .unwrap_or(false);
                                 let complete =
-                                    tetris_complete || texas_complete || popcap_resource_read;
+                                    tetris_complete
+                                        || texas_complete
+                                        || popcap_resource_read
+                                        || mspacman_resource_read;
                                 if complete {
                                     let status = if texas_complete {
                                         std::env::var("EAPP_TEXAS_ASYNC3_STATUS")
                                             .ok()
                                             .and_then(|v| v.parse::<u32>().ok())
                                             .unwrap_or(0)
-                                    } else if popcap_resource_read {
+                                    } else if popcap_resource_read || mspacman_resource_read {
                                         0
                                     } else {
                                         1
