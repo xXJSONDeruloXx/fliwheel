@@ -194,6 +194,10 @@ pub struct LiveGlState {
     pub use_incremental_translation: bool,
     /// State set by OpenGLES:13 and consumed by OpenGLES:12.
     pub clear_color: Rgba8,
+    /// Current fixed-function colour register. OpenGLES:147/148/120 update
+    /// this state; the direct PR runner records it even when default rendering
+    /// leaves ordinary RGBA texture draws unmodulated.
+    pub modulate: Rgba8,
     /// Pointer-backed text materials issue one full base translation for the
     /// first glyph, then only per-glyph deltas before subsequent DrawArrays
     /// calls. Keep that accumulated text cursor separately so the generic
@@ -299,6 +303,7 @@ impl LiveGlState {
             previous_frame_draw_count: 0,
             use_incremental_translation: false,
             clear_color: Rgba8::rgba(0, 0, 0, 255),
+            modulate: Rgba8::rgba(255, 255, 255, 255),
             pointer_text_carry_handle: None,
             pointer_text_carry: (0.0, 0.0),
             framebuffer: vec![Rgba8::rgba(0, 0, 0, 0); FB_PIXELS],
@@ -381,6 +386,10 @@ impl LiveGlState {
 
     pub fn set_clear_color(&mut self, color: Rgba8) {
         self.clear_color = color;
+    }
+
+    pub fn set_modulate(&mut self, color: Rgba8) {
+        self.modulate = color;
     }
 
     pub fn clear(&mut self, mask: u32) {
@@ -840,7 +849,7 @@ impl LiveGlState {
             return Some(idx);
         }
 
-        self.select_smallest_containing_upload_with_tex_name(tex_name, max_u, max_v)
+        self.select_latest_containing_upload_with_tex_name(tex_name, max_u, max_v)
     }
 
     /// Generated text UVs describe one glyph cell inside a font atlas. Prefer
@@ -914,7 +923,11 @@ impl LiveGlState {
             .map(|u| u.index)
     }
 
-    fn select_smallest_containing_upload_with_tex_name(
+    /// Texture names are mutable GL objects: a later upload replaces the
+    /// earlier contents. Keep the history for diagnostics, but resolve a
+    /// same-name UV fallback in upload order so a stale smaller texture cannot
+    /// win merely because it contains the requested sub-rectangle.
+    fn select_latest_containing_upload_with_tex_name(
         &self,
         tex_name: u32,
         max_u: f32,
@@ -924,13 +937,13 @@ impl LiveGlState {
         let need_h = needed_texture_extent_from_centered_uv(max_v);
         self.uploads
             .iter()
-            .filter(|u| {
+            .rev()
+            .find(|u| {
                 u.texture.is_some()
                     && u.tex_name == Some(tex_name)
                     && texture_extent_contains_uv(u.width, need_w, max_u)
                     && texture_extent_contains_uv(u.height, need_h, max_v)
             })
-            .min_by_key(|u| (u.width * u.height, u.index))
             .map(|u| u.index)
     }
 
@@ -1795,6 +1808,40 @@ mod tests {
                 .or_else(|| lg.select_upload_for_uv_slice_with_tex_name(0x8, &menu_strip_uvs))
                 .or_else(|| lg.select_upload_for_uvs(&menu_strip_uvs)),
             Some(0)
+        );
+    }
+
+    #[test]
+    fn same_tex_name_uv_fallback_prefers_latest_reload() {
+        let mut lg = LiveGlState::new(true, false, false, "test".to_string());
+        // The old contents fit the sub-rectangle, but the later upload is the
+        // current contents of the same mutable GL texture object.
+        lg.uploads.push(LiveGlState::build_upload(
+            0,
+            0x0de1,
+            320,
+            240,
+            0x1908,
+            0x8034,
+            0x1000_0000,
+            &vec![0; 320 * 240 * 2],
+            Some(0x0b),
+        ));
+        lg.uploads.push(LiveGlState::build_upload(
+            1,
+            0x0de1,
+            510,
+            404,
+            0x1908,
+            0x8034,
+            0x1000_0010,
+            &vec![0; 510 * 404 * 2],
+            Some(0x0b),
+        ));
+        let uvs = [(0.0, 124.0), (120.0, 124.0), (120.0, 197.0), (0.0, 197.0)];
+        assert_eq!(
+            lg.select_upload_for_uv_slice_with_tex_name(0x0b, &uvs),
+            Some(1)
         );
     }
 

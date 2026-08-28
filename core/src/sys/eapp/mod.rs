@@ -2519,6 +2519,22 @@ impl Eapp {
                 self.live_handle_translate(args);
                 0
             }
+            // OpenGLES:147 is the scalar fixed-point form of the colour
+            // register update. LOST uses it for the translucent black bars
+            // over the episode background; 148/120 are the vector fixed and
+            // float forms used by other clickwheel titles.
+            147 => {
+                self.live_handle_uniform4x_scalar(args);
+                0
+            }
+            148 => {
+                self.live_handle_uniform4x(args, true);
+                0
+            }
+            120 => {
+                self.live_handle_uniform4x(args, false);
+                0
+            }
             159 => {
                 self.live_handle_bind_material(args);
                 // LOST checks the pipeline-select result before entering its
@@ -2705,13 +2721,6 @@ impl Eapp {
             }
             // Draw-adjacent state ordinals; recorded by observation only.
             175 | 149 | 125 | 36 => 0,
-            // Ordinal 148 appears before pointer-backed material draws in the
-            // menu phase. Evidence: r0=4, r1=1, r2=0x101029e8 (work RAM ptr).
-            // Semantics not yet confirmed — capture args for analysis.
-            148 => {
-                self.live_handle_ordinal_148(args);
-                0
-            }
             // Ordinal 4: glBindTexture(target, texture).
             // r0=target (e.g. 0xDE1=GL_TEXTURE_2D), r1=texture_name.
             // Capture the texture name so that the next ordinal-99 upload
@@ -3507,6 +3516,71 @@ impl Eapp {
         debug!(target: "EAPP_GL", "live_clear mask={:#x}", mask);
     }
 
+    fn live_set_uniform_color(&mut self, location: i32, values: [f32; 4]) {
+        if location != 4 {
+            return;
+        }
+        let to_u8 = |value: f32| (value.clamp(0.0, 1.0) * 255.0).round() as u8;
+        let color = Rgba8::rgba(
+            to_u8(values[0]),
+            to_u8(values[1]),
+            to_u8(values[2]),
+            to_u8(values[3]),
+        );
+        if let Some(lg) = self.live_gl.as_mut() {
+            lg.set_modulate(color);
+        }
+        debug!(
+            target: "EAPP_GL",
+            "live_uniform_color loc={} rgba=({},{},{},{})",
+            location,
+            color.r,
+            color.g,
+            color.b,
+            color.a
+        );
+    }
+
+    /// OpenGLES:148/120, glUniform4x[v] at the colour-register location.
+    /// `fixed` selects the 16.16 fixed-point or IEEE-float payload form.
+    fn live_handle_uniform4x(&mut self, args: [u32; 4], fixed: bool) {
+        let location = args[0] as i32;
+        let count = args[1];
+        let pointer = args[2];
+        if count == 0 || pointer == 0 {
+            return;
+        }
+        let decode = |word: u32| {
+            if fixed {
+                word as i32 as f32 / 65_536.0
+            } else {
+                f32::from_bits(word)
+            }
+        };
+        let mut values = [0.0; 4];
+        for (index, value) in values.iter_mut().enumerate() {
+            let Some(word) = self.read_guest_u32(pointer.wrapping_add((index * 4) as u32)) else {
+                return;
+            };
+            *value = decode(word);
+        }
+        self.live_set_uniform_color(location, values);
+    }
+
+    /// OpenGLES:147, glUniform4xAPPLE(location, x, y, z, w). The fourth
+    /// component is the first stack argument in the ARM import ABI.
+    fn live_handle_uniform4x_scalar(&mut self, args: [u32; 4]) {
+        let stack = self.cpu.reg_get(self.cpu.mode(), reg::SP);
+        let Some(w) = self.read_guest_u32(stack) else {
+            return;
+        };
+        let decode = |word: u32| word as i32 as f32 / 65_536.0;
+        self.live_set_uniform_color(
+            args[0] as i32,
+            [decode(args[1]), decode(args[2]), decode(args[3]), decode(w)],
+        );
+    }
+
     /// Ordinal 159: record the small selector/handle (r0) and state blob
     /// pointer (r1). The exact handle-creation path remains unsolved.
     fn live_handle_bind_material(&mut self, args: [u32; 4]) {
@@ -3749,58 +3823,6 @@ impl Eapp {
         }
     }
 
-    /// Ordinal 148: observed immediately before pointer-backed material
-    /// draws in the menu phase. Evidence from first live observation:
-    ///   r0=4, r1=1, r2=0x101029e8 (work RAM ptr), r3=0
-    /// Appears between `159(handle=0x8)` and the next `137` array def.
-    /// Semantics not yet confirmed; logged for analysis.
-    fn live_handle_ordinal_148(&mut self, args: [u32; 4]) {
-        let ptr_r2 = args[2];
-        if !texgen_verbose_enabled() {
-            return;
-        }
-        info!(
-            target: "EAPP_GL",
-            "ordinal_148 r0={} r1={} r2={:#010x} r3={}",
-            args[0], args[1], ptr_r2, args[3]
-        );
-        // Dump guest memory at r2 when it is a valid work-RAM pointer.
-        if (WORK_RAM_BASE..WORK_RAM_BASE + WORK_RAM_SIZE as u32).contains(&ptr_r2) && ptr_r2 != 0 {
-            let words = self.read_guest_words(ptr_r2, 32);
-            let hex: Vec<String> = words.iter().map(|w| format!("{:#010x}", w)).collect();
-            info!(target: "EAPP_GL", "ordinal_148 r2_dump addr={:#010x} words=[{}]", ptr_r2, hex.join(","));
-            // The descriptor has 7 sub-pointers at offsets [13..19] (words).
-            // Dump each one to see glyph vertex/UV tables.
-            for slot in 13..20usize {
-                if slot >= words.len() {
-                    break;
-                }
-                let sub_ptr = words[slot];
-                if !(WORK_RAM_BASE..WORK_RAM_BASE + WORK_RAM_SIZE as u32).contains(&sub_ptr)
-                    || sub_ptr == 0
-                {
-                    continue;
-                }
-                // Dump 16 words (enough for 4 vertices of 4 comps).
-                let sub = self.read_guest_words(sub_ptr, 16);
-                let sub_rendered: Vec<String> = sub
-                    .iter()
-                    .map(|w| {
-                        let f = decode_fixed_16_16(*w);
-                        format!("{:#010x}({:.2})", w, f)
-                    })
-                    .collect();
-                info!(
-                    target: "EAPP_GL",
-                    "ordinal_148 glyph_table slot={} ptr={:#010x} words=[{}]",
-                    slot,
-                    sub_ptr,
-                    sub_rendered.join(",")
-                );
-            }
-        }
-    }
-
     /// Dump guest memory structures for a pointer-backed material handle.
     /// This is a diagnostic called once per unique handle value observed at
     /// ordinal-159, so we can trace the object layout without flooding logs.
@@ -3965,6 +3987,7 @@ impl Eapp {
             state_ptr,
             bound_tex_name,
             translation,
+            modulate,
             pos_def,
             pos_enabled,
             enabled_arrays,
@@ -3995,6 +4018,7 @@ impl Eapp {
                     lg.current_state_ptr,
                     lg.bound_tex_name,
                     lg.translation,
+                    lg.modulate,
                     lg.arrays.get(&0).cloned(),
                     lg.enabled_arrays.contains(&0),
                     enabled_arrays,
@@ -4005,6 +4029,13 @@ impl Eapp {
                 )
             };
         let _ = material_epoch;
+        if modulate == Rgba8::rgba(0, 0, 0, 0) {
+            if let Some(lg) = self.live_gl.as_mut() {
+                lg.note_skipped_draw("zero colour register".to_string());
+            }
+            self.live_finalize_draw(None);
+            return;
+        }
         let state_words = self.read_guest_words(state_ptr, 16);
         let positions = match self.live_decode_positions_range(
             &pos_def,
@@ -4033,6 +4064,9 @@ impl Eapp {
             first,
             count,
         );
+        // Match the PR runner's default no-modulate policy for ordinary
+        // texture draws. The guest register remains available for logging and
+        // zero-register suppression; generated font tinting is handled below.
         let tint = Rgba8::rgba(255, 255, 255, 255);
         let mut record = match self.live_gl.as_mut() {
             Some(lg) => lg.rasterize_triangle_strip_record(
@@ -4130,6 +4164,7 @@ impl Eapp {
             state_ptr,
             bound_tex_name,
             translation,
+            modulate,
             pos_def,
             pos_enabled,
             enabled_arrays,
@@ -4159,6 +4194,7 @@ impl Eapp {
                     lg.current_state_ptr,
                     lg.bound_tex_name,
                     lg.translation,
+                    lg.modulate,
                     lg.arrays.get(&0).cloned(),
                     lg.enabled_arrays.contains(&0),
                     enabled_arrays,
@@ -4167,6 +4203,13 @@ impl Eapp {
                     explicit_uv_enabled,
                 )
             };
+        if modulate == Rgba8::rgba(0, 0, 0, 0) {
+            if let Some(lg) = self.live_gl.as_mut() {
+                lg.note_skipped_draw("zero colour register".to_string());
+            }
+            self.live_finalize_draw(None);
+            return;
+        }
         let state_words = self.read_guest_words(state_ptr, 16);
         let positions = match self.live_decode_positions_indices(
             &pos_def,
@@ -4311,6 +4354,7 @@ impl Eapp {
             state_ptr,
             bound_tex_name,
             translation,
+            modulate,
             pos_def,
             pos_enabled,
             enabled_arrays,
@@ -4341,6 +4385,7 @@ impl Eapp {
                     lg.current_state_ptr,
                     lg.bound_tex_name,
                     lg.translation,
+                    lg.modulate,
                     lg.arrays.get(&0).cloned(),
                     lg.enabled_arrays.contains(&0),
                     enabled_arrays,
@@ -4350,6 +4395,13 @@ impl Eapp {
                     explicit_uv_enabled,
                 )
             };
+        if modulate == Rgba8::rgba(0, 0, 0, 0) {
+            if let Some(lg) = self.live_gl.as_mut() {
+                lg.note_skipped_draw("zero colour register".to_string());
+            }
+            self.live_finalize_draw(None);
+            return;
+        }
         let pointer_handle =
             (WORK_RAM_BASE..WORK_RAM_BASE + WORK_RAM_SIZE as u32).contains(&handle);
         // Decode the generated UVs before positions are translated.  Tetris

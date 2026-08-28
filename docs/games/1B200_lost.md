@@ -95,6 +95,25 @@ Evidence:
 - fliwheel frame 761: `/tmp/fliwheel_lost_gameplay_565d/capture/startup_g000761_host000048126956_hash119a9989d214354e.ppm`
 - PR #3 comparison captures: `/tmp/ipod-shot-02.png`, `/tmp/ipod-shot-03.png`
 
+### Uniform register and reload parity probe (2026-08-28)
+
+The PR direct runner used for the comparison has its default `no_modulate`
+policy enabled. It records OpenGLES:147/148/120 colour-register writes and
+suppresses an all-zero register, but leaves nonzero register values off for
+ordinary RGBA texture draws. Applying the register globally in fliwheel made
+the episode background black; the HLE now records the register while keeping
+ordinary RGBA draws white, retaining the existing generated-font tint path.
+
+The same trace also exposed a temporal texture rule: re-uploading a GL name
+replaces that texture object in place. At guest frame 761, the three episode
+quads now all resolve to the latest 510x404 upload (`#26`) rather than the
+older 320x240 upload. The jungle scene matches the PR composition; its bars
+remain a filtering/blend difference still tracked below.
+
+Evidence: `/tmp/fliwheel_lost_nomodulate/run.log`,
+`/tmp/fliwheel_lost_nomodulate/capture/startup_g000761_host000044543790_hashc73c3375d6053ae5.ppm`,
+and PR frame 770 `/tmp/ipod-shot-03.png`.
+
 ---
 
 ## 1. Architecture
