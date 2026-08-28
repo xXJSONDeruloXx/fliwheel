@@ -1,6 +1,6 @@
 # Ms. Pac-Man (Bundle 14004)
 
-**Status:** ⚠️ LOADING SCREEN ONLY | **Evidence:** scripted probe reaches Namco loading art with texture/text artifacts | **Engine:** Tetris Runtime
+**Status:** ⚠️ CLEAN LOADING SCREEN ONLY | **Evidence:** title-scoped live-GL probe holds a stable Namco loading screen after all observed resource/audio callbacks; gameplay is not reached | **Engine:** Tetris Runtime
 
 ## Quick Start
 ```bash
@@ -11,16 +11,18 @@
 
 ## Bundle Info
 - **Executable:** `mspacman_1_1_2805293.bin` (eapp format)
-- **Asset Format:** `.wav` (20 files) — no .pix or .ipd, uses built-in textures
+- **Asset Format:** `.wav` (20 files), `MsPAC-MAN.raw.lcd5`, and 22 packed `.bin` texture atlases
 
 ## Assets
 - **Audio:** 20 `.wav` files for game sounds (coin, die, eat ghost, fruit bounce, etc.)
-- **No external textures** — all graphics are generated procedurally or from code
+- **Textures:** the `.bin` atlases are requested through the guest async-resource path and include fonts, UI, maze, fruit, tutorial, and gameplay sheets
 
 ## Notable
 - Classic arcade game with simple but recognizable graphics
-- One of the few games with purely `.wav` audio assets
-- No .pix/.ipd texture files — all rendering from embedded data
+- The live renderer now preserves the untagged 512×256 launch upload for the
+  unbound `0x19` material instead of selecting later font/UI atlases by size
+- The guest still remains on the loading screen after the diagnostic completion
+  probes; these overrides are not part of the default contract
 
 ## Environment
 ```bash

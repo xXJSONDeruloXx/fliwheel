@@ -12,8 +12,8 @@ older pages retain historical investigation notes and are not completion claims.
 | Tetris | 66666 | 🟡 Core controls + centered board; gameplay parity open | [→](66666_tetris.md) |
 | Cubis 2 | 99999 | ❌ Asset/renderer blocked | [→](99999_cubis2.md) |
 | Texas Hold'em | 33333 | 🟡 Default loading-only; scoped experiment reaches partial first scene | [→](33333_holdem.md) |
-| Ms. PAC-MAN | 14004 | 🟡 Loading screen only | [→](14004_mspacman.md) |
-| PAC-MAN | AAAAA | 🟡 Loading screen only | [→](AAAAA_pacman.md) |
+| Ms. PAC-MAN | 14004 | 🟡 Clean loading screen; guest handoff open | [→](14004_mspacman.md) |
+| PAC-MAN | AAAAA | 🟡 Partial board-like scene; gameplay open | [→](AAAAA_pacman.md) |
 | Mahjong | 77777 | 🟡 Texture/UV partial | [→](77777_mahjong.md) |
 | Mini Golf | 88888 | 🟡 Loading/progress only | [→](88888_minigolf.md) |
 | The Sims Bowling | 1500C | 🟡 Coherent title screen; follow-up/gameplay open | [→](1500C_simsbowling.md) |

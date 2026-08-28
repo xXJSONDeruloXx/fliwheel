@@ -1,6 +1,6 @@
 # Pac-Man (Bundle AAAAA)
 
-**Status:** ⚠️ LOADING SCREEN ONLY | **Evidence:** scripted probe reaches Namco loading art but not the maze | **Engine:** Tetris Runtime
+**Status:** ⚠️ PARTIAL LOADING/BOARD SCENE | **Evidence:** fresh 700-frame probe reaches a stable board-like Namco scene with up to 57 draws, but no confirmed maze, menu, or playable input | **Engine:** Tetris Runtime
 
 ## Quick Start
 ```bash
@@ -22,7 +22,7 @@
 ## Notable
 - Sister game to Ms. Pac-Man, similar engine
 - Uses TGA texture format (rare among working games)
-- Full attract mode rendering
+- Partial board-like scene rendering; maze/menu/gameplay are not confirmed
 
 ## Environment
 ```bash

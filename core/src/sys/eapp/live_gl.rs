@@ -956,6 +956,28 @@ impl LiveGlState {
             .map(|u| u.index)
     }
 
+    /// Ms. PAC-MAN's launch image is uploaded before the named `.bin`
+    /// textures, then sampled through material `0x19` while the guest has no
+    /// nonzero texture bind active. Dimension-only inference otherwise steals
+    /// these subrect draws for the later font/UI atlases. Keep this fallback
+    /// title-scoped and require the distinctive untagged 512x256 upload; named
+    /// binds still take precedence for later scenes.
+    fn select_mspacman_initial_splash_upload(&self, handle: u32) -> Option<usize> {
+        if self.game_id != "14004" || handle != 0x19 {
+            return None;
+        }
+        self.uploads
+            .iter()
+            .find(|u| {
+                u.texture.is_some()
+                    && u.width == 512
+                    && u.height == 256
+                    && u.tex_name.is_none()
+                    && u.source_file.is_none()
+            })
+            .map(|u| u.index)
+    }
+
     /// Rasterize one draw into the internal framebuffer using the existing
     /// rasterizer. Returns the produced `LiveDrawRecord`.
     pub fn rasterize_draw(
@@ -1010,6 +1032,7 @@ impl LiveGlState {
                 .and_then(|name| self.select_upload_for_uv_slice_with_tex_name(name, &uvs))
                 .or_else(|| self.select_upload_by_tex_name_containing(handle, &uvs))
                 .or_else(|| self.select_upload_for_uv_slice_with_tex_name(handle, &uvs))
+                .or_else(|| self.select_mspacman_initial_splash_upload(handle))
                 .or_else(|| self.select_upload_for_uvs(&uvs))
                 .or_else(|| self.select_popcap_surface_upload(handle, &uvs))
                 .or_else(|| {
@@ -1489,6 +1512,66 @@ mod tests {
             false,
         );
         assert_eq!(frog.selected_upload, Some(0));
+    }
+
+    #[test]
+    fn mspacman_unbound_splash_draw_does_not_select_later_ui_atlas() {
+        let mut mspacman = LiveGlState::new(true, false, false, "14004".to_string());
+        mspacman.uploads.push(LiveGlState::build_upload(
+            0,
+            0x0de1,
+            512,
+            256,
+            0x1908,
+            0x8034,
+            0x1804_75f8,
+            &vec![0; 512 * 256 * 2],
+            None,
+        ));
+        mspacman.uploads.push(LiveGlState::build_upload(
+            1,
+            0x0de1,
+            256,
+            128,
+            0x1907,
+            0x8363,
+            0x1804_75f8,
+            &vec![0; 256 * 128 * 2],
+            Some(0x4),
+        ));
+        let positions = [(0.0, 0.0), (244.0, 0.0), (244.0, 105.0), (0.0, 105.0)];
+        let uvs = [(0.5, 0.5), (244.5, 0.5), (244.5, 105.5), (0.5, 105.5)];
+        let splash = mspacman.rasterize_draw(
+            0,
+            0x19,
+            0,
+            None,
+            (0.0, 0.0),
+            positions,
+            uvs,
+            true,
+            None,
+            Rgba8::rgba(255, 255, 255, 255),
+            false,
+        );
+        assert_eq!(splash.selected_upload, Some(0));
+
+        let mut generic = LiveGlState::new(true, false, false, "test".to_string());
+        generic.uploads = mspacman.uploads.clone();
+        let generic_draw = generic.rasterize_draw(
+            0,
+            0x19,
+            0,
+            None,
+            (0.0, 0.0),
+            positions,
+            uvs,
+            true,
+            None,
+            Rgba8::rgba(255, 255, 255, 255),
+            false,
+        );
+        assert_eq!(generic_draw.selected_upload, Some(1));
     }
 
     #[test]
