@@ -13,11 +13,15 @@
 //! - the flip is a diagnostic/presentation convenience, not a confirmed ABI rule.
 
 use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use super::gl_decode::{format_from_gl, pix_payload_size};
 use super::rasterizer::{
-    framebuffer_hash, framebuffer_to_ppm, rasterize_quad_tinted, rasterize_solid_quad,
-    rasterize_triangle_tinted, Rgba8, Texture, TextureFormat,
+    decode_manifest_texture, framebuffer_hash, framebuffer_to_ppm, manifest_texture_paths,
+    rasterize_quad_tinted, rasterize_quad_tinted_with_vertex_colors, rasterize_solid_quad,
+    rasterize_triangle_tinted, rasterize_triangle_tinted_with_vertex_colors, Rgba8, Texture,
+    TextureFormat,
 };
 
 pub const FB_WIDTH: usize = 320;
@@ -35,6 +39,37 @@ fn ndc_to_pixel_position((x, y): (f32, f32)) -> (f32, f32) {
         x / NDC_VIEW_MAX_X * FB_WIDTH as f32,
         y / NDC_VIEW_MAX_Y * FB_HEIGHT as f32,
     )
+}
+
+fn sorted_bundle_files(root: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        let Ok(entries) = fs::read_dir(directory) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                pending.push(path);
+            } else {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    files
+}
+
+fn manifest_gl_format(format: TextureFormat) -> (u32, u32) {
+    match format {
+        TextureFormat::Rgb565 => (0x1907, 0x8363), // GL_RGB / GL_UNSIGNED_SHORT_5_6_5
+        TextureFormat::Rgba5551 => (0x1908, 0x8034), // GL_RGBA / GL_UNSIGNED_SHORT_5_5_5_1
+        TextureFormat::Rgba4444 => (0x1908, 0x8033), // GL_RGBA / GL_UNSIGNED_SHORT_4_4_4_4
+        TextureFormat::Rgba8888 => (0x1908, 0x1401), // GL_RGBA / GL_UNSIGNED_BYTE
+        TextureFormat::LuminanceAlpha88 => (0x190a, 0x1401),
+        TextureFormat::A8 => (0x1906, 0x1401), // GL_ALPHA / GL_UNSIGNED_BYTE
+    }
 }
 
 /// GL_FIXED (0x140c) enumerant confirmed by disassembly for the position/UV
@@ -126,6 +161,9 @@ pub struct LiveDrawRecord {
     pub positions: [(f32, f32); 4],
     pub uvs: [(f32, f32); 4],
     pub has_uv: bool,
+    /// Optional primary colour from the guest's enabled GL colour array,
+    /// retained for diagnostics and applied during textured rasterization.
+    pub vertex_colors: Option<[[f32; 4]; 4]>,
     pub solid_color: Option<Rgba8>,
     pub tint: Rgba8,
     pub used_generated_uvs: bool,
@@ -345,6 +383,67 @@ impl LiveGlState {
             text_char_seqs: HashMap::new(),
             text_char_consumed: HashMap::new(),
         }
+    }
+
+    /// Pre-load the image resources listed by `Manifest.plist` as synthetic
+    /// GL texture names. PR #3's direct HLE does this before the guest frame
+    /// loop, which is materially different from waiting for an eApp to issue
+    /// a matching `glTexImage2D` upload. The guest still owns later uploads;
+    /// those are appended and can supersede a preloaded name through the
+    /// normal newest-upload selection rules.
+    pub fn preload_bundle_textures(&mut self, root: &Path) -> Vec<String> {
+        let paths = manifest_texture_paths(&root.join("Manifest.plist"))
+            .map(|paths| {
+                paths
+                    .into_iter()
+                    .filter(|path| !path.to_ascii_lowercase().contains("executables"))
+                    .map(|path| root.join(path.replace('\\', "/")))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_else(|| sorted_bundle_files(root));
+
+        let mut next_name = 1u32;
+        let mut loaded = Vec::new();
+        for path in paths {
+            let Ok(data) = fs::read(&path) else {
+                continue;
+            };
+            let Some(decoded) = decode_manifest_texture(&path, &data) else {
+                continue;
+            };
+            let name = next_name;
+            next_name = next_name.wrapping_add(1);
+            let index = self.uploads.len();
+            let format = decoded.format;
+            let texture = Texture {
+                width: decoded.width,
+                height: decoded.height,
+                pixels: decoded.pixels,
+            };
+            let (source_format, pixel_type) = manifest_gl_format(format);
+            self.uploads.push(LiveGlUpload {
+                index,
+                target: 0,
+                width: texture.width,
+                height: texture.height,
+                source_format,
+                pixel_type,
+                source_ptr: 0,
+                source_file: Some(path.display().to_string()),
+                source_file_offset: None,
+                format: Some(format),
+                texture: Some(texture),
+                tex_name: Some(name),
+            });
+            loaded.push(format!(
+                "preloaded tex#{name} <- {} ({}x{}, {:?})",
+                path.file_name().unwrap_or_default().to_string_lossy(),
+                decoded.width,
+                decoded.height,
+                format
+            ));
+        }
+        loaded
     }
 
     /// Reset per-frame accumulators. Uploads persist (they happen once at
@@ -1026,6 +1125,40 @@ impl LiveGlState {
         tint: Rgba8,
         used_generated_uvs: bool,
     ) -> LiveDrawRecord {
+        self.rasterize_draw_with_vertex_colors(
+            draw_index,
+            handle,
+            state_ptr,
+            bound_tex_name,
+            translation,
+            positions,
+            uvs,
+            has_uv,
+            solid_color,
+            tint,
+            used_generated_uvs,
+            None,
+        )
+    }
+
+    /// Rasterize a draw with the optional primary colours carried by a guest
+    /// colour array. The plain `rasterize_draw` wrapper preserves the existing
+    /// call shape for title paths that only provide positions and UVs.
+    pub fn rasterize_draw_with_vertex_colors(
+        &mut self,
+        draw_index: usize,
+        handle: u32,
+        state_ptr: u32,
+        bound_tex_name: Option<u32>,
+        translation: (f32, f32),
+        positions: [(f32, f32); 4],
+        uvs: [(f32, f32); 4],
+        has_uv: bool,
+        solid_color: Option<Rgba8>,
+        tint: Rgba8,
+        used_generated_uvs: bool,
+        vertex_colors: Option<[[f32; 4]; 4]>,
+    ) -> LiveDrawRecord {
         let bounds = bounds_for(&positions);
         let inferred_dim = if has_uv {
             let (w, h) = infer_dims_from_uvs(&uvs);
@@ -1089,6 +1222,7 @@ impl LiveGlState {
             positions,
             uvs,
             has_uv,
+            vertex_colors,
             solid_color,
             tint,
             used_generated_uvs,
@@ -1149,15 +1283,28 @@ impl LiveGlState {
             return record;
         };
 
-        record.coverage = rasterize_quad_tinted(
-            &mut self.framebuffer,
-            FB_WIDTH,
-            FB_HEIGHT,
-            &texture,
-            &pixel_positions,
-            &uvs,
-            tint,
-        );
+        record.coverage = if let Some(vertex_colors) = vertex_colors.as_ref() {
+            rasterize_quad_tinted_with_vertex_colors(
+                &mut self.framebuffer,
+                FB_WIDTH,
+                FB_HEIGHT,
+                &texture,
+                &pixel_positions,
+                &uvs,
+                tint,
+                Some(vertex_colors),
+            )
+        } else {
+            rasterize_quad_tinted(
+                &mut self.framebuffer,
+                FB_WIDTH,
+                FB_HEIGHT,
+                &texture,
+                &pixel_positions,
+                &uvs,
+                tint,
+            )
+        };
         record
     }
 
@@ -1172,8 +1319,35 @@ impl LiveGlState {
         uvs: Option<&[(f32, f32)]>,
         tint: Rgba8,
     ) -> LiveDrawRecord {
+        self.rasterize_triangle_strip_record_with_vertex_colors(
+            draw_index,
+            handle,
+            state_ptr,
+            bound_tex_name,
+            translation,
+            positions,
+            uvs,
+            tint,
+            None,
+        )
+    }
+
+    /// Triangle-strip counterpart to `rasterize_draw_with_vertex_colors`.
+    pub fn rasterize_triangle_strip_record_with_vertex_colors(
+        &mut self,
+        draw_index: usize,
+        handle: u32,
+        state_ptr: u32,
+        bound_tex_name: Option<u32>,
+        translation: (f32, f32),
+        positions: &[(f32, f32)],
+        uvs: Option<&[(f32, f32)]>,
+        tint: Rgba8,
+        vertex_colors: Option<&[[f32; 4]]>,
+    ) -> LiveDrawRecord {
         let positions4 = first_four_positions(positions);
         let uvs4 = uvs.map(first_four_uvs).unwrap_or([(0.0, 0.0); 4]);
+        let record_vertex_colors = vertex_colors.and_then(first_four_vertex_colors);
         let inferred_dim = uvs.map(infer_dims_from_uv_slice);
         let selected_upload = uvs
             .and_then(|uvs| {
@@ -1201,6 +1375,7 @@ impl LiveGlState {
             positions: positions4,
             uvs: uvs4,
             has_uv: uvs.is_some(),
+            vertex_colors: record_vertex_colors,
             solid_color: None,
             tint,
             used_generated_uvs: false,
@@ -1255,14 +1430,33 @@ impl LiveGlState {
                         uvs[i + 2].1,
                     ),
                 ];
-                record.coverage += rasterize_triangle_tinted(
-                    &mut self.framebuffer,
-                    FB_WIDTH,
-                    FB_HEIGHT,
-                    &texture,
-                    &tri,
-                    tint,
-                );
+                let tri_colors = vertex_colors.and_then(|colors| {
+                    Some([
+                        *colors.get(i)?,
+                        *colors.get(i + 1)?,
+                        *colors.get(i + 2)?,
+                    ])
+                });
+                record.coverage += if let Some(tri_colors) = tri_colors.as_ref() {
+                    rasterize_triangle_tinted_with_vertex_colors(
+                        &mut self.framebuffer,
+                        FB_WIDTH,
+                        FB_HEIGHT,
+                        &texture,
+                        &tri,
+                        tint,
+                        Some(tri_colors),
+                    )
+                } else {
+                    rasterize_triangle_tinted(
+                        &mut self.framebuffer,
+                        FB_WIDTH,
+                        FB_HEIGHT,
+                        &texture,
+                        &tri,
+                        tint,
+                    )
+                };
             }
         }
         record
@@ -1338,6 +1532,13 @@ fn first_four_uvs(uvs: &[(f32, f32)]) -> [(f32, f32); 4] {
         *dst = src;
     }
     out
+}
+
+fn first_four_vertex_colors(colors: &[[f32; 4]]) -> Option<[[f32; 4]; 4]> {
+    if colors.len() < 4 {
+        return None;
+    }
+    Some([colors[0], colors[1], colors[2], colors[3]])
 }
 
 /// Infer intended texture dimensions from texel-centered UVs. The captured

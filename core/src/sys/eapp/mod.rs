@@ -520,6 +520,14 @@ pub struct Eapp {
     render_state: Arc<Mutex<Vec<u32>>>,
     controls: Option<EappBinds>,
     next_alloc: u32,
+    /// Last texture name returned by the OpenGLES glGenTextures contract.
+    /// Zero remains the guest's unbound name; the first generated name is 1.
+    next_texture_name: u32,
+    /// Sizes of blocks returned by the low work-RAM allocator. Vortex grows
+    /// its localization strings through miscTBD:2 (realloc), so the HLE must
+    /// retain enough allocator metadata to preserve the old bytes and grow
+    /// the common top-of-heap block in place.
+    alloc_sizes: HashMap<u32, u32>,
     game_heap_next: u32,
     bootstrap_phase: BootstrapPhase,
     app_object: u32,
@@ -685,6 +693,15 @@ struct EappBus {
     work_ram: Ram,
     game_heap: Ram,
     dma_framebuf: Ram,
+    /// The direct HLE runner used by PR #3 returns zero for unmapped guest
+    /// reads. Vortex relies on that synthetic-memory behavior during startup;
+    /// keep it title-scoped until the same contract is verified for every
+    /// decrypted eApp.
+    zero_unmapped_reads: bool,
+    /// PR #3's direct HLE runner also makes stores to an unmapped address a
+    /// no-op. Keep this opt-in for the Vortex A/B because the existing
+    /// surface workaround intentionally relies on mapped backing storage.
+    zero_unmapped_writes: bool,
     /// Treat the 0x14000000 window as the PP502x uncached SDRAM alias when
     /// explicitly requested. The default synthetic hardware path is retained
     /// until the decrypted-game A/B result is accepted as the new contract.
@@ -812,6 +829,9 @@ impl Eapp {
 
     pub fn from_image(image: EappImage) -> Result<Eapp, EappBuildError> {
         let game_id = image.metadata.title.replace(' ', "_").to_ascii_lowercase();
+        let zero_unmapped_reads = image.metadata.title == "12345";
+        let zero_unmapped_writes = image.metadata.title == "12345"
+            && fliwheel_var_os("VORTEX_PR3_GL165").is_some();
         let render_state = Arc::new(Mutex::new(vec![DEFAULT_FRAMEBUFFER; SCREEN_PIXELS]));
         let input_state = Arc::new(Mutex::new(EappInputState::default()));
         let controls = make_controls(Arc::clone(&input_state));
@@ -865,6 +885,8 @@ impl Eapp {
                 work_ram,
                 game_heap,
                 dma_framebuf: Ram::new(320 * 240 * 2), // RGB565 320×240
+                zero_unmapped_reads,
+                zero_unmapped_writes,
                 uncached_sdram_alias: fliwheel_var_os("EAPP_UNCACHED_ALIAS").is_some(),
                 hw_control_value: Self::parse_hw_control_value_env(),
                 dma_source_dump_dir: fliwheel_var_os("EAPP_DMA_SOURCE_DUMP_DIR").map(PathBuf::from),
@@ -910,6 +932,8 @@ impl Eapp {
             render_state,
             controls: Some(controls),
             next_alloc: WORK_RAM_BASE + 0x1000,
+            next_texture_name: 0,
+            alloc_sizes: HashMap::new(),
             game_heap_next: GAME_HEAP_BASE,
             bootstrap_phase: BootstrapPhase::Entry,
             app_object: 0,
@@ -964,6 +988,48 @@ impl Eapp {
             usse_program: None,
             usse_vm: UsseVm::default(),
         };
+        let preload_manifest = fliwheel_var_os("GL_PRELOAD_MANIFEST")
+            .map(|value| value.to_string_lossy() == "1" || value.to_string_lossy() == "true")
+            .unwrap_or(false);
+        if preload_manifest {
+            let bundle_dir = eapp.metadata.bundle_dir.clone();
+            if let Some(lg) = eapp.live_gl.as_mut() {
+                let loaded = lg.preload_bundle_textures(&bundle_dir);
+                info!(
+                    target: "EAPP_GL",
+                    "manifest texture preload root={} loaded={}",
+                    bundle_dir.display(),
+                    loaded.len()
+                );
+                for entry in loaded {
+                    info!(target: "EAPP_GL", "{}", entry);
+                }
+            }
+        }
+        if eapp.metadata.title == "12345" {
+            // PR #3 calls Vortex's entry vector with the same RetailOS context
+            // used by its repeating frame vector. That context is preceded by
+            // the 0x90-byte Metadata playlist in the RetailOS heap, so both
+            // the pointer values and the guest allocator's first post-context
+            // block are part of the observable ABI. fliwheel normally creates
+            // its generic context after entry returns in low work RAM; use the
+            // direct-HLE layout here instead so address-sensitive game state
+            // selection is comparable to the oracle.
+            let _playlist = eapp.alloc_game_heap(0x90);
+            eapp.app_object = eapp.alloc_game_heap(0x400);
+            eapp.frame_context = eapp.app_object.wrapping_add(0x100);
+            let _ = eapp.write_guest_bytes(eapp.app_object, &[5]);
+            eapp.cpu.reg_set(eapp.cpu.mode(), 0, eapp.app_object);
+            eapp.cpu.reg_set(eapp.cpu.mode(), 1, eapp.frame_context);
+            eapp.cpu.reg_set(eapp.cpu.mode(), 2, 0);
+            eapp.cpu.reg_set(eapp.cpu.mode(), 3, 0);
+            info!(
+                target: "EAPP",
+                "VORTEX: prepared RetailOS context app_object={:#010x} frame_context={:#010x}",
+                eapp.app_object,
+                eapp.frame_context
+            );
+        }
         if eapp.metadata.title == "1B200" {
             // The direct runner starts by calling vector 0 with the shared
             // context. fliwheel normally starts execution at entry_addr before
@@ -2552,6 +2618,7 @@ impl Eapp {
                 0
             }
             45 => {
+                self.live_handle_gen_textures(args);
                 self.live_handle_resource_upload(args);
                 0
             }
@@ -2973,6 +3040,37 @@ impl Eapp {
             if self.live_gl.as_ref().map(|lg| lg.gate_b).unwrap_or(false) {
                 self.live_present_completed_to_window();
             }
+        }
+    }
+
+    /// Implement the ordinary `glGenTextures(n, out)` form seen by the Vortex
+    /// eApp. The old resource-descriptor probe also lives on ordinal 45 for a
+    /// few titles, so callers run that guarded probe afterward; the zero
+    /// `r2` marker distinguishes the generated-name ABI from its dimensioned
+    /// descriptor form.
+    fn live_handle_gen_textures(&mut self, args: [u32; 4]) {
+        let count = args[0];
+        let out = args[1];
+        if count == 0 || count > 256 || out == 0 || args[2] != 0 {
+            return;
+        }
+        let mut generated = 0u32;
+        for i in 0..count {
+            self.next_texture_name = self.next_texture_name.wrapping_add(1);
+            if !self.write_guest_u32(out.wrapping_add(i.wrapping_mul(4)), self.next_texture_name) {
+                break;
+            }
+            generated += 1;
+        }
+        if generated != 0 {
+            info!(
+                target: "EAPP_GL",
+                "glGenTextures n={} out={:#010x} first={} last={}",
+                generated,
+                out,
+                self.next_texture_name.saturating_sub(generated).saturating_add(1),
+                self.next_texture_name,
+            );
         }
     }
 
@@ -3457,6 +3555,52 @@ impl Eapp {
         }
     }
 
+    /// Resolve the two client-array roles used by the direct PR runner. Slot
+    /// 1 is normally UVs, but some titles use that slot for RGBA primary
+    /// colours; slot 2 is the common colour-array location when slot 1 remains
+    /// a two-component UV array. Keep the role decision based on component
+    /// count rather than assuming every non-position array is a UV array.
+    fn live_select_uv_and_color_arrays(
+        lg: &live_gl::LiveGlState,
+    ) -> (
+        Option<live_gl::LiveArrayDef>,
+        bool,
+        Option<live_gl::LiveArrayDef>,
+        bool,
+    ) {
+        let uv = lg
+            .arrays
+            .get(&1)
+            .filter(|def| {
+                def.valid && def.format == live_gl::GL_FIXED && def.component_count == 2
+            })
+            .cloned()
+            .or_else(|| {
+                lg.arrays.get(&2).filter(|def| {
+                    def.valid && def.format == live_gl::GL_FIXED && def.component_count == 2
+                }).cloned()
+            });
+        let colors = lg
+            .arrays
+            .get(&1)
+            .filter(|def| {
+                def.valid && def.format == live_gl::GL_FIXED && def.component_count >= 3
+            })
+            .cloned()
+            .or_else(|| {
+                lg.arrays.get(&2).filter(|def| {
+                    def.valid && def.format == live_gl::GL_FIXED && def.component_count >= 3
+                }).cloned()
+            });
+        let uv_enabled = uv
+            .as_ref()
+            .is_some_and(|def| lg.enabled_arrays.contains(&def.array_index));
+        let color_enabled = colors
+            .as_ref()
+            .is_some_and(|def| lg.enabled_arrays.contains(&def.array_index));
+        (uv, uv_enabled, colors, color_enabled)
+    }
+
     /// Ordinal 40: enable/select an array by index (direct arg r0 only).
     fn live_handle_enable_array(&mut self, args: [u32; 4]) {
         let array_index = args[0];
@@ -3662,6 +3806,28 @@ impl Eapp {
             "ordinal_165: state_ptr={:#010x} r1={:#010x} r2={:#010x} r3={:#010x}",
             state_ptr, r1, args[2], args[3]
         );
+
+        // The direct PR #3 runner binds ordinal 165 to the ordinary
+        // glLoadIdentity contract. Keep the older Vortex surface wiring
+        // available for comparison, but allow an exact oracle-style A/B.
+        if self.metadata.title == "12345" && fliwheel_var_os("VORTEX_PR3_GL165").is_some() {
+            if state_ptr != 0 {
+                for i in 0..16u32 {
+                    let value = if i % 5 == 0 {
+                        1.0f32.to_bits()
+                    } else {
+                        0
+                    };
+                    let _ = self.write_guest_u32(state_ptr.wrapping_add(i * 4), value);
+                }
+            }
+            info!(
+                target: "EAPP_GL",
+                "ordinal_165: PR #3 glLoadIdentity state_ptr={:#010x}",
+                state_ptr
+            );
+            return;
+        }
 
         // Vortex-specific: container at 0x18063ebc needs full structure wiring
         if state_ptr == 0x18063ebc {
@@ -3995,6 +4161,8 @@ impl Eapp {
             material_epoch,
             explicit_uv_def,
             explicit_uv_enabled,
+            vertex_color_def,
+            vertex_color_enabled,
         ) =
             {
                 let lg = match self.live_gl.as_ref() {
@@ -4003,16 +4171,8 @@ impl Eapp {
                 };
                 let mut enabled_arrays: Vec<u32> = lg.enabled_arrays.iter().copied().collect();
                 enabled_arrays.sort_unstable();
-                let (explicit_uv_def, explicit_uv_enabled) =
-                    if let Some(def) = lg.arrays.get(&1).cloned() {
-                        (Some(def), lg.enabled_arrays.contains(&1))
-                    } else if let Some(def) = lg.arrays.get(&2).cloned().filter(|d| {
-                        d.valid && d.format == live_gl::GL_FIXED && d.component_count == 2
-                    }) {
-                        (Some(def), lg.enabled_arrays.contains(&2))
-                    } else {
-                        (None, false)
-                    };
+                let (explicit_uv_def, explicit_uv_enabled, vertex_color_def, vertex_color_enabled) =
+                    Self::live_select_uv_and_color_arrays(lg);
                 (
                     lg.current_handle,
                     lg.current_state_ptr,
@@ -4026,9 +4186,10 @@ impl Eapp {
                     lg.current_material_epoch,
                     explicit_uv_def,
                     explicit_uv_enabled,
+                    vertex_color_def,
+                    vertex_color_enabled,
                 )
             };
-        let _ = material_epoch;
         if modulate == Rgba8::rgba(0, 0, 0, 0) {
             if let Some(lg) = self.live_gl.as_mut() {
                 lg.note_skipped_draw("zero colour register".to_string());
@@ -4064,12 +4225,28 @@ impl Eapp {
             first,
             count,
         );
+        let vertex_colors = self
+            .live_decode_vertex_colors_range(
+                &vertex_color_def,
+                vertex_color_enabled,
+                material_epoch,
+                first,
+                count,
+            )
+            .or_else(|| {
+                self.live_decode_vertex_colors_range_any_epoch(
+                    &vertex_color_def,
+                    vertex_color_enabled,
+                    first,
+                    count,
+                )
+            });
         // Match the PR runner's default no-modulate policy for ordinary
         // texture draws. The guest register remains available for logging and
         // zero-register suppression; generated font tinting is handled below.
         let tint = Rgba8::rgba(255, 255, 255, 255);
         let mut record = match self.live_gl.as_mut() {
-            Some(lg) => lg.rasterize_triangle_strip_record(
+            Some(lg) => lg.rasterize_triangle_strip_record_with_vertex_colors(
                 draw_index,
                 handle,
                 state_ptr,
@@ -4078,6 +4255,7 @@ impl Eapp {
                 &positions,
                 explicit.as_deref(),
                 tint,
+                vertex_colors.as_deref(),
             ),
             None => return,
         };
@@ -4171,6 +4349,8 @@ impl Eapp {
             draw_index,
             explicit_uv_def,
             explicit_uv_enabled,
+            vertex_color_def,
+            vertex_color_enabled,
         ) =
             {
                 let lg = match self.live_gl.as_ref() {
@@ -4179,16 +4359,8 @@ impl Eapp {
                 };
                 let mut enabled_arrays: Vec<u32> = lg.enabled_arrays.iter().copied().collect();
                 enabled_arrays.sort_unstable();
-                let (explicit_uv_def, explicit_uv_enabled) =
-                    if let Some(def) = lg.arrays.get(&1).cloned() {
-                        (Some(def), lg.enabled_arrays.contains(&1))
-                    } else if let Some(def) = lg.arrays.get(&2).cloned().filter(|d| {
-                        d.valid && d.format == live_gl::GL_FIXED && d.component_count == 2
-                    }) {
-                        (Some(def), lg.enabled_arrays.contains(&2))
-                    } else {
-                        (None, false)
-                    };
+                let (explicit_uv_def, explicit_uv_enabled, vertex_color_def, vertex_color_enabled) =
+                    Self::live_select_uv_and_color_arrays(lg);
                 (
                     lg.current_handle,
                     lg.current_state_ptr,
@@ -4201,6 +4373,8 @@ impl Eapp {
                     lg.draws.len(),
                     explicit_uv_def,
                     explicit_uv_enabled,
+                    vertex_color_def,
+                    vertex_color_enabled,
                 )
             };
         if modulate == Rgba8::rgba(0, 0, 0, 0) {
@@ -4235,6 +4409,11 @@ impl Eapp {
         // remains in the ordinal-37 DrawArrays path where it was needed.
         let explicit =
             self.live_decode_uvs_indices(&explicit_uv_def, explicit_uv_enabled, &indices);
+        let vertex_colors = self.live_decode_vertex_colors_indices(
+            &vertex_color_def,
+            vertex_color_enabled,
+            &indices,
+        );
         let tint = Rgba8::rgba(255, 255, 255, 255);
 
         if let Some(quad_groups) = indexed_quad_groups {
@@ -4252,7 +4431,7 @@ impl Eapp {
                     ([(0.0, 0.0); 4], false, explicit_uv_def.clone())
                 };
                 let mut record = match self.live_gl.as_mut() {
-                    Some(lg) => lg.rasterize_draw(
+                    Some(lg) => lg.rasterize_draw_with_vertex_colors(
                         draw_index + quad_idx,
                         handle,
                         state_ptr,
@@ -4264,6 +4443,15 @@ impl Eapp {
                         None,
                         tint,
                         false,
+                        vertex_colors.as_ref().and_then(|colors| {
+                            let base = quad_idx * 4;
+                            Some([
+                                *colors.get(base)?,
+                                *colors.get(base + 1)?,
+                                *colors.get(base + 2)?,
+                                *colors.get(base + 3)?,
+                            ])
+                        }),
                     ),
                     None => return,
                 };
@@ -4287,7 +4475,7 @@ impl Eapp {
         }
 
         let mut record = match self.live_gl.as_mut() {
-            Some(lg) => lg.rasterize_triangle_strip_record(
+            Some(lg) => lg.rasterize_triangle_strip_record_with_vertex_colors(
                 draw_index,
                 handle,
                 state_ptr,
@@ -4296,6 +4484,7 @@ impl Eapp {
                 &positions,
                 explicit.as_deref(),
                 tint,
+                vertex_colors.as_deref(),
             ),
             None => return,
         };
@@ -4362,6 +4551,8 @@ impl Eapp {
             material_epoch,
             explicit_uv_def,
             explicit_uv_enabled,
+            vertex_color_def,
+            vertex_color_enabled,
         ) =
             {
                 let lg = match self.live_gl.as_ref() {
@@ -4370,16 +4561,8 @@ impl Eapp {
                 };
                 let mut enabled_arrays: Vec<u32> = lg.enabled_arrays.iter().copied().collect();
                 enabled_arrays.sort_unstable();
-                let (explicit_uv_def, explicit_uv_enabled) =
-                    if let Some(def) = lg.arrays.get(&1).cloned() {
-                        (Some(def), lg.enabled_arrays.contains(&1))
-                    } else if let Some(def) = lg.arrays.get(&2).cloned().filter(|d| {
-                        d.valid && d.format == live_gl::GL_FIXED && d.component_count == 2
-                    }) {
-                        (Some(def), lg.enabled_arrays.contains(&2))
-                    } else {
-                        (None, false)
-                    };
+                let (explicit_uv_def, explicit_uv_enabled, vertex_color_def, vertex_color_enabled) =
+                    Self::live_select_uv_and_color_arrays(lg);
                 (
                     lg.current_handle,
                     lg.current_state_ptr,
@@ -4393,6 +4576,8 @@ impl Eapp {
                     lg.current_material_epoch,
                     explicit_uv_def,
                     explicit_uv_enabled,
+                    vertex_color_def,
+                    vertex_color_enabled,
                 )
             };
         if modulate == Rgba8::rgba(0, 0, 0, 0) {
@@ -4471,6 +4656,7 @@ impl Eapp {
                     positions: [(0.0, 0.0); 4],
                     uvs: [(0.0, 0.0); 4],
                     has_uv: false,
+                    vertex_colors: None,
                     solid_color: None,
                     tint: Rgba8::rgba(255, 255, 255, 255),
                     used_generated_uvs: false,
@@ -4518,6 +4704,22 @@ impl Eapp {
                 self.live_decode_uvs_range_any_epoch(
                     &explicit_uv_def,
                     explicit_uv_enabled,
+                    first,
+                    count,
+                )
+            });
+        let vertex_colors = self
+            .live_decode_vertex_colors_range(
+                &vertex_color_def,
+                vertex_color_enabled,
+                material_epoch,
+                first,
+                count,
+            )
+            .or_else(|| {
+                self.live_decode_vertex_colors_range_any_epoch(
+                    &vertex_color_def,
+                    vertex_color_enabled,
                     first,
                     count,
                 )
@@ -4583,7 +4785,11 @@ impl Eapp {
         }
 
         let solid_color = if handle == 0x3 {
-            self.live_decode_solid_color(&explicit_uv_def, explicit_uv_enabled, material_epoch)
+            self.live_decode_solid_color(
+                &vertex_color_def,
+                vertex_color_enabled,
+                material_epoch,
+            )
         } else {
             None
         };
@@ -4621,6 +4827,14 @@ impl Eapp {
             } else {
                 ([(0.0, 0.0); 4], false, false, explicit_uv_def.clone())
             };
+            let vertex_colors = vertex_colors.as_ref().and_then(|colors| {
+                Some([
+                    *colors.get(base)?,
+                    *colors.get(base + 1)?,
+                    *colors.get(base + 2)?,
+                    *colors.get(base + 3)?,
+                ])
+            });
             let solid_color = if handle == 0x3 {
                 solid_color
             } else if has_uv {
@@ -4630,7 +4844,7 @@ impl Eapp {
             };
 
             let mut record = match self.live_gl.as_mut() {
-                Some(lg) => lg.rasterize_draw(
+                Some(lg) => lg.rasterize_draw_with_vertex_colors(
                     draw_index + quad_idx,
                     handle,
                     state_ptr,
@@ -4642,6 +4856,7 @@ impl Eapp {
                     solid_color,
                     tint,
                     used_generated_uvs,
+                    vertex_colors,
                 ),
                 None => return,
             };
@@ -5249,6 +5464,112 @@ impl Eapp {
         )
     }
 
+    fn live_decode_vertex_colors_range(
+        &mut self,
+        def: &Option<live_gl::LiveArrayDef>,
+        enabled: bool,
+        material_epoch: u64,
+        first: usize,
+        count: usize,
+    ) -> Option<Vec<[f32; 4]>> {
+        self.live_decode_vertex_colors_range_impl(
+            def,
+            enabled,
+            Some(material_epoch),
+            first,
+            count,
+        )
+    }
+
+    fn live_decode_vertex_colors_range_any_epoch(
+        &mut self,
+        def: &Option<live_gl::LiveArrayDef>,
+        enabled: bool,
+        first: usize,
+        count: usize,
+    ) -> Option<Vec<[f32; 4]>> {
+        self.live_decode_vertex_colors_range_impl(def, enabled, None, first, count)
+    }
+
+    fn live_decode_vertex_colors_range_impl(
+        &mut self,
+        def: &Option<live_gl::LiveArrayDef>,
+        enabled: bool,
+        material_epoch: Option<u64>,
+        first: usize,
+        count: usize,
+    ) -> Option<Vec<[f32; 4]>> {
+        let def = def.as_ref()?;
+        if !enabled
+            || !def.valid
+            || material_epoch.is_some_and(|epoch| def.material_epoch != epoch)
+            || def.format != live_gl::GL_FIXED
+            || def.component_count < 3
+        {
+            return None;
+        }
+        let components = def.component_count.min(4) as usize;
+        let tight_stride = def.component_count as usize * 4;
+        let stride = if def.stride == 0 {
+            tight_stride
+        } else {
+            def.stride.max(tight_stride as u32) as usize
+        };
+        let mut colors = Vec::with_capacity(count);
+        for vertex in 0..count {
+            let offset = first
+                .checked_add(vertex)
+                .and_then(|index| index.checked_mul(stride))?;
+            let base = def.guest_ptr.wrapping_add(offset as u32);
+            let mut color = [1.0f32; 4];
+            for (component, slot) in color.iter_mut().enumerate().take(components) {
+                *slot = decode_fixed_16_16(self.read_guest_u32(
+                    base.wrapping_add((component * 4) as u32),
+                )?)
+                .clamp(0.0, 1.0);
+            }
+            colors.push(color);
+        }
+        Some(colors)
+    }
+
+    fn live_decode_vertex_colors_indices(
+        &mut self,
+        def: &Option<live_gl::LiveArrayDef>,
+        enabled: bool,
+        indices: &[usize],
+    ) -> Option<Vec<[f32; 4]>> {
+        let def = def.as_ref()?;
+        if !enabled
+            || !def.valid
+            || def.format != live_gl::GL_FIXED
+            || def.component_count < 3
+        {
+            return None;
+        }
+        let components = def.component_count.min(4) as usize;
+        let tight_stride = def.component_count as usize * 4;
+        let stride = if def.stride == 0 {
+            tight_stride
+        } else {
+            def.stride.max(tight_stride as u32) as usize
+        };
+        let mut colors = Vec::with_capacity(indices.len());
+        for &index in indices {
+            let offset = index.checked_mul(stride)?;
+            let base = def.guest_ptr.wrapping_add(offset as u32);
+            let mut color = [1.0f32; 4];
+            for (component, slot) in color.iter_mut().enumerate().take(components) {
+                *slot = decode_fixed_16_16(self.read_guest_u32(
+                    base.wrapping_add((component * 4) as u32),
+                )?)
+                .clamp(0.0, 1.0);
+            }
+            colors.push(color);
+        }
+        Some(colors)
+    }
+
     /// Decode a 4-component GL_FIXED color/tint array as a conservative solid
     /// color. Tetris uses this shape for handle-3 fade/fill quads that do not
     /// provide a 2-component texcoord array. We average the four vertex colors;
@@ -5264,7 +5585,7 @@ impl Eapp {
             || !def.valid
             || def.material_epoch != material_epoch
             || def.format != live_gl::GL_FIXED
-            || def.component_count != 4
+            || def.component_count < 3
         {
             return None;
         }
@@ -5274,12 +5595,16 @@ impl Eapp {
             def.stride as usize
         };
         let mut acc = [0.0f32; 4];
+        let components = def.component_count.min(4) as usize;
         for vertex in 0..4usize {
             let base = def.guest_ptr.wrapping_add((vertex * stride) as u32);
-            for (component, slot) in acc.iter_mut().enumerate() {
+            for (component, slot) in acc.iter_mut().enumerate().take(components) {
                 let word = self.read_guest_u32(base.wrapping_add((component * 4) as u32))?;
                 *slot += decode_fixed_16_16(word).clamp(0.0, 1.0);
             }
+        }
+        if components < 4 {
+            acc[3] = 4.0;
         }
         let to_u8 = |v: f32| ((v / 4.0) * 255.0).round().clamp(0.0, 255.0) as u8;
         Some(Rgba8::rgba(
@@ -5841,7 +6166,7 @@ impl Eapp {
                 // other titles, whose existing HLE contracts include their
                 // current object addresses.
                 let len = args[0].max(0x10);
-                if self.metadata.title == "1B200" {
+                if matches!(self.metadata.title.as_str(), "1B200" | "12345") {
                     self.alloc_game_heap(len)
                 } else {
                     self.alloc_zeroed(len)
@@ -5854,6 +6179,54 @@ impl Eapp {
                 // thresholds in the guest are 4_000_000 and 2_000_000, matching
                 // microsecond units, so expose host monotonic microseconds.
                 self.handle_misc9_time_api(args)
+            }
+            2 if self.metadata.title == "12345" => {
+                // PR #3 binds miscTBD:2 as realloc(old, size). Vortex grows
+                // its localization strings one append at a time; returning
+                // zero leaves every key null and the parser never reaches
+                // the next async asset. Preserve the old prefix and extend
+                // the top allocation in place when possible.
+                let old = args[0];
+                let want = args[1];
+                let result = match (old, want) {
+                    (0, 0) => 0,
+                    (0, size) => self.alloc_zeroed(size),
+                    (_, 0) => 0,
+                    (ptr, size) => {
+                        let old_size = self.alloc_sizes.get(&ptr).copied().unwrap_or(0);
+                        let rounded = (size + 0xf) & !0xf;
+                        let old_end = ptr.saturating_add(old_size);
+                        let new_end = ptr.saturating_add(rounded);
+                        if old_size >= rounded {
+                            ptr
+                        } else if old_end == self.next_alloc
+                            && new_end <= WORK_RAM_BASE + WORK_RAM_SIZE as u32
+                        {
+                            self.next_alloc = new_end;
+                            self.alloc_sizes.insert(ptr, rounded);
+                            ptr
+                        } else {
+                            let new_ptr = self.alloc_zeroed(size);
+                            if new_ptr != 0 && old_size != 0 {
+                                if let Some(bytes) = self.read_guest_bytes(ptr, old_size as usize) {
+                                    let _ = self.write_guest_bytes(
+                                        new_ptr,
+                                        &bytes[..bytes.len().min(size as usize)],
+                                    );
+                                }
+                            }
+                            new_ptr
+                        }
+                    }
+                };
+                debug!(
+                    target: "EAPP_IMPORT",
+                    "miscTBD:2 Vortex realloc old={:#010x} size={} -> {:#010x}",
+                    old,
+                    want,
+                    result
+                );
+                result
             }
             6 => {
                 // Lost (1B200) calls this with r0=2 (command type?),
@@ -6779,6 +7152,7 @@ impl Eapp {
                 .bundle_dir
                 .to_str()
                 .map_or(false, |p| p.contains("1B200"));
+            let is_vortex = self.metadata.title == "12345";
             let owner = args[0];
             let req = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
             let req_cb = self.read_guest_u32(req.wrapping_add(0x0c)).unwrap_or(0);
@@ -6826,6 +7200,34 @@ impl Eapp {
                     || mspacman_complete
                     || is_lost) as u8
             );
+            if is_vortex && owner != 0 {
+                // PR #3's direct runner treats AsyncFileIO:1 as the generic
+                // AsyncOp(request=r0). The request callback is stored on the
+                // request itself and receives (request, request+0x38); this
+                // is the retirement step after Vortex's #2 transfer.
+                let callback_pc = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
+                let callback_ctx = self.read_guest_u32(owner.wrapping_add(0x38)).unwrap_or(0);
+                self.write_guest_u32(owner.wrapping_add(0x20), 0);
+                if callback_pc != 0 {
+                    self.async_callback_queued_count =
+                        self.async_callback_queued_count.wrapping_add(1);
+                    self.pending_guest_calls.push_back(PendingGuestCall {
+                        pc: callback_pc,
+                        arg0: owner,
+                        arg1: callback_ctx,
+                        arg2: 0,
+                        arg3: 0,
+                    });
+                }
+                info!(
+                    target: "EAPP_IMPORT",
+                    "AsyncFileIO:1 Vortex completion req={:#010x} cb_pc={:#010x} cb_ctx={:#010x}",
+                    owner,
+                    callback_pc,
+                    callback_ctx
+                );
+                return 1;
+            }
             if is_sims {
                 info!(
                     target: "EAPP_IMPORT",
@@ -7108,9 +7510,17 @@ impl Eapp {
                 .bundle_dir
                 .to_str()
                 .map_or(false, |p| p.contains("1B200"));
+            let is_vortex = self.metadata.title == "12345";
             let owner = args[0];
             let callback_pc = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
             let callback_ctx = self.read_guest_u32(owner.wrapping_add(0x38)).unwrap_or(0);
+            if self.metadata.title == "12345" && fliwheel_var_os("EAPP_REQ_DUMP").is_some() {
+                let words = (0..16u32)
+                    .map(|index| format!("{:08x}", self.read_guest_u32(owner.wrapping_add(index * 4)).unwrap_or(0)))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                info!(target: "EAPP_IMPORT", "AsyncFileIO:2 Vortex req={:#010x} words={}", owner, words);
+            }
             let texas_complete = is_texas
                 && std::env::var("EAPP_TEXAS_ASYNC2_COMPLETE")
                     .map(|v| v == "1" || v == "true")
@@ -7214,6 +7624,93 @@ impl Eapp {
                 info!(
                     target: "EAPP_IMPORT",
                     "AsyncFileIO:2 LOST completion req={:#010x} cb_pc={:#010x} status={} bytes={}",
+                    req,
+                    callback_pc,
+                    if ok { 0 } else { u32::MAX },
+                    delivered
+                );
+                return 1;
+            }
+            if is_vortex && owner != 0 && callback_pc != 0 {
+                // Vortex uses the same request-object ABI as PR #3's direct
+                // AsyncRead, but its shipped request marks the operation as
+                // op 3 even though this path is a read. Resolve the staged
+                // file by the shared file object, copy the requested bytes,
+                // publish both result fields, and drain the request callback.
+                let req = owner;
+                let object = self.read_guest_u32(req.wrapping_add(0x08)).unwrap_or(0);
+                let destination = self.read_guest_u32(req.wrapping_add(0x14)).unwrap_or(0);
+                let requested_raw = self.read_guest_u32(req.wrapping_add(0x18)).unwrap_or(0);
+                let stream = self.read_guest_u32(req.wrapping_add(0x2c)).unwrap_or(0);
+                let staged_range = self.staged_files.get(&object).map(|staged| {
+                    (
+                        staged.payload_addr,
+                        staged.len as usize,
+                        staged.offset,
+                        staged.host_path.clone(),
+                    )
+                });
+                let mut delivered = 0usize;
+                let mut available = 0usize;
+                if destination != 0 {
+                    if let Some((payload_addr, payload_len, file_offset, host_path)) = staged_range {
+                        let source_offset = file_offset.min(payload_len);
+                        available = payload_len.saturating_sub(source_offset);
+                        let requested = if requested_raw == u32::MAX {
+                            available
+                        } else {
+                            requested_raw as usize
+                        };
+                        let count = requested.min(available);
+                        if let Some(payload) = self.read_guest_bytes(
+                            payload_addr.wrapping_add(source_offset as u32),
+                            count,
+                        ) {
+                            if self.write_guest_bytes(destination, &payload) {
+                                delivered = count;
+                                if let Some(staged) = self.staged_files.get_mut(&object) {
+                                    staged.offset = staged.offset.saturating_add(count);
+                                }
+                                info!(
+                                    target: "EAPP_IMPORT",
+                                    "AsyncFileIO:2 Vortex staged read req={:#010x} object={:#010x} stream={:#010x} source={:#010x}+{} dest={:#010x} requested_raw={:#010x} delivered={} path={}",
+                                    req,
+                                    object,
+                                    stream,
+                                    payload_addr,
+                                    source_offset,
+                                    destination,
+                                    requested_raw,
+                                    count,
+                                    host_path.display()
+                                );
+                            }
+                        }
+                    }
+                }
+                let requested = if requested_raw == u32::MAX {
+                    available
+                } else {
+                    requested_raw as usize
+                };
+                let ok = requested == 0 || delivered == requested;
+                self.write_guest_u32(req.wrapping_add(0x24), delivered as u32);
+                self.write_guest_u32(req.wrapping_add(0x28), delivered as u32);
+                if object != 0 {
+                    self.write_guest_u32(object.wrapping_add(0x08), delivered as u32);
+                }
+                self.write_guest_u32(req.wrapping_add(0x20), if ok { 0 } else { u32::MAX });
+                self.async_callback_queued_count = self.async_callback_queued_count.wrapping_add(1);
+                self.pending_guest_calls.push_back(PendingGuestCall {
+                    pc: callback_pc,
+                    arg0: req,
+                    arg1: callback_ctx,
+                    arg2: 0,
+                    arg3: 0,
+                });
+                info!(
+                    target: "EAPP_IMPORT",
+                    "AsyncFileIO:2 Vortex completion req={:#010x} cb_pc={:#010x} status={} bytes={}",
                     req,
                     callback_pc,
                     if ok { 0 } else { u32::MAX },
@@ -7491,6 +7988,15 @@ impl Eapp {
                     } else {
                         None
                     };
+                    let vortex_handle = if is_vortex {
+                        let handle = self.next_async_file_handle;
+                        self.next_async_file_handle =
+                            self.next_async_file_handle.wrapping_add(1).max(1);
+                        self.async_open_files.insert(handle, host_path.clone());
+                        Some(handle)
+                    } else {
+                        None
+                    };
                     let bytes = fs::read(&host_path).unwrap_or_else(|e| {
                         warn!(
                             target: "EAPP_IMPORT",
@@ -7541,7 +8047,9 @@ impl Eapp {
                             // the shared file object's descriptor slot.
                             self.write_guest_u32(
                                 owner.wrapping_add(0x2c),
-                                lost_handle.unwrap_or(payload_addr),
+                                lost_handle
+                                    .or(vortex_handle)
+                                    .unwrap_or(payload_addr),
                             );
                             let req = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
                             if req != 0 {
@@ -7591,6 +8099,28 @@ impl Eapp {
                                 "AsyncFileIO:0 LOST generic open owner={:#010x} handle={:#010x} result_bytes={} object={:#010x}",
                                 owner,
                                 lost_handle.unwrap_or(0),
+                                n,
+                                object
+                            );
+                        }
+                        if is_vortex {
+                            // Bufferless Vortex opens publish the stream id in
+                            // the request and the file size as the operation
+                            // result in the shared file object. The guest open
+                            // completion then builds its next #2 request from
+                            // those fields. PR #3 invokes this callback as
+                            // (request, context), with status/count remaining
+                            // in the request object rather than in r1/r2.
+                            let object = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
+                            if object != 0 {
+                                self.write_guest_u32(object.wrapping_add(0x08), n);
+                            }
+                            self.write_guest_u32(owner.wrapping_add(0x24), 0);
+                            info!(
+                                target: "EAPP_IMPORT",
+                                "AsyncFileIO:0 Vortex generic open owner={:#010x} handle={:#010x} size={} object={:#010x}",
+                                owner,
+                                vortex_handle.unwrap_or(0),
                                 n,
                                 object
                             );
@@ -7720,8 +8250,8 @@ impl Eapp {
                         self.pending_guest_calls.push_back(PendingGuestCall {
                             pc: callback_pc,
                             arg0: owner,
-                            arg1: if is_lost { 0 } else { status },
-                            arg2: if is_lost { 0 } else { n },
+                            arg1: if is_lost || is_vortex { 0 } else { status },
+                            arg2: if is_lost || is_vortex { 0 } else { n },
                             arg3: 0,
                         });
                         if self.startup_progress.enabled {
@@ -7751,6 +8281,108 @@ impl Eapp {
                     self.async_pending_requests.insert(req);
                 }
                 self.dump_request_object(req);
+                if self.metadata.title == "12345" && req != 0 {
+                    // PR #3 uses AsyncFileIO:3 as the same generic async-open
+                    // service as #0. Vortex supplies a destination buffer for
+                    // these requests and, with its load-on-open default, the
+                    // whole asset is delivered before the callback runs. The
+                    // request still needs a stream handle at +0x2c and the
+                    // operation result (bytes loaded) in both +0x24 and the
+                    // shared file object at +0x08.
+                    let object = self.read_guest_u32(req.wrapping_add(0x08)).unwrap_or(0);
+                    let dest = self.read_guest_u32(req.wrapping_add(0x14)).unwrap_or(0);
+                    let want = self.read_guest_u32(req.wrapping_add(0x18)).unwrap_or(0);
+                    let callback_pc = self.read_guest_u32(req.wrapping_add(0x34)).unwrap_or(0);
+                    let callback_ctx = self.read_guest_u32(req.wrapping_add(0x38)).unwrap_or(0);
+                    if let Some(host_path) = self.resolve_or_create_host_path(&path) {
+                        self.note_audio_asset_path(&host_path);
+                        let handle = self.next_async_file_handle;
+                        self.next_async_file_handle =
+                            self.next_async_file_handle.wrapping_add(1).max(1);
+                        self.async_open_files.insert(handle, host_path.clone());
+                        self.write_guest_u32(req.wrapping_add(0x2c), handle);
+                        match fs::read(&host_path) {
+                            Ok(bytes) => {
+                                let requested_len = if want != 0 {
+                                    want as usize
+                                } else {
+                                    bytes.len()
+                                };
+                                let n = bytes.len().min(requested_len);
+                                let delivered = dest != 0 && self.write_guest_bytes(dest, &bytes[..n]);
+                                let got = if delivered { n as u32 } else { 0 };
+                                if dest != 0 && want != 0 {
+                                    self.write_guest_u32(req.wrapping_add(0x24), got);
+                                    if object != 0 {
+                                        self.write_guest_u32(object.wrapping_add(0x08), got);
+                                    }
+                                } else {
+                                    // Keep bufferless #3 opens usable by a later
+                                    // Vortex #2 read, matching the #0 path.
+                                    let payload_addr = self.alloc_zeroed(bytes.len() as u32);
+                                    if payload_addr != 0 && self.write_guest_bytes(payload_addr, &bytes) {
+                                        self.staged_file_generation =
+                                            self.staged_file_generation.wrapping_add(1);
+                                        self.staged_files.insert(
+                                            object,
+                                            StagedFile {
+                                                generation: self.staged_file_generation,
+                                                payload_addr,
+                                                len: bytes.len() as u32,
+                                                offset: 0,
+                                                host_path: host_path.clone(),
+                                            },
+                                        );
+                                    }
+                                    if object != 0 {
+                                        self.write_guest_u32(object.wrapping_add(0x08), bytes.len() as u32);
+                                    }
+                                    self.write_guest_u32(req.wrapping_add(0x24), 0);
+                                }
+                                self.write_guest_u32(req.wrapping_add(0x20), 0);
+                                info!(
+                                    target: "EAPP_IMPORT",
+                                    "AsyncFileIO:3 Vortex open path={} req={:#010x} object={:#010x} handle={:#010x} buf={:#010x} want={} got={} cb_pc={:#010x}",
+                                    host_path.display(),
+                                    req,
+                                    object,
+                                    handle,
+                                    dest,
+                                    want,
+                                    got,
+                                    callback_pc
+                                );
+                            }
+                            Err(e) => {
+                                self.write_guest_u32(req.wrapping_add(0x20), u32::MAX);
+                                self.write_guest_u32(req.wrapping_add(0x24), 0);
+                                warn!(
+                                    target: "EAPP_IMPORT",
+                                    "AsyncFileIO:3 Vortex read error for {}: {}",
+                                    host_path.display(),
+                                    e
+                                );
+                            }
+                        }
+                        if callback_pc != 0 {
+                            self.async_callback_queued_count =
+                                self.async_callback_queued_count.wrapping_add(1);
+                            self.pending_guest_calls.push_back(PendingGuestCall {
+                                pc: callback_pc,
+                                arg0: req,
+                                arg1: callback_ctx,
+                                arg2: 0,
+                                arg3: 0,
+                            });
+                        } else {
+                            self.async_pending_requests.remove(&req);
+                        }
+                        return 1;
+                    }
+                    self.async_pending_requests.remove(&req);
+                    warn!(target: "EAPP_IMPORT", "AsyncFileIO:3 Vortex missing host path {}", path);
+                    return 0;
+                }
                 if let Some(host_path) = self.resolve_or_create_host_path(&path) {
                     self.note_audio_asset_path(&host_path);
                     // Request-object protocol (observed):
@@ -8767,11 +9399,15 @@ impl Eapp {
             .to_str()
             .map_or(false, |p| p.contains("12345"))
         {
-            info!(target: "EAPP", "VORTEX: detected bundle, running preallocation");
-            self.vortex_preallocate_surfaces();
-            // Verify the write.
-            let verify = self.read_guest_u32(WORK_RAM_BASE + 0xff0).unwrap_or(0xdead);
-            info!(target: "EAPP", "VORTEX: verification read of WORK_RAM+0xff0 = {:#010x}", verify);
+            if fliwheel_var_os("VORTEX_PR3_GL165").is_some() {
+                info!(target: "EAPP", "VORTEX: using PR #3 ordinal-165 contract");
+            } else {
+                info!(target: "EAPP", "VORTEX: detected bundle, running preallocation");
+                self.vortex_preallocate_surfaces();
+                // Verify the write.
+                let verify = self.read_guest_u32(WORK_RAM_BASE + 0xff0).unwrap_or(0xdead);
+                info!(target: "EAPP", "VORTEX: verification read of WORK_RAM+0xff0 = {:#010x}", verify);
+            }
         }
         self.bootstrap_phase = BootstrapPhase::Running;
         self.queue_next_frame();
@@ -8805,6 +9441,12 @@ impl Eapp {
         }
         self.cpu.reg_set(self.cpu.mode(), 0, self.app_object);
         self.cpu.reg_set(self.cpu.mode(), 1, frame_context);
+        // The direct HLE writes all four EABI arguments before every vector
+        // call. Entry returns can leave r2/r3 holding import-call scratch
+        // values, so clear them before the repeating vector rather than
+        // leaking the entry vector's register state into the first frame.
+        self.cpu.reg_set(self.cpu.mode(), 2, 0);
+        self.cpu.reg_set(self.cpu.mode(), 3, 0);
         self.cpu
             .reg_set(self.cpu.mode(), reg::LR, BOOTSTRAP_RETURN_PC);
         self.cpu
@@ -8864,6 +9506,7 @@ impl Eapp {
         let end = addr.saturating_add(len);
         if end <= WORK_RAM_BASE + WORK_RAM_SIZE as u32 {
             self.next_alloc = end;
+            self.alloc_sizes.insert(addr, len);
             addr
         } else {
             0
@@ -8884,7 +9527,9 @@ impl Eapp {
         }
         self.game_heap_next = end;
         let _ = self.write_guest_u32(block, total);
-        block + 8
+        let ptr = block + 8;
+        self.alloc_sizes.insert(ptr, size);
+        ptr
     }
 
     fn read_guest_u8(&mut self, addr: u32) -> Option<u8> {
@@ -10869,6 +11514,7 @@ impl Memory for EappBus {
                 self.trace_watch_read(4, offset, value);
                 Ok(value)
             }
+            _ if self.zero_unmapped_reads => Ok(0),
             _ => Err(MemException::Unexpected),
         }
     }
@@ -10935,6 +11581,7 @@ impl Memory for EappBus {
                 }
                 Ok(())
             }
+            _ if self.zero_unmapped_writes => Ok(()),
             _ => Err(MemException::Unexpected),
         }
     }
@@ -10980,6 +11627,7 @@ impl Memory for EappBus {
                 self.trace_watch_read(1, offset, value as u32);
                 Ok(value)
             }
+            _ if self.zero_unmapped_reads => Ok(0),
             _ => Err(MemException::Unexpected),
         }
     }
@@ -11025,6 +11673,7 @@ impl Memory for EappBus {
                 self.trace_watch_read(2, offset, value as u32);
                 Ok(value)
             }
+            _ if self.zero_unmapped_reads => Ok(0),
             _ => Err(MemException::Unexpected),
         }
     }
@@ -11064,6 +11713,7 @@ impl Memory for EappBus {
                 }
                 Ok(())
             }
+            _ if self.zero_unmapped_writes => Ok(()),
             _ => Err(MemException::Unexpected),
         }
     }
@@ -11103,6 +11753,7 @@ impl Memory for EappBus {
                 }
                 Ok(())
             }
+            _ if self.zero_unmapped_writes => Ok(()),
             _ => Err(MemException::Unexpected),
         }
     }
