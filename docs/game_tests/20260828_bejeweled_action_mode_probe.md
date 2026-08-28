@@ -14,8 +14,11 @@ bar, which distinguishes it from the Classic route. The run also produced a
 rejected swap and `bad.wav` without a fatal signature.
 
 This is mode-entry and live-rendering evidence, not a claim that Action mode
-is complete. Timer expiry, an accepted Action-mode match, multiple moves,
-game-over behavior, save persistence, and physical mixer parity remain open.
+is complete. A separate idle replay reached frame `4000` and showed the green
+timer gauge decrementing: its top edge moved from `y=152` at frame `1160` to
+`y=159` at frame `3986`. That run did not yet reach timeout/game-over, and no
+accepted Action-mode match was reproduced. Multiple moves, save persistence,
+and physical mixer parity remain open.
 
 ## Reproduction
 
@@ -49,3 +52,31 @@ The menu-direction A/B receipts are:
 
 The negative pulse leaves `START CLASSIC GAME` selected; the positive pulse
 underlines `START ACTION GAME`.
+
+## Timer progression replay
+
+The idle Action-mode timer check used the same menu/tutorial route, stopped at
+guest frame `4000`, and captured only the late window:
+
+```text
+FLIWHEEL_EAPP_INPUT_SCRIPT='wheel=1:30-33,action:60-62,action:842-844,wheel=-1:882-982,bits=0x400000b0:1002-1003,action:1142-1144'
+FLIWHEEL_STARTUP_CAPTURE_DIR=/tmp/fliwheel_bej_action_timer_late.amJm8t
+FLIWHEEL_STARTUP_CAPTURE_PERIOD=30
+FLIWHEEL_STARTUP_CAPTURE_DUMP_START_FRAME=3400
+FLIWHEEL_STARTUP_CAPTURE_MAX_FRAMES=4000
+FLIWHEEL_STARTUP_CAPTURE_MAX_DUMPS=300
+FLIWHEEL_EAPP_STOP_FRAME=4000
+```
+
+Receipt:
+
+```text
+/tmp/fliwheel_bej_action_timer_late_20260828.log
+/tmp/fliwheel_bej_action_timer_late.amJm8t/manifest.tsv
+/tmp/fliwheel_bej_action_timer_late.amJm8t/startup_g003400_host000113103748_hashcab646e416b5be26.ppm
+/tmp/fliwheel_bej_action_timer_late.amJm8t/startup_g003986_host000125300495_hash295886683d90deb1.ppm
+```
+
+The run produced 4,001 manifest rows, 300 late PPMs, and no fatal, panic,
+decoder, or sink error signature. The bar remains visible and shrinks slowly,
+but the time-up sound and game-over state are not yet observed.

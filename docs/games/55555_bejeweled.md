@@ -90,9 +90,10 @@ This is a verified playable Classic core path under the deterministic input
 script, and the desktop runner now exposes the same directional tap mapping
 through the arrow keys. A fresh current-tree replay also reproduces an
 accepted swap and `combo2.wav`; see the [current match replay](../game_tests/20260827_bejeweled_current_match_replay.md).
-The Action menu entry and timer-bar board are now separately verified; an
-accepted Action-mode match, save path, and broader audio coverage are still
-open.
+The Action menu entry and timer-bar board are now separately verified, and an
+idle replay confirms that the timer gauge decrements through frame 4000;
+timeout/game-over and an accepted Action-mode match remain open. Save path and
+broader audio coverage are also still open.
 
 The title-specific audio receipt is in the [Bejeweled WAV ABI report](../game_tests/20260827_bejeweled_audio_abi.md).
 The earlier exact replay maps 27/27 startup WAV sources and emits
