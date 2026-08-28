@@ -5781,6 +5781,44 @@ impl Eapp {
     fn live_log_draw_record(&mut self, record: &live_gl::LiveDrawRecord) {
         let handle = record.handle;
         let draw_index = record.draw_index;
+        let quad_dump_frame = fliwheel_var_os("GL_QUAD_DUMP_FRAME")
+            .and_then(|value| value.to_string_lossy().parse::<u64>().ok());
+        let quad_dump_handle = fliwheel_var_os("GL_QUAD_DUMP_HANDLE").and_then(|value| {
+            let value = value.to_string_lossy();
+            if let Some(hex) = value.strip_prefix("0x").or_else(|| value.strip_prefix("0X")) {
+                u32::from_str_radix(hex, 16).ok()
+            } else {
+                value.parse::<u32>().ok()
+            }
+        });
+        if record.has_uv
+            && quad_dump_frame == Some(self.frame_counter)
+            && quad_dump_handle.map_or(true, |wanted| wanted == handle)
+        {
+            let (upload, fingerprint) = record
+                .selected_upload
+                .map(|index| {
+                    (
+                        Some(index),
+                        self.live_gl
+                            .as_ref()
+                            .and_then(|live| live.upload_pixel_fingerprint(index)),
+                    )
+                })
+                .unwrap_or((None, None));
+            info!(
+                target: "EAPP_GL",
+                "quad_dump frame={} draw={} handle={:#x} bound_tex={:?} upload={:?} fingerprint={:?} pos={:?} uv={:?}",
+                self.frame_counter,
+                draw_index + 1,
+                handle,
+                record.bound_tex_name,
+                upload,
+                fingerprint.map(|value| format!("{value:#018x}")),
+                record.positions,
+                record.uvs
+            );
+        }
         if let Some(reason) = record.skipped_reason.clone() {
             if let Some(lg) = self.live_gl.as_mut() {
                 lg.note_skipped_draw(reason.clone());

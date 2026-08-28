@@ -1002,6 +1002,22 @@ impl LiveGlState {
             .map(|u| u.index)
     }
 
+    /// Return a stable fingerprint of decoded RGBA pixels for a diagnostic
+    /// comparison with the direct PR runner. This deliberately hashes pixels,
+    /// not guest addresses, because the same upload can come from different
+    /// heap locations between runs.
+    pub fn upload_pixel_fingerprint(&self, upload_index: usize) -> Option<u64> {
+        let texture = self.uploads.get(upload_index)?.texture.as_ref()?;
+        let mut hash = 0xcbf2_9ce4_8422_2325u64;
+        for pixel in &texture.pixels {
+            for byte in [pixel.r, pixel.g, pixel.b, pixel.a] {
+                hash ^= u64::from(byte);
+                hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+            }
+        }
+        Some(hash)
+    }
+
     /// Select a live texture by texture name only if the chosen upload can
     /// contain the supplied texel-centered UV extents. Some Tetris A8 resources
     /// are all tagged with the same small texture name (`0x8`); blindly picking
