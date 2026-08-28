@@ -5990,9 +5990,25 @@ impl Eapp {
                 "tint=rgba({},{},{},{}) texgen={}",
                 draw.tint.r, draw.tint.g, draw.tint.b, draw.tint.a, draw.used_generated_uvs
             );
+            let vertex_colors = draw
+                .vertex_colors
+                .map(|colors| {
+                    let values = colors
+                        .iter()
+                        .map(|color| {
+                            format!(
+                                "({:.3},{:.3},{:.3},{:.3})",
+                                color[0], color[1], color[2], color[3]
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    format!("vertex_colors=[{}]", values)
+                })
+                .unwrap_or_else(|| "vertex_colors=<none>".to_string());
             info!(
                 target: "EAPP_GL",
-                "draw_detail guest_frame={} draw={} handle={:#x} state_ptr={:#010x} bound_tex={:?} enabled={:?} pos_arr={} uv_arr={} translation=({:.2},{:.2}) bounds=({:.1},{:.1})-({:.1},{:.1}) positions=[{}] uvs=[{}] inferred_dim={:?} {} {} {} coverage={} status={} state_words=[{}]",
+                "draw_detail guest_frame={} draw={} handle={:#x} state_ptr={:#010x} bound_tex={:?} enabled={:?} pos_arr={} uv_arr={} translation=({:.2},{:.2}) bounds=({:.1},{:.1})-({:.1},{:.1}) positions=[{}] uvs=[{}] inferred_dim={:?} {} {} {} {} coverage={} status={} state_words=[{}]",
                 self.frame_counter,
                 draw.draw_index + 1,
                 draw.handle,
@@ -6013,6 +6029,7 @@ impl Eapp {
                 upload,
                 color,
                 tint,
+                vertex_colors,
                 draw.coverage,
                 draw.skipped_reason.as_deref().unwrap_or("rasterized"),
                 state_words
