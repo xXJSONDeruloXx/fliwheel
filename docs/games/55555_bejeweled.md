@@ -1,6 +1,6 @@
 # Bejeweled (Bundle 55555)
 
-**Status:** 🟡 SINGLE-MATCH VERIFIED / WAV EVENTS PARTIAL | **Evidence:** the legacy filesystem contract reaches the menu, 8×8 board, and built-in tutorial; normalized wheel input reaches the guest; a scripted live-board swap changes/refills the board and now emits `combo2.wav`; the title-specific WAV ABI maps all 27 sources and reaches the headed desktop sink | **Engine:** PopCap Engine
+**Status:** 🟡 CLASSIC + ACTION BOARD ENTRY VERIFIED / WAV EVENTS PARTIAL | **Evidence:** the legacy filesystem contract reaches the menu, 8×8 board, and built-in tutorial; normalized wheel input reaches the guest; Classic mode has a scripted live-board match that changes/refills tiles and emits `combo2.wav`; Action mode reaches a live board with its timer bar; the title-specific WAV ABI maps all 27 sources and reaches the headed desktop sink | **Engine:** PopCap Engine
 
 ## Quick Start
 ```bash
@@ -14,9 +14,11 @@ The current HLE reaches the resource-backed GL path and exits cleanly. The
 legacy `Filesytem` open/read/close ABI loads `tweakdata.txt`, reaches the
 selectable menu, builds the 8×8 gem board, and presents the built-in tutorial.
 The corrected wheel scale and sector mapping now drive a complete scripted
-match: the guest selects the board cell at `[8,6]`, swaps it with `[8,7]`,
-shows “EXCELLENT!”, changes the board contents, and opens the score-bar
-overlay. Normal headed play and broader mode/audio/save coverage remain open.
+Classic-mode match: the guest selects the board cell at `[8,6]`, swaps it with
+`[8,7]`, shows “EXCELLENT!”, changes the board contents, and opens the
+score-bar overlay. A separate headed menu probe selects Action mode and reaches
+the live board with its timer bar. Multi-move Action play, save behavior, and
+physical mixer parity remain open.
 
 ## Bundle Info
 - **Executable:** `Bejeweled_1_1_2563296.bin` (eapp format)
@@ -39,8 +41,9 @@ FLIWHEEL_GL_LIVE_CONTINUOUS=1
 # for orientation A/B experiments.
 ```
 
-Focused evidence: [PopCap DMA contract probe](../game_tests/20260826_popcap_dma_contract.md)
-and [Bejeweled input event contract](../game_tests/20260826_bejeweled_input_event_contract.md).
+Focused evidence: [PopCap DMA contract probe](../game_tests/20260826_popcap_dma_contract.md),
+[Bejeweled input event contract](../game_tests/20260826_bejeweled_input_event_contract.md),
+and the [Action-mode probe](../game_tests/20260828_bejeweled_action_mode_probe.md).
 
 ## Current interactive boundary
 
@@ -83,12 +86,13 @@ selected visual frames are in:
 /tmp/fliwheel_bejeweled_match_candidate_right_20260826_png/frame_1325.png
 ```
 
-This is a verified playable core path under the deterministic input script,
-and the desktop runner now exposes the same directional tap mapping through
-the arrow keys. A fresh current-tree replay also reproduces an accepted swap
-and `combo2.wav`; see the [current match replay](../game_tests/20260827_bejeweled_current_match_replay.md).
-A headed visual confirmation, mode coverage, save path, and broader audio
-coverage are still open.
+This is a verified playable Classic core path under the deterministic input
+script, and the desktop runner now exposes the same directional tap mapping
+through the arrow keys. A fresh current-tree replay also reproduces an
+accepted swap and `combo2.wav`; see the [current match replay](../game_tests/20260827_bejeweled_current_match_replay.md).
+The Action menu entry and timer-bar board are now separately verified; an
+accepted Action-mode match, save path, and broader audio coverage are still
+open.
 
 The title-specific audio receipt is in the [Bejeweled WAV ABI report](../game_tests/20260827_bejeweled_audio_abi.md).
 The earlier exact replay maps 27/27 startup WAV sources and emits
