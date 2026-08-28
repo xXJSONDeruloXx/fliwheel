@@ -83,6 +83,8 @@ transition.
 See [`20260827_tetris_rotation_probe.md`](../game_tests/20260827_tetris_rotation_probe.md)
 for the fresh visual and static-input evidence for rotation, wheel movement,
 and hard drop.
+See [`20260828_tetris_edge_rotation_probe.md`](../game_tests/20260828_tetris_edge_rotation_probe.md)
+for the wall-adjacent rotation smoke at both outer playable columns.
 See [`20260827_tetris_line_clear_probe.md`](../game_tests/20260827_tetris_line_clear_probe.md)
 for the guest-driven row clear and headed `Clear.wav` playback evidence.
 See [`20260827_sat_loader_and_tetris_audio.md`](../game_tests/20260827_sat_loader_and_tetris_audio.md)
@@ -137,6 +139,7 @@ automatic for bundle `66666`; no preservation override is required.
 - Gameplay controls evidence: [`20260826_tetris_gameplay_controls.md`](../game_tests/20260826_tetris_gameplay_controls.md)
 - Wheel movement evidence: [`20260826_tetris_wheel_probe.md`](../game_tests/20260826_tetris_wheel_probe.md)
 - Rotation and control evidence: [`20260827_tetris_rotation_probe.md`](../game_tests/20260827_tetris_rotation_probe.md)
+- Edge-rotation smoke: [`20260828_tetris_edge_rotation_probe.md`](../game_tests/20260828_tetris_edge_rotation_probe.md)
 - Board-origin and long-run evidence: [`20260826_tetris_board_origin.md`](../game_tests/20260826_tetris_board_origin.md)
 - Incremental-transform regression: [`20260826_tetris_incremental_transform_regression.md`](../game_tests/20260826_tetris_incremental_transform_regression.md)
 - Frame capture produces PPM files visible with `open /tmp/tetris_capture_*.ppm`
