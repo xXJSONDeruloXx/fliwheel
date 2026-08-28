@@ -86,7 +86,7 @@ manifest. They measure visual activity, not correctness.
 | `77777` | Mahjong | 700 frames, 71 hashes, up to eight draws; mostly dotted/garbled title output | Texture/UV partial | Decode the `main.rlb` resource path and tile atlas |
 | `88888` | Mini Golf | 700 frames, two hashes, five draws; mostly black with a loading/progress outline | Splash/loading only | Load the compact course resources and reach the menu |
 | `99999` | Cubis 2 | 700 frames, 26 hashes and 27 changes, up to 49 draws; black/loading state despite many staged assets | Asset/renderer blocked | Decode the `.raw`/`.pix` image path and material handles |
-| `AAAAA` | PAC-MAN | Fresh 700-frame probe, 7 visual hashes/13 changes, up to 57 draws; recognizable Namco art and a partial board-like scene, but no confirmed maze/menu transition | Partial board-like scene; gameplay not reached | Decode the shared PAC-family post-load path and verify maze/D-pad movement |
+| `AAAAA` | PAC-MAN | Fresh resource-complete probe renders the Namco/name-entry scene; positive wheel input commits `A`, `AB`, `ABG`, `ABGL`, and a longer route reaches `ABGLQVO5`; no confirmed menu/maze transition, and no guest request for the executable's missing `tex_menu.tga` | Partial name/board scene; gameplay not reached | Resolve the name-confirm control, then verify maze/D-pad movement and the missing menu atlas |
 
 No row is marked fully playable. Tetris now has a guest-driven line-clear and
 headed audio receipt, Bejeweled has content-level match evidence, and Ms.
