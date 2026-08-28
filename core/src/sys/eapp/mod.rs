@@ -7369,14 +7369,12 @@ impl Eapp {
                                         .unwrap_or(false);
                                 // PAC-MAN's texture completion trampoline reads the
                                 // request status and byte count before handing the
-                                // loaded TGA to its resource owner. Keep this
-                                // diagnostic path opt-in until the post-callback
-                                // scene/resource contract is verified end to end.
+                                // loaded TGA to its resource owner. The measured
+                                // contract reaches the guest's own TGA parser and
+                                // the first playable maze, so enable it for the
+                                // title's normal path.
                                 let pacman_texture_read = is_pacman
-                                    && host_path.extension().map_or(false, |ext| ext == "tga")
-                                    && fliwheel_var("EAPP_PACMAN_ASYNC3_COMPLETE")
-                                        .map(|v| v == "1" || v == "true")
-                                        .unwrap_or(false);
+                                    && host_path.extension().map_or(false, |ext| ext == "tga");
                                 let complete =
                                     tetris_complete
                                         || texas_complete
