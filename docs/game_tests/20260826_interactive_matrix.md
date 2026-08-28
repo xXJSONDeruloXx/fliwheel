@@ -86,13 +86,15 @@ manifest. They measure visual activity, not correctness.
 | `77777` | Mahjong | 700 frames, 71 hashes, up to eight draws; mostly dotted/garbled title output | Texture/UV partial | Decode the `main.rlb` resource path and tile atlas |
 | `88888` | Mini Golf | 700 frames, two hashes, five draws; mostly black with a loading/progress outline | Splash/loading only | Load the compact course resources and reach the menu |
 | `99999` | Cubis 2 | 700 frames, 26 hashes and 27 changes, up to 49 draws; black/loading state despite many staged assets | Asset/renderer blocked | Decode the `.raw`/`.pix` image path and material handles |
-| `AAAAA` | PAC-MAN | Resource-complete probe reaches name entry, the guest informational prompt, the main menu, and the `START GAME / MODE / STAGE / BACK` screen; selecting start advances guest states 2-9, then faults at `PC 0x1801628c` on a null nested read before the maze; no request for the executable's missing `tex_menu.tga` | Partial menu/startup; gameplay gate faults | Identify the missing/uninitialized start-state object or service, then verify maze/D-pad movement and the missing menu atlas |
+| `AAAAA` | PAC-MAN | Default path reaches name entry, the guest informational prompt, main menu, and the `START GAME / MODE / STAGE / BACK` screen; the title-scoped TGA completion probe reaches a rendered Stage 1 maze, moves Pac-Man, and advances the score 0→30→40 through frame 1048 with no fatal signature; no request for the executable's missing `tex_menu.tga` | Diagnostic gameplay path; default callback contract, audio output, collisions/lives, and persistence remain open | Make the proven TGA completion contract default, then verify pause/collision/lives, audio, persistence, and long-run play |
 
 No row is marked fully playable. Tetris now has a guest-driven line-clear and
 headed audio receipt, Bejeweled has content-level match evidence, and Ms.
 PAC-MAN has a title-scoped maze/input result; all remain incomplete under the
 project goal. The Ms. PAC-MAN details are in the
 [diagnostic gameplay probe](20260827_mspacman_gameplay_probe.md).
+The PAC-MAN follow-up is in the
+[PAC-MAN gameplay probe](20260828_pacman_gameplay_probe.md).
 
 ## Scoped Hold'em progress (excluded from the default matrix)
 

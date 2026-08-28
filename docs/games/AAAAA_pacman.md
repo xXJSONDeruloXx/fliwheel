@@ -1,6 +1,6 @@
 # Pac-Man (Bundle AAAAA)
 
-**Status:** 🟡 PARTIAL MENU/STARTUP | **Evidence:** default resource loading completes; guest input reaches the main menu and START GAME screen, but initialization faults before the maze | **Engine:** Tetris Runtime
+**Status:** 🟡 DIAGNOSTIC GAMEPLAY | **Evidence:** the default path reaches the menu/start screen; an opt-in TGA completion path reaches a rendered, controllable Stage 1 maze; default handoff, audio, collisions/lives, and persistence remain open | **Engine:** Tetris Runtime
 
 ## Quick Start
 ```bash
@@ -34,20 +34,37 @@ until the guest's confirm selector (`0x2c`) and pressing Select then reaches the
 guest-rendered informational prompt, the main menu with `PLAY GAME` selected,
 and the `START GAME / MODE / STAGE / BACK` screen.
 
-Selecting `START GAME` advances the guest through initialization states 2
-through 9, then faults before the first maze frame at `PC 0x1801628c` while
-reading `0x58` through a null nested pointer. The experimental live-GL path
-faults at frame 785; the legacy path reaches the same guest fault at frame 791
-in the saved rerun, so this is not isolated to the live renderer. Maze
-rendering, D-pad movement,
-collision, audio, and persistence remain unverified.
+An opt-in completion path is now available for the guest's TGA callback:
+
+```bash
+FLIWHEEL_EAPP_PACMAN_ASYNC3_COMPLETE=1
+```
+
+With that flag, the callback receives the request status and byte count that
+PAC-MAN's resource manager expects, its guest TGA parser populates the texture
+dimensions, and the start route reaches the first maze. The 2026-08-28 probe
+renders a stable 33-37-draw maze from frame 775 through frame 1048. Captures
+show `READY`, moving Pac-Man and animated ghosts; the tested wheel route moves
+the player and advances the score from `0` at frame 800 to `30` at frame 880
+and `40` at frame 890, with no fatal signature through the bounded run.
+Audio assets and guest audio events were observed during the probe, but audio
+output was disabled, so audible playback is not yet verified.
+
+Without the flag, selecting `START GAME` retains the earlier boundary: the
+guest advances through initialization states 2 through 9, then faults before
+the first maze frame at `PC 0x1801628c` while reading `0x58` through a null
+nested pointer. The experimental live-GL path faults at frame 785; the legacy
+path reaches the same guest fault at frame 791 in the saved rerun, so that
+older failure is not isolated to the live renderer.
 
 The executable references `tex_menu.tga`, but the decrypted bundle only has
 `tex_menu1.tga` and `tex_ig.tga`. An isolated alias experiment did not change
 the state and produced no guest request for the missing filename, so the asset
 is a preservation gap but is not yet proven to be the transition blocker. See
 [`20260827_pacman_name_entry_probe.md`](../game_tests/20260827_pacman_name_entry_probe.md)
-for the exact route, captures, and start-gate fault evidence.
+for the exact menu route and pre-fix start-gate evidence. The opt-in maze and
+input result is recorded in
+[`20260828_pacman_gameplay_probe.md`](../game_tests/20260828_pacman_gameplay_probe.md).
 
 ## Environment
 ```bash

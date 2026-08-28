@@ -7331,6 +7331,11 @@ impl Eapp {
                                     .bundle_dir
                                     .to_str()
                                     .map_or(false, |p| p.contains("14004"));
+                                let is_pacman = self
+                                    .metadata
+                                    .bundle_dir
+                                    .to_str()
+                                    .map_or(false, |p| p.contains("AAAAA"));
                                 let tetris_complete = is_tetris
                                     && fliwheel_var("EAPP_ASYNC3_COMPLETE")
                                         .map(|v| v == "1" || v == "true")
@@ -7353,18 +7358,32 @@ impl Eapp {
                                     && fliwheel_var("EAPP_MSPACMAN_ASYNC3_COMPLETE")
                                         .map(|v| v == "1" || v == "true")
                                         .unwrap_or(false);
+                                // PAC-MAN's texture completion trampoline reads the
+                                // request status and byte count before handing the
+                                // loaded TGA to its resource owner. Keep this
+                                // diagnostic path opt-in until the post-callback
+                                // scene/resource contract is verified end to end.
+                                let pacman_texture_read = is_pacman
+                                    && host_path.extension().map_or(false, |ext| ext == "tga")
+                                    && fliwheel_var("EAPP_PACMAN_ASYNC3_COMPLETE")
+                                        .map(|v| v == "1" || v == "true")
+                                        .unwrap_or(false);
                                 let complete =
                                     tetris_complete
                                         || texas_complete
                                         || popcap_resource_read
-                                        || mspacman_resource_read;
+                                        || mspacman_resource_read
+                                        || pacman_texture_read;
                                 if complete {
                                     let status = if texas_complete {
                                         std::env::var("EAPP_TEXAS_ASYNC3_STATUS")
                                             .ok()
                                             .and_then(|v| v.parse::<u32>().ok())
                                             .unwrap_or(0)
-                                    } else if popcap_resource_read || mspacman_resource_read {
+                                    } else if popcap_resource_read
+                                        || mspacman_resource_read
+                                        || pacman_texture_read
+                                    {
                                         0
                                     } else {
                                         1
