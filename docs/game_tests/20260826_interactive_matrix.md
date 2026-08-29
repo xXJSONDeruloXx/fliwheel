@@ -1,7 +1,7 @@
 # Decrypted clickwheel-game interactive matrix
 
 Date: 2026-08-26 UTC; renderer checkpoint: 2026-08-28 UTC; follow-up probes:
-2026-08-27 to 2026-08-28 UTC
+2026-08-27 to 2026-08-29 UTC
 Repository: `fliwheel`  
 Corpus: `/Volumes/NO NAME/fliwheel-decrypted-corpus-20260826/20 iPod games/Games_RO`
 Runner: `target/release/eapp` with experimental live GL HLE  
@@ -77,7 +77,7 @@ manifest. They measure visual activity, not correctness.
 | `1500E` | The Sims Pool | Focused 2026-08-27 release checkpoint: 700 guest frames, 31 hashes/changes, up to two draws, one zero-draw row, and no fatal signatures; the default path shows a small colored `The` follow-up element through the ordinary `297x75` atlas, but menu/gameplay is not reached | Title + partial follow-up | Decode the `gameLib.rlb`/scene handoff, then exercise aim/power/spin |
 | `1B200` | LOST | 700 frames, zero GL draws, blank framebuffer; rserver loads but no shader output | Shader/render-server blocked | Parse or emulate the `rserver.bin` programmable path |
 | `1C300` | musika | One captured frame with the Musika logo; no fatal | Splash only | Reverse the animation/packet/sound-bank runtime after the first scene |
-| `33333` | Texas Hold'em | Corrected run completes 30,000,000 cycles / 700 captured frames with 3 visual hashes, 34 draws per steady-state frame, and no fatal; the stabilized capture is the `LOADING` screen | Loading screen only; playable state not reached | Reverse the title-specific resource completion/transition path, then verify poker-table controls and sound |
+| `33333` | Texas Hold'em | The measured Hold'em async stages now run by default. A no-override 30,000,000-cycle route reaches the coherent green poker table at guest frame 902, with player panels, blinds, pot, and local name rendered; exit code 0 and no fatal signature | Default table route verified; complete hand flow, controls, audio traversal, save, and persistence remain open | Exercise the table's action sequence and verify betting, card transitions, sound, save, and long-run behavior |
 | `44444` | Zuma | Deterministic entry reaches the Temple, all built-in instruction pages, tutorial close, and live `LEVEL 1-1: SPIRAL OF DOOM`; commit `b12cd60` renders the spiral path and colored marbles coherently, and a durable 400M-cycle probe shows repeated post-entry fire/result activity including `+80 SLOWDOWN BALL`, with no fatal signature; mirrored signed wheel probes now send shots into opposite chain regions; the title-specific audio probe maps 36 sources and resolves 24 live events to named WAVs | Directional aim response, fire/result activity, and headless audio source/event routing verified; exact angle calibration, headed mixer behavior, and save remain open | Calibrate wheel-to-angle precision and repeat several-shot sequences, then verify headed audio and persistence |
 | `50513` | Sudoku | Reversed-register event heads drain cleanly; an opt-in RLB completion honors the late resource seek/read path and reaches coherent `PLAYER NAME`, `GAME SETUP`, `TUTORIAL`, and populated 9×9 puzzle-board scenes. The board cursor and numbered palette render; the default path remains unchanged | Puzzle-board/input partial under title-scoped gates; legal cell entry, audio, and save parity not verified | Calibrate board cursor/number controls, then verify error checking, audio, and persistence |
 | `50514` | Royal Solitaire | Default path is a coherent character splash with consumed scripted events and a completed savefile request. Opt-in completion stages the full `Solitaire.rlb`; the owner-payload probe reaches the guest's first 4,096-byte RLB read, but the longer request cycle still does not reach the card board | Coherent splash; RLB payload path and first guest read proven diagnostically; post-RLB request contract unresolved | Reconstruct the post-RLB stream/request lifecycle, then validate card/selection interaction |
@@ -89,8 +89,9 @@ manifest. They measure visual activity, not correctness.
 | `AAAAA` | PAC-MAN | Normal path reaches name entry, the guest informational prompt, main menu, and the `START GAME / MODE / STAGE / BACK` screen, then reaches a rendered Stage 1 maze, moves Pac-Man, advances the score 0→30→40 through frame 1048 with no fatal signature, and the ordinal-38 `mode=7` indexed-quad path restores the pellet field (240 quads at frame 800, decreasing as pellets are eaten); opens the guest `PAUSE` menu, resumes to the live maze after a settled Select edge, and a longer route queues `die.wav`, consumes one visible life, and returns to `READY!`; the headed replay records 12 mapped WAV events accepted by the sink; no request for the executable's missing `tex_menu.tga` | Normal-path Stage 1, indexed pellet rendering, pause/resume, one collision/life cycle, and headed WAV dispatch verified; repeated lives, physical mixer parity, exit/save, persistence, and long-run play remain open | Verify repeated collision/life cycles, exit/save, physical audio/mixer behavior, persistence, full content, and long-run play |
 
 No row is marked fully playable. Tetris now has a guest-driven line-clear and
-headed audio receipt, and Ms. PAC-MAN and PAC-MAN have normal-path maze/input
-results; all remain incomplete under the project goal. The Ms. PAC-MAN details are in the
+headed audio receipt, Hold'em has a default-path table receipt, and Ms. PAC-MAN
+and PAC-MAN have normal-path maze/input results; all remain incomplete under
+the project goal. The Ms. PAC-MAN details are in the
 [gameplay probe](20260827_mspacman_gameplay_probe.md), with the maze texture-selection
 follow-up in the [UV-edge probe](20260828_mspacman_uv_edge_probe.md).
 The Vortex direct-HLE and renderer follow-up is in the
@@ -102,23 +103,25 @@ The PAC-MAN follow-ups are in the
 collision/life receipt in
 [the focused collision probe](20260828_pacman_collision_probe.md).
 
-## Scoped Hold'em progress (excluded from the default matrix)
+## Hold'em default promotion (2026-08-29)
 
-The default `33333` row intentionally remains loading-only. A separate,
-title-scoped experiment now completes the Hold'em resource callback sequence,
-decodes the title's `GL_PALETTE8_RGBA8_OES` indexed artwork, and uses the
-name-entry wheel/action path to reach the first post-name scene. The sweep
-reaches 113 draws at guest frame 553; the detailed rerun reaches a 107-draw
-scene at guest frame 607 before later blank/partial transitions. The scene is
-not yet coherent or playable, and these overrides are not part of the
-corpus-wide contract:
+The three measured Hold'em async stages are now part of the default contract
+for `33333`. The no-override receipt reaches a coherent green poker table at
+guest frame 902 with exit code 0 and no fatal signature. This is a table-entry
+milestone, not a full-playability claim; betting actions, complete hand flow,
+audio, save, and persistence remain open.
+
+Individual stages can be disabled for diagnostics with:
 
 ```text
-EAPP_TEXAS_ASYNC0_COMPLETE=1 EAPP_TEXAS_ASYNC0_STATUS=1
-EAPP_TEXAS_ASYNC2_COMPLETE=1 EAPP_TEXAS_ASYNC1_COMPLETE=1
+EAPP_TEXAS_ASYNC0_COMPLETE=0
+EAPP_TEXAS_ASYNC1_COMPLETE=0
+EAPP_TEXAS_ASYNC2_COMPLETE=0
 ```
 
-Evidence is retained at `/tmp/fliwheel_holdem_ok_sweep_20260826/` and
+The exact route and external-drive evidence are recorded in
+`docs/game_tests/20260829_holdem_default_async.md`. The earlier scoped captures
+remain available at `/tmp/fliwheel_holdem_ok_sweep_20260826/` and
 `/tmp/fliwheel_holdem_table_20260826/`.
 
 ## Shared changes made after this run

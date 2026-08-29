@@ -90,6 +90,12 @@ fn fliwheel_var(suffix: &str) -> Result<String, std::env::VarError> {
     }
 }
 
+fn env_bool_or_default(name: &str, default: bool) -> bool {
+    std::env::var(name)
+        .map(|value| matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+        .unwrap_or(default)
+}
+
 /// Multiply two column-major 4x4 matrices using the render-server layout.
 fn multiply_column_major(a: &[f32; 16], b: &[f32; 16]) -> [f32; 16] {
     let mut out = [0.0; 16];
@@ -8084,9 +8090,7 @@ impl Eapp {
             let owner_internal_cb = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
             let owner_internal_ctx = self.read_guest_u32(owner.wrapping_add(0x38)).unwrap_or(0);
             let texas_complete = is_texas
-                && std::env::var("EAPP_TEXAS_ASYNC1_COMPLETE")
-                    .map(|v| v == "1" || v == "true")
-                    .unwrap_or(false);
+                && env_bool_or_default("EAPP_TEXAS_ASYNC1_COMPLETE", true);
             let sudoku_complete = is_sudoku
                 && std::env::var("EAPP_SUDOKU_ASYNC1_COMPLETE")
                     .map(|v| v == "1" || v == "true")
@@ -8444,9 +8448,7 @@ impl Eapp {
                 info!(target: "EAPP_IMPORT", "AsyncFileIO:2 Vortex req={:#010x} words={}", owner, words);
             }
             let texas_complete = is_texas
-                && std::env::var("EAPP_TEXAS_ASYNC2_COMPLETE")
-                    .map(|v| v == "1" || v == "true")
-                    .unwrap_or(false);
+                && env_bool_or_default("EAPP_TEXAS_ASYNC2_COMPLETE", true);
             let sudoku_complete = is_sudoku
                 && std::env::var("EAPP_SUDOKU_ASYNC2_COMPLETE")
                     .map(|v| v == "1" || v == "true")
@@ -8872,9 +8874,7 @@ impl Eapp {
                         .map(|v| v == "1" || v == "true")
                         .unwrap_or(false);
                 let texas_complete = is_texas
-                    && std::env::var("EAPP_TEXAS_ASYNC0_COMPLETE")
-                        .map(|v| v == "1" || v == "true")
-                        .unwrap_or(false);
+                    && env_bool_or_default("EAPP_TEXAS_ASYNC0_COMPLETE", true);
                 let sudoku_complete = is_sudoku
                     && std::env::var("EAPP_SUDOKU_ASYNC0_COMPLETE")
                         .map(|v| v == "1" || v == "true")
@@ -9161,7 +9161,7 @@ impl Eapp {
                             std::env::var("EAPP_TEXAS_ASYNC0_STATUS")
                                 .ok()
                                 .and_then(|v| v.parse::<u32>().ok())
-                                .unwrap_or(0)
+                                .unwrap_or(1)
                         } else {
                             0
                         };
@@ -13044,10 +13044,23 @@ fn vma_to_offset(addr: u32) -> Result<u32, EappBuildError> {
 mod tests {
     use super::{
         decode_palette8, is_palette8_compressed_upload_call, live_gl_default_present_vflip,
-        matrix_helper_transform, orthographic_matrix, parse_vortex_sfx_bank, Eapp,
+        env_bool_or_default, matrix_helper_transform, orthographic_matrix,
+        parse_vortex_sfx_bank, Eapp,
         EappInputState, GL_IDENTITY_MATRIX, GL_PALETTE8_R5_G6_B5_OES, GL_PALETTE8_RGBA8_OES,
         GL_TEXTURE_2D, GL_TEXTURE_RECTANGLE,
     };
+
+    #[test]
+    fn title_async_gate_uses_fallback_when_override_is_absent() {
+        assert!(env_bool_or_default(
+            "FLIWHEEL_TEST_UNSET_TEXAS_ASYNC_GATE",
+            true
+        ));
+        assert!(!env_bool_or_default(
+            "FLIWHEEL_TEST_UNSET_TEXAS_ASYNC_GATE",
+            false
+        ));
+    }
 
     #[test]
     fn vortex_sfx_bank_finds_only_complete_pcm_wavs() {

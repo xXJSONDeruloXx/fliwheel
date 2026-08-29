@@ -1,6 +1,6 @@
 # Texas Hold'em (Bundle 33333)
 
-**Status:** 🟡 DEFAULT LOADING-ONLY; SCOPED MENU PARITY | **Evidence:** the corrected default contract completes 30,000,000 cycles / 700 captured frames with no fatal; the title-scoped oracle path now renders the animated card and a coherent main menu | **Engine:** Hold'em Runtime
+**Status:** 🟡 DEFAULT TABLE ROUTE; HAND/CONTENT OPEN | **Evidence:** the normal runtime now reaches a coherent green poker table at guest frame 902 in a 30,000,000-cycle run with no fatal signature; hand flow, sound traversal, and persistence remain open | **Engine:** Hold'em Runtime
 
 ## Quick Start
 ```bash
@@ -25,23 +25,23 @@
 ## Notable
 - Uses `Filesytem` import module (but doesn't depend on it for init)
 - Loads `.ipd` font atlases successfully through AsyncFileIO:3
-- The default path is safe but still stops at `LOADING`; the scoped path now
-  reaches the main menu with the animated card rendered. Gameplay remains open.
-- The current default path is safe but not yet playable: the common scripted
-  input schedule leaves the title on its loading screen. The experimental
-  `FLIWHEEL_EAPP_ASYNC3_COMPLETE=1` completion fields are Tetris-only and must
-  not be used as Hold'em evidence; they exercise a different resource ABI.
+- The default path now completes the measured resource lifecycle and reaches a
+  coherent table with player panels, blinds, pot, and the local player name.
+  Gameplay remains open.
+- The three Hold'em async stages are enabled by default for bundle `33333`.
+  Set `EAPP_TEXAS_ASYNC0_COMPLETE=0`, `EAPP_TEXAS_ASYNC1_COMPLETE=0`, or
+  `EAPP_TEXAS_ASYNC2_COMPLETE=0` to disable an individual stage for an A/B
+  diagnostic. `FLIWHEEL_EAPP_ASYNC3_COMPLETE=1` remains Tetris-only and is not
+  part of the Hold'em contract.
 
-## Scoped experimental progress (2026-08-26)
+## Historical scoped progress (2026-08-26)
 
-The default matrix remains the authority and still reports loading-only. A
-title-scoped experimental path now completes Hold'em's resource callbacks,
-decodes its `GL_PALETTE8_RGBA8_OES` indexed textures, and confirms the
-first-run name screen. A deterministic wheel/action sweep reaches the first
-post-name game scene: the capture reaches 113 draws at guest frame 553 and
-the longer rerun reaches a 107-draw scene at guest frame 607. That scene is
-still incomplete (missing/garbled UI and later blank transitions), so this is
-resource/rendering progress, not a playable-game claim.
+The first title-scoped experiment completed Hold'em's resource callbacks,
+decoded its `GL_PALETTE8_RGBA8_OES` indexed textures, and confirmed the
+first-run name screen. It reached the first post-name scene at 113 draws and
+was retained as the evidence that justified the later default promotion.
+Those old captures are historical; the current default receipt is the
+2026-08-29 report below.
 
 Reproduction requires all of the following title-scoped overrides in addition
 to the normal GL HLE environment:
@@ -84,12 +84,12 @@ Evidence from a fresh corrected run:
 - The canonical control script retains later checkpoints through frame 2000:
   [`pr3_holdem_name_controls.script`](../../scripts/oracle/pr3_holdem_name_controls.script).
 
-This is strong menu/card rendering parity, not a perfect-playability claim.
-The default path remains loading-only, the completion fields remain opt-in,
-and the poker table/gameplay, save behavior, and full audio traversal still
-need their own evidence.
+This is strong menu/card and default-table rendering parity, not a
+perfect-playability claim. Poker actions, save behavior, and full audio
+traversal still need their own evidence.
 
 ## Current evidence
+- Default table route: [2026-08-29 default async receipt](../game_tests/20260829_holdem_default_async.md)
 - Corrected matrix: `/tmp/fliwheel_holdem_matrix_20260826/interactive_matrix.md`
 - 30,000,000-cycle log: `/tmp/fliwheel_holdem_matrix_20260826/logs/33333.log`
 - 100 startup captures: `/tmp/fliwheel_holdem_matrix_20260826/captures/33333/`
