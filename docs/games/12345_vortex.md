@@ -438,6 +438,14 @@ Commit `66045eb` matches the direct runner's Vortex request state at the audio
 manager callback. The guest now executes its own `0x180111cc` reset, writes
 `0x7fff` to `0x18063264`, and reaches the `Audio:13/14/15/2` trigger group at
 frame 128. The 47 Vortex source handles are zero-based as in PR #3. This is
-the trigger contract, not yet audible playback: the embedded `media/sfx` bank
-still needs to be parsed into host voice assets and routed through the desktop
-audio queue.
+the trigger contract; embedded bank output is covered by the next iteration.
+
+## Iteration 36 — embedded SFX extraction and headed dispatch
+
+Commit `0994139` validates and extracts all 47 PCM WAV chunks from the raw
+`media/sfx` bank, binds them to the zero-based `Audio:7` handles, and routes
+Vortex `Audio:2` commits through the existing desktop audio queue. The headed
+replay produced 14 queued events and 14 `played sound` receipts without
+decoder or file-open errors. This establishes host decode/dispatch, while
+four-voice saturation, physical waveform equivalence, exact overlap/timing,
+and later content sound paths remain open.

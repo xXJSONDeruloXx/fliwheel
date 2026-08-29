@@ -1,7 +1,7 @@
 # Vortex PR #3 copy and input lifecycle
 
 Date: 2026-08-29 UTC  
-fliwheel commit: `66045eb`  
+fliwheel commit: `0994139`
 Corpus: `/Volumes/NO NAME/fliwheel-decrypted-corpus-20260826/20 iPod games/Games_RO/12345`  
 Oracle: `/tmp/ipod-emulator-pr3/target/release/play`
 
@@ -69,8 +69,25 @@ The permanent Fliwheel run reproduces the `0x7fff` write and reaches the first
 trigger at frame 128, with later trigger groups at frames 239, 246, 253, and
 later. Vortex's 47 `Audio:0` registrations are also now zero-based, matching
 the direct runner's handles. This establishes trigger-level parity only; the
-embedded `media/sfx` bank still needs extraction and host voice routing before
-audible output can be accepted.
+embedded `media/sfx` bank is now extracted and routed through the existing
+host voice queue; voice-count/timing parity remains open.
+
+## Embedded SFX output
+
+Commit `0994139` validates the raw `media/sfx` layout as 47 PCM RIFF chunks,
+extracts them into the bundle's `.fliwheel-saves/vortex-sfx` directory, and
+binds them in the guest's `Audio:7` registration order. A headed 25-million
+cycle replay queued 14 Vortex sound events and produced 14 `played sound`
+receipts with no decoder or file-open errors:
+
+```text
+/tmp/vortex_fli_sfx_headed_20260829u.log
+```
+
+This proves host decode/dispatch for the observed attract/gameplay triggers,
+not physical waveform equivalence. The oracle's four-voice pool behavior,
+volume/overlap timing, and later level-specific sound paths still need direct
+comparison.
 
 ## Boundary
 
