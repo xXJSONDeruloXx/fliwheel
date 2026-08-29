@@ -6741,11 +6741,15 @@ impl Eapp {
                     state.clone()
                 };
                 let event_list = self.build_input_event_list(&event_state);
-                let event_wheel_bits = if self.metadata.title == "1B200" && event_list != 0 {
+                let event_wheel_bits = if matches!(self.metadata.title.as_str(), "1B200" | "12345")
+                    && event_list != 0
+                {
                     // RetailOS queues the current wheel sample alongside every
-                    // LOST button press/release. The game only enters its
-                    // linked-event dispatcher after seeing bit 30 from this
-                    // poll, so an event node without this packet is ignored.
+                    // LOST/Vortex button press/release. Both games only enter
+                    // their linked-event dispatchers after seeing bit 30 from
+                    // this poll, so an event node without this packet is
+                    // ignored. PR #3's Vortex runner uses raw position zero
+                    // here when a button is pressed without wheel motion.
                     self.lost_wheel_event_bits()
                 } else {
                     0
