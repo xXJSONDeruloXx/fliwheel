@@ -1,0 +1,27 @@
+# Direct PR #3 oracle: capture the first level's start transition densely.
+500: select
+600: select
+620: select
+640: select
+660: select
+680: select
+700: select
+720: select
+920: select
+1300: shot
+1350: shot
+1399: shot
+1400: select
+1401: shot
+1402: shot
+1410: shot
+1420: shot
+1430: shot
+1440: shot
+1449: shot
+1450: shot
+1451: shot
+1460: shot
+1480: shot
+1500: shot
+1501: quit
