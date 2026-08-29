@@ -13095,7 +13095,10 @@ fn find_game_executable(bundle_dir: &Path) -> Result<PathBuf, EappBuildError> {
 /// established Tetris default, but make the evidence-backed PopCap choice
 /// automatic; `FLIWHEEL_GL_PRESENT_VFLIP` remains an explicit override.
 fn live_gl_default_present_vflip(game_id: &str) -> bool {
-    !matches!(game_id, "44444" | "55555" | "zuma" | "bejeweled")
+    !matches!(
+        game_id,
+        "44444" | "55555" | "99999" | "zuma" | "bejeweled"
+    )
 }
 
 fn parse_eapp_header(image: &[u8]) -> Result<EappHeader, EappBuildError> {
@@ -13461,6 +13464,7 @@ mod tests {
     fn popcap_live_gl_default_uses_guest_screen_origin() {
         assert!(!live_gl_default_present_vflip("44444"));
         assert!(!live_gl_default_present_vflip("55555"));
+        assert!(!live_gl_default_present_vflip("99999"));
         assert!(!live_gl_default_present_vflip("zuma"));
         assert!(!live_gl_default_present_vflip("bejeweled"));
         assert!(live_gl_default_present_vflip("66666"));
