@@ -359,3 +359,27 @@ reproducible input comparison is in
 Map name-entry wheel/select behavior, confirm the name, and compare the first
 playable Vortex scene, controls, sound, pause/return, and long-run behavior
 against the direct PR oracle.
+
+## Iteration 32 Update — Vortex wheel packet restores rotated content geometry
+
+The direct PR #3 runner queues a 120-detent wheel sample with every posted
+button edge. Before this was modeled, fliwheel reached the Vortex rotation
+helper with its wheel packet absent: the helper's `r3` was zero and the large
+outer `greenGrid_Door1` quad stayed axis-aligned.
+
+Commit `d994af3` applies that measured contract to Vortex's linked button
+events. The resulting trace reaches the same `0x18021858 -> 0x18010184 ->
+0x1801203c` path as the oracle, writes `0x003d0000` to the shared wheel state,
+and feeds `0x00f40000` into the title's rotation setup. At frame 1500 both
+runners compute the same outer vertices:
+
+```text
+[(299.40344,-41.587143), (321.58716,259.40344),
+ (-1.587143,-19.403458), (20.596542,281.58716)]
+```
+
+The fliwheel lifecycle reaches the same 88-draw content-frame signature as
+the oracle, with the previously matched texture fingerprints and no fatal
+signature. This closes the first long-run content-geometry mismatch; name
+entry, confirmation, controls, sound, pause/return, and broader content
+coverage remain open.

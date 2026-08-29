@@ -63,3 +63,24 @@ This closes Vortex's first input transition: title art and Select now agree in
 kind with the PR #3 direct runner. Name-entry navigation, character selection,
 confirmation, gameplay controls, audio, pause/return, and long-run content
 parity remain open.
+
+## Iteration 32 — wheel packet and first content-frame geometry
+
+The PR runner's `select` action posts a button event and queues the current
+wheel sample. fliwheel previously posted the linked event but omitted that
+sample for Vortex, so the title's rotation helper saw `r3=0` and produced an
+axis-aligned outer quad.
+
+After `d994af3`, the same scripted button sequence reaches the guest wheel
+packet path and writes `0x003d0000` at `0x180bfa4c`, matching the oracle. The
+frame-1500 outer quad is identical in fixed-point-derived coordinates:
+
+```text
+[(299.40344,-41.587143), (321.58716,259.40344),
+ (-1.587143,-19.403458), (20.596542,281.58716)]
+```
+
+The lifecycle trace is 88 draws in both runners. This is still a direct
+decrypted-eApp/HLE comparison; neither side boots an IPSW. The remaining
+acceptance work is interactive name entry and confirmation, gameplay controls,
+sound, pause/return, and longer content traversal.
