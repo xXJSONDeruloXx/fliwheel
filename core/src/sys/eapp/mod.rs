@@ -51,6 +51,10 @@ const WORK_RAM_BASE: u32 = 0x1000_0000;
 /// 0x01; the generic fliwheel InputEvents packet uses logical field bits and
 /// therefore cannot replace this title-local ABI by itself.
 const VORTEX_INPUT_FLAGS: u32 = 0x1806_3e5c;
+/// Hold'em's input wrapper keeps Select/Menu in a title-local button word.
+/// PR #3's direct runner finds this word in the executable at 0x180597a8 and
+/// sets Select=0x01 and Menu=0x10 for one sampled frame.
+const HOLDEM_INPUT_FLAGS: u32 = 0x1805_97a8;
 const GL_IDENTITY_MATRIX: [f32; 16] = [
     1.0, 0.0, 0.0, 0.0,
     0.0, 1.0, 0.0, 0.0,
@@ -6963,6 +6967,25 @@ impl Eapp {
                         vortex_flags |= 0x10;
                     }
                     let _ = self.write_guest_u32(VORTEX_INPUT_FLAGS, vortex_flags);
+                }
+                if self
+                    .metadata
+                    .bundle_dir
+                    .to_str()
+                    .map_or(false, |path| path.contains("33333"))
+                {
+                    // Hold'em uses the same low-level button-word ABI as the
+                    // direct PR #3 runner. Keep the measured Select/Menu
+                    // bits in sync with the generic input packet while the
+                    // remaining physical-button mapping is still open.
+                    let mut holdem_flags = self.env_input_script_bits() & 0x1f;
+                    if state.action {
+                        holdem_flags |= 0x01;
+                    }
+                    if state.menu {
+                        holdem_flags |= 0x10;
+                    }
+                    let _ = self.write_guest_u32(HOLDEM_INPUT_FLAGS, holdem_flags);
                 }
                 if args[0] != 0 && !vortex_direct {
                     self.write_guest_u32(args[0], bits);

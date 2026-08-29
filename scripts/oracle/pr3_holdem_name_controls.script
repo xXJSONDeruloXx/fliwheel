@@ -1,0 +1,18 @@
+# Direct PR #3 oracle: inspect the three non-letter controls after Z.
+100: select
+120: select
+140: select
+160: select
+180: select
+200: select
+220: select
+240: wheel +104
+360: wheel +4
+380: shot
+400: wheel +4
+420: shot
+440: wheel +4
+460: shot
+480: select
+500: shot
+501: quit
