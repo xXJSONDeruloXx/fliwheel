@@ -219,8 +219,9 @@ pub struct LiveGlState {
     pub current_material_epoch: u64,
     pub translation: (f32, f32),
     /// The current vertex MVP uploaded through OpenGLES:125. Vortex submits
-    /// model-space glyphs for its gameplay objects and relies on this matrix
-    /// at draw time; most other title families pass screen-space vertices.
+    /// model-space glyphs for its gameplay objects and Hold'em submits its
+    /// animated card scene the same way; most other title families pass
+    /// screen-space vertices.
     pub mvp: Option<[f32; 16]>,
     /// Transform model for the Tetris material groups. The guest establishes
     /// the board origin immediately before the matrix texture draw, then

@@ -103,7 +103,7 @@ fn multiply_column_major(a: &[f32; 16], b: &[f32; 16]) -> [f32; 16] {
     out
 }
 
-/// Build one post-multiplied matrix helper result for the Vortex ABI.
+/// Build one post-multiplied matrix helper result for the fixed-function title ABI.
 fn matrix_helper_transform(
     ordinal: u32,
     current: [f32; 16],
@@ -2772,20 +2772,27 @@ impl Eapp {
                 0
             }
             169 => {
-                // Vortex's #169 is the mat4 translate helper, not the
-                // ordinary screen-space translation ABI used by the other
-                // live-HLE title families. The matrix write below is the
-                // only state change its direct oracle observes.
-                if self.metadata.title != "12345"
-                    || fliwheel_var_os("VORTEX_PR3_GL165").is_none()
-                {
+                // Vortex and Hold'em use #169 as the fixed-function mat4
+                // translate helper. Other live-HLE title families use the
+                // same ordinal as their screen-space translation ABI.
+                let matrix_title = (self.metadata.title == "12345"
+                    && fliwheel_var_os("VORTEX_PR3_GL165").is_some())
+                    || self.live_is_holdem();
+                if !matrix_title {
                     self.live_handle_translate(args);
                 }
-                self.live_handle_vortex_matrix_op(169, args);
+                if matrix_title {
+                    self.live_handle_matrix_op(169, args);
+                }
                 0
             }
             171 | 173 | 175 => {
-                self.live_handle_vortex_matrix_op(ordinal, args);
+                if (self.metadata.title == "12345"
+                    && fliwheel_var_os("VORTEX_PR3_GL165").is_some())
+                    || self.live_is_holdem()
+                {
+                    self.live_handle_matrix_op(ordinal, args);
+                }
                 0
             }
             // OpenGLES:147 is the scalar fixed-point form of the colour
@@ -3010,10 +3017,11 @@ impl Eapp {
             // the other families continue using their established screen
             // coordinate paths.
             125 => {
-                if self.metadata.title == "12345"
-                    && fliwheel_var_os("VORTEX_PR3_GL165").is_some()
+                if (self.metadata.title == "12345"
+                    && fliwheel_var_os("VORTEX_PR3_GL165").is_some())
+                    || self.live_is_holdem()
                 {
-                    self.live_handle_vortex_mvp(args);
+                    self.live_handle_mvp(args);
                 }
                 0
             }
@@ -3373,15 +3381,20 @@ impl Eapp {
         }
     }
 
-    /// Implement the ordinary `glGenTextures(n, out)` form seen by the Vortex
-    /// eApp. The old resource-descriptor probe also lives on ordinal 45 for a
-    /// few titles, so callers run that guarded probe afterward; the zero
-    /// `r2` marker distinguishes the generated-name ABI from its dimensioned
-    /// descriptor form.
+    /// Implement the ordinary `glGenTextures(n, out)` form seen by the live
+    /// title eApps. The old resource-descriptor probe also lives on ordinal 45
+    /// for a few titles, so callers run that guarded probe afterward; the zero
+    /// `r2` marker distinguishes the generated-name ABI except for Hold'em's
+    /// one measured initializer callsite.
     fn live_handle_gen_textures(&mut self, args: [u32; 4]) {
         let count = args[0];
         let out = args[1];
-        if count == 0 || count > 256 || out == 0 || args[2] != 0 {
+        let holdem_initializer = self.live_is_holdem_texture_initializer(args);
+        if count == 0
+            || count > 256
+            || out == 0
+            || (args[2] != 0 && !holdem_initializer)
+        {
             return;
         }
         let mut generated = 0u32;
@@ -3566,6 +3579,18 @@ impl Eapp {
                 pixel_ptr
             );
         }
+    }
+
+    /// Hold'em's first ordinal-45 call is the ordinary `glGenTextures(1, out)`
+    /// initializer, but its unused third register carries `0xf0`. The callsite
+    /// is stable in the decrypted executable and distinguishes it from the
+    /// dimensioned ordinal-45 resource descriptors handled above.
+    fn live_is_holdem_texture_initializer(&self, args: [u32; 4]) -> bool {
+        self.live_is_holdem()
+            && self.cpu.reg_get(self.cpu.mode(), reg::LR) == 0x1800_73a4
+            && args[0] == 1
+            && args[1] != 0
+            && args[1] == args[3]
     }
 
     /// Ordinal 99: copy guest pixel bytes immediately, validate bounds, and
@@ -3967,16 +3992,26 @@ impl Eapp {
         }
     }
 
-    /// Apply the matrix helpers used by the direct PR #3 Vortex oracle.
+    fn live_is_holdem(&self) -> bool {
+        self.metadata
+            .bundle_dir
+            .to_str()
+            .is_some_and(|path| path.contains("33333"))
+    }
+
+    /// Apply the matrix helpers used by the direct PR #3 title oracles.
     ///
     /// Vortex builds the rotating outer overlay in guest memory with
     /// `translate`, `rotate`, and `multMatrix`; the next vertex-array
     /// submission reads the resulting coordinates from that state. The
     /// ordinary translation accumulator remains the compatibility path for
-    /// other title families, so these writes stay behind the Vortex PR3 A/B
-    /// flag.
-    fn live_handle_vortex_matrix_op(&mut self, ordinal: u32, args: [u32; 4]) {
-        if self.metadata.title != "12345" || fliwheel_var_os("VORTEX_PR3_GL165").is_none() {
+    /// other title families. Hold'em reaches this same ABI without the Vortex
+    /// feature flag because its card scene uses the fixed-function matrix
+    /// helpers directly.
+    fn live_handle_matrix_op(&mut self, ordinal: u32, args: [u32; 4]) {
+        let vortex_matrix =
+            self.metadata.title == "12345" && fliwheel_var_os("VORTEX_PR3_GL165").is_some();
+        if !vortex_matrix && !self.live_is_holdem() {
             return;
         }
         let dst = args[0];
@@ -4006,7 +4041,7 @@ impl Eapp {
         if fliwheel_var_os("EAPP_GL_MATRIX_LOG").is_some() {
             info!(
                 target: "EAPP_GL",
-                "vortex_matrix frame={} ordinal={} dst={:#010x} args={args:?} stack_z={stack_z} m={matrix:?}",
+                "matrix frame={} ordinal={} dst={:#010x} args={args:?} stack_z={stack_z} m={matrix:?}",
                 self.frame_counter,
                 ordinal,
                 dst
@@ -4062,10 +4097,10 @@ impl Eapp {
         );
     }
 
-    /// Capture the Vortex vertex MVP uploaded by OpenGLES:125. The direct
-    /// runner's ABI is `(location, count, transpose, matrix_ptr)`; only the
+    /// Capture the vertex MVP uploaded by OpenGLES:125. The direct runner's
+    /// ABI is `(location, count, transpose, matrix_ptr)`; only the
     /// location-zero upload participates in the vertex position path.
-    fn live_handle_vortex_mvp(&mut self, args: [u32; 4]) {
+    fn live_handle_mvp(&mut self, args: [u32; 4]) {
         if args[0] != 0 || args[1] == 0 || args[3] == 0 {
             return;
         }
@@ -4078,7 +4113,7 @@ impl Eapp {
         if fliwheel_var_os("GL_MATRIX_LOG").is_some() {
             info!(
                 target: "EAPP_GL",
-                "vortex_mvp ptr={:#010x} m={matrix:?}",
+                "mvp ptr={:#010x} m={matrix:?}",
                 args[3]
             );
         }
@@ -4659,13 +4694,29 @@ impl Eapp {
             return;
         }
         let state_words = self.read_guest_words(state_ptr, 16);
-        let positions = match self.live_decode_positions_range(
-            &pos_def,
-            pos_enabled,
-            translation,
-            first,
-            count,
-        ) {
+        let mvp = ((self.metadata.title == "12345"
+            && fliwheel_var_os("VORTEX_PR3_GL165").is_some())
+            || self.live_is_holdem())
+            .then(|| self.live_gl.as_ref().and_then(|lg| lg.mvp))
+            .flatten();
+        let decoded_positions = match mvp {
+            Some(mvp) => self.live_decode_positions_range_mvp(
+                &pos_def,
+                pos_enabled,
+                translation,
+                mvp,
+                first,
+                count,
+            ),
+            None => self.live_decode_positions_range(
+                &pos_def,
+                pos_enabled,
+                translation,
+                first,
+                count,
+            ),
+        };
+        let positions = match decoded_positions {
             Some(p) => p,
             None => {
                 warn!(target: "EAPP_GL", "triangle-strip draw{} skipped: position array unusable handle={:#x}", draw_index + 1, handle);
@@ -5108,11 +5159,12 @@ impl Eapp {
             self.live_maybe_dump_texgen_stack_locals();
         }
 
-        let vortex_mvp = (self.metadata.title == "12345"
+        let uploaded_mvp = ((self.metadata.title == "12345"
             && fliwheel_var_os("VORTEX_PR3_GL165").is_some())
+            || self.live_is_holdem())
             .then(|| self.live_gl.as_ref().and_then(|lg| lg.mvp))
             .flatten();
-        let decoded_positions = match vortex_mvp {
+        let decoded_positions = match uploaded_mvp {
             Some(mvp) => self.live_decode_positions_range_mvp(
                 &pos_def,
                 pos_enabled,
@@ -5421,10 +5473,10 @@ impl Eapp {
         )
     }
 
-    /// Decode Vortex position vertices and apply the current uploaded MVP.
-    /// The direct runner applies the matrix in its vertex path; doing that
-    /// after reading all four fixed-point components keeps the software HLE
-    /// aligned with the oracle for rotated model-space glyphs.
+    /// Decode model-space position vertices and apply the current uploaded
+    /// MVP. The direct runner applies the matrix in its vertex path; doing
+    /// that after reading all four fixed-point components keeps the software
+    /// HLE aligned with the oracle for rotated model-space geometry.
     fn live_decode_positions_range_mvp(
         &mut self,
         def: &Option<live_gl::LiveArrayDef>,

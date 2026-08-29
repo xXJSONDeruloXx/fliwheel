@@ -1,6 +1,6 @@
 # Texas Hold'em (Bundle 33333)
 
-**Status:** 🟡 LOADING SCREEN ONLY | **Evidence:** corrected default-contract run completes 30,000,000 cycles / 700 captured frames with no fatal, but stabilizes on `LOADING` | **Engine:** Hold'em Runtime
+**Status:** 🟡 DEFAULT LOADING-ONLY; SCOPED MENU PARITY | **Evidence:** the corrected default contract completes 30,000,000 cycles / 700 captured frames with no fatal; the title-scoped oracle path now renders the animated card and a coherent main menu | **Engine:** Hold'em Runtime
 
 ## Quick Start
 ```bash
@@ -25,7 +25,8 @@
 ## Notable
 - Uses `Filesytem` import module (but doesn't depend on it for init)
 - Loads `.ipd` font atlases successfully through AsyncFileIO:3
-- Second-highest draw count — full poker table rendering
+- The default path is safe but still stops at `LOADING`; the scoped path now
+  reaches the main menu with the animated card rendered. Gameplay remains open.
 - The current default path is safe but not yet playable: the common scripted
   input schedule leaves the title on its loading screen. The experimental
   `FLIWHEEL_EAPP_ASYNC3_COMPLETE=1` completion fields are Tetris-only and must
@@ -56,6 +57,37 @@ Evidence:
 - Detailed post-name run: `/tmp/fliwheel_holdem_table_20260826/`
 - The indexed texture decoder and callback path are opt-in and title-scoped;
   they do not alter the corrected corpus-wide default run.
+
+## Direct-oracle parity (2026-08-29)
+
+The scoped path now covers two previously missing pieces of the direct PR #3
+render contract:
+
+- Hold'em's first `OpenGLES:45` call is `glGenTextures(1, out)` even though
+  its unused third register is `0xf0`. The measured callsite is restricted to
+  the Hold'em initializer (`LR=0x180073a4`), so the ordinary generated name is
+  `1` without weakening the other ordinal-45 resource-descriptor paths.
+- Hold'em uses `OpenGLES:169/173/175` to build a translated/rotated card
+  matrix, then uploads it through `OpenGLES:125`. The matrix helper and vertex
+  projection are now enabled only for Hold'em and the already-supported Vortex
+  path.
+
+Evidence from a fresh corrected run:
+
+- Fliwheel rendered the 47-quad card/menu transition at guest frames 490-496
+  without a fatal: `/tmp/fliwheel_33333_holdem_matrix_20260829d/`.
+- The aligned Fliwheel frame 496 and direct-oracle frame 508 images differ by
+  at most 2 in any RGB channel, with 97.31% of channel bytes identical and a
+  mean absolute channel error of 0.0327. The direct image is
+  `/tmp/ipod-shot-06.png`; the Fliwheel image is
+  `/tmp/fliwheel_33333_holdem_matrix_20260829d/startup_g000496_host000065324207_hash2ace7ee63440c307.ppm`.
+- The canonical control script retains later checkpoints through frame 2000:
+  [`pr3_holdem_name_controls.script`](../../scripts/oracle/pr3_holdem_name_controls.script).
+
+This is strong menu/card rendering parity, not a perfect-playability claim.
+The default path remains loading-only, the completion fields remain opt-in,
+and the poker table/gameplay, save behavior, and full audio traversal still
+need their own evidence.
 
 ## Current evidence
 - Corrected matrix: `/tmp/fliwheel_holdem_matrix_20260826/interactive_matrix.md`

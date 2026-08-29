@@ -11,7 +11,7 @@ older pages retain historical investigation notes and are not completion claims.
 |------|---------|---------------|------|
 | Tetris | 66666 | 🟡 Core controls + centered board; gameplay parity open | [→](66666_tetris.md) |
 | Cubis 2 | 99999 | ❌ Asset/renderer blocked | [→](99999_cubis2.md) |
-| Texas Hold'em | 33333 | 🟡 Default loading-only; scoped experiment reaches partial first scene | [→](33333_holdem.md) |
+| Texas Hold'em | 33333 | 🟡 Default loading-only; scoped path reaches oracle-aligned main menu/card render; gameplay open | [→](33333_holdem.md) |
 | Ms. PAC-MAN | 14004 | 🟡 Normal-path Stage 1 + collision/life + headed WAV sink; full play open | [→](14004_mspacman.md) |
 | PAC-MAN | AAAAA | 🟡 Normal-path Stage 1 + pause/resume + one collision/life cycle + headed WAV sink; repeated lives and full play open | [→](AAAAA_pacman.md) |
 | Mahjong | 77777 | 🟡 Texture/UV partial | [→](77777_mahjong.md) |
