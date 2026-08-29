@@ -1,0 +1,18 @@
+# Direct PR #3 oracle: enter the first Vortex level, press Menu in play, and
+# capture the return path.
+500: select
+600: select
+620: select
+640: select
+660: select
+680: select
+700: select
+720: select
+920: select
+1599: shot
+1600: menu
+1601: shot
+1700: shot
+1800: select
+1900: shot
+1901: quit
