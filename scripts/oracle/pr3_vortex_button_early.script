@@ -1,0 +1,18 @@
+# Direct PR #3 oracle: probe a physical button shortly after play begins,
+# before the first level can naturally finish.
+500: select
+600: select
+620: select
+640: select
+660: select
+680: select
+700: select
+720: select
+920: select
+1400: select
+1449: shot
+1450: menu
+1451: shot
+1500: shot
+1550: shot
+1551: quit
