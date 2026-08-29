@@ -1,5 +1,7 @@
 # Direct PR #3 oracle: capture the framebuffer-copy lifecycle around the
 # title-to-name-entry transition.
+69: shot
+73: shot
 499: shot
 500: select
 501: shot
