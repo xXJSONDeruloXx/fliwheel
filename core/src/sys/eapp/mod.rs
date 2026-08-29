@@ -5808,7 +5808,7 @@ impl Eapp {
                 .unwrap_or((None, None));
             info!(
                 target: "EAPP_GL",
-                "quad_dump frame={} draw={} handle={:#x} bound_tex={:?} upload={:?} fingerprint={:?} pos={:?} uv={:?}",
+                "quad_dump frame={} draw={} handle={:#x} bound_tex={:?} upload={:?} fingerprint={:?} pos={:?} uv={:?} vertex_colors={:?}",
                 self.frame_counter,
                 draw_index + 1,
                 handle,
@@ -5816,7 +5816,8 @@ impl Eapp {
                 upload,
                 fingerprint.map(|value| format!("{value:#018x}")),
                 record.positions,
-                record.uvs
+                record.uvs,
+                record.vertex_colors
             );
         }
         if let Some(reason) = record.skipped_reason.clone() {
