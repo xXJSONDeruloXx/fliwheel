@@ -669,7 +669,10 @@ fn replay_frame4_produces_complete_artifact_and_hash() {
         write_frame4_ppm_if_requested("/tmp/tetris_frame4_draw4_opaque.ppm", &draw4_opaque_fb);
     }
 
-    assert_eq!(hash, 0x3514_598d_ae7f_1fe2);
+    // The scaled-draw filter is part of the current renderer contract. Keep
+    // this golden tied to that contract so a later filtering change cannot
+    // silently alter the complete frame artifact.
+    assert_eq!(hash, 0x71b4_e436_0eaf_4591);
     assert_eq!(bytes.len(), 320 * 240 * 4);
 }
 
@@ -1522,7 +1525,10 @@ fn orientation_helpers_respect_corner_markers_and_global_vertical_origin() {
         Rgba8::rgba(255, 255, 255, 255),
     );
     let quad = [(0.0, 0.0), (0.0, 2.0), (2.0, 2.0), (2.0, 0.0)];
-    let uvs = [(0.5, 0.5), (0.5, 1.5), (1.5, 1.5), (1.5, 0.5)];
+    // Use a one-to-one texture mapping here. The orientation probe is about
+    // row/column transforms; fractional scaled sampling belongs to the
+    // dedicated bilinear tests and would blend the four corner markers.
+    let uvs = [(0.0, 0.0), (0.0, 2.0), (2.0, 2.0), (2.0, 0.0)];
 
     let mut current_fb = vec![Rgba8::rgba(0, 0, 0, 0); 4];
     let current_cov = rasterize_quad(&mut current_fb, 2, 2, &tex, &quad, &uvs);
