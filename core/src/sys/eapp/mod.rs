@@ -165,6 +165,26 @@ fn orthographic_matrix(args: [u32; 4], top: f32, z_near: f32, z_far: f32) -> Opt
     Some(out)
 }
 
+/// Apply the column-major MVP/viewport transform used by the direct Vortex
+/// runner. Its non-identity matrices are affine for the observed eApp, but
+/// keep the homogeneous divide so this mirrors the oracle's fixed-function
+/// vertex path rather than baking in that observation.
+fn project_mvp_position(mvp: [f32; 16], x: f32, y: f32, z: f32, w: f32) -> (f32, f32) {
+    if mvp == GL_IDENTITY_MATRIX {
+        return (x, y);
+    }
+    let v = [x, y, z, w];
+    let mut out = [0.0f32; 4];
+    for (row, value) in out.iter_mut().enumerate() {
+        *value = (0..4).map(|column| mvp[column * 4 + row] * v[column]).sum();
+    }
+    let inv_w = if out[3].abs() > 1e-6 { 1.0 / out[3] } else { 1.0 };
+    (
+        (out[0] * inv_w + 1.0) * 0.5 * live_gl::FB_WIDTH as f32,
+        (out[1] * inv_w + 1.0) * 0.5 * live_gl::FB_HEIGHT as f32,
+    )
+}
+
 // Use a 64 MiB synthetic app RAM window, matching the high-memory 5G-class
 // iPods that many clickwheel games targeted. Smaller scratch windows truncate
 // guest heaps/arenas: PopCap titles were observed copying assets past both
@@ -2706,7 +2726,15 @@ impl Eapp {
                 0
             }
             169 => {
-                self.live_handle_translate(args);
+                // Vortex's #169 is the mat4 translate helper, not the
+                // ordinary screen-space translation ABI used by the other
+                // live-HLE title families. The matrix write below is the
+                // only state change its direct oracle observes.
+                if self.metadata.title != "12345"
+                    || fliwheel_var_os("VORTEX_PR3_GL165").is_none()
+                {
+                    self.live_handle_translate(args);
+                }
                 self.live_handle_vortex_matrix_op(169, args);
                 0
             }
@@ -2927,8 +2955,22 @@ impl Eapp {
                 }
                 0
             }
-            // Draw-adjacent state ordinals; recorded by observation only.
-            149 | 125 => 0,
+            // Draw-adjacent state ordinal; retained as a no-op until a title
+            // proves a fixed-function matrix contract for it.
+            149 => 0,
+            // OpenGLES:125 is glUniformMatrix4fv in the direct Vortex path.
+            // The oracle uploads the current model/projection matrix through
+            // r3 before each model-space draw. Keep this title-scoped while
+            // the other families continue using their established screen
+            // coordinate paths.
+            125 => {
+                if self.metadata.title == "12345"
+                    && fliwheel_var_os("VORTEX_PR3_GL165").is_some()
+                {
+                    self.live_handle_vortex_mvp(args);
+                }
+                0
+            }
             // Ordinal 4: glBindTexture(target, texture).
             // r0=target (e.g. 0xDE1=GL_TEXTURE_2D), r1=texture_name.
             // Capture the texture name so that the next ordinal-99 upload
@@ -3895,17 +3937,17 @@ impl Eapp {
         if dst == 0 {
             return;
         }
+        let stack_z = self
+            .read_guest_u32(self.cpu.reg_get(self.cpu.mode(), reg::SP))
+            .map(f32::from_bits)
+            .unwrap_or(0.0);
         let out = if ordinal == 175 {
             let a = self.read_guest_float_matrix(args[1]);
             let b = self.read_guest_float_matrix(args[2]);
             a.zip(b).map(|(a, b)| multiply_column_major(&a, &b))
         } else {
             let current = self.read_guest_float_matrix(dst);
-            let z = self
-                .read_guest_u32(self.cpu.reg_get(self.cpu.mode(), reg::SP))
-                .map(f32::from_bits)
-                .unwrap_or(0.0);
-            current.and_then(|current| matrix_helper_transform(ordinal, current, args, z))
+            current.and_then(|current| matrix_helper_transform(ordinal, current, args, stack_z))
         };
         let Some(matrix) = out else {
             return;
@@ -3918,7 +3960,8 @@ impl Eapp {
         if fliwheel_var_os("EAPP_GL_MATRIX_LOG").is_some() {
             info!(
                 target: "EAPP_GL",
-                "vortex_matrix ordinal={} dst={:#010x} m={matrix:?}",
+                "vortex_matrix frame={} ordinal={} dst={:#010x} args={args:?} stack_z={stack_z} m={matrix:?}",
+                self.frame_counter,
                 ordinal,
                 dst
             );
@@ -3971,6 +4014,28 @@ impl Eapp {
             "vortex_ortho dst={:#010x} m={matrix:?}",
             args[0]
         );
+    }
+
+    /// Capture the Vortex vertex MVP uploaded by OpenGLES:125. The direct
+    /// runner's ABI is `(location, count, transpose, matrix_ptr)`; only the
+    /// location-zero upload participates in the vertex position path.
+    fn live_handle_vortex_mvp(&mut self, args: [u32; 4]) {
+        if args[0] != 0 || args[1] == 0 || args[3] == 0 {
+            return;
+        }
+        let Some(matrix) = self.read_guest_float_matrix(args[3]) else {
+            return;
+        };
+        if let Some(lg) = self.live_gl.as_mut() {
+            lg.mvp = Some(matrix);
+        }
+        if fliwheel_var_os("GL_MATRIX_LOG").is_some() {
+            info!(
+                target: "EAPP_GL",
+                "vortex_mvp ptr={:#010x} m={matrix:?}",
+                args[3]
+            );
+        }
     }
 
     /// OpenGLES:13, glClearColor(r, g, b, a).
@@ -4997,13 +5062,28 @@ impl Eapp {
             self.live_maybe_dump_texgen_stack_locals();
         }
 
-        let mut positions = match self.live_decode_positions_range(
-            &pos_def,
-            pos_enabled,
-            effective_translation,
-            first,
-            count,
-        ) {
+        let vortex_mvp = (self.metadata.title == "12345"
+            && fliwheel_var_os("VORTEX_PR3_GL165").is_some())
+            .then(|| self.live_gl.as_ref().and_then(|lg| lg.mvp))
+            .flatten();
+        let decoded_positions = match vortex_mvp {
+            Some(mvp) => self.live_decode_positions_range_mvp(
+                &pos_def,
+                pos_enabled,
+                effective_translation,
+                mvp,
+                first,
+                count,
+            ),
+            None => self.live_decode_positions_range(
+                &pos_def,
+                pos_enabled,
+                effective_translation,
+                first,
+                count,
+            ),
+        };
+        let mut positions = match decoded_positions {
             Some(p) => p,
             None => {
                 let rec = live_gl::LiveDrawRecord {
@@ -5293,6 +5373,52 @@ impl Eapp {
                 .map(|(x, y)| (x + translation.0, y + translation.1))
                 .collect(),
         )
+    }
+
+    /// Decode Vortex position vertices and apply the current uploaded MVP.
+    /// The direct runner applies the matrix in its vertex path; doing that
+    /// after reading all four fixed-point components keeps the software HLE
+    /// aligned with the oracle for rotated model-space glyphs.
+    fn live_decode_positions_range_mvp(
+        &mut self,
+        def: &Option<live_gl::LiveArrayDef>,
+        enabled: bool,
+        translation: (f32, f32),
+        mvp: [f32; 16],
+        first: usize,
+        count: usize,
+    ) -> Option<Vec<(f32, f32)>> {
+        let def = def.as_ref()?;
+        if !enabled || !def.valid || def.format != live_gl::GL_FIXED || def.component_count < 2 {
+            return None;
+        }
+        let components = def.component_count as usize;
+        let tight_stride = components.checked_mul(4)?;
+        let stride = if def.stride == 0 {
+            tight_stride
+        } else {
+            (def.stride as usize).max(tight_stride)
+        };
+        let mut points = Vec::with_capacity(count);
+        for vertex in first..first.checked_add(count)? {
+            let offset = vertex.checked_mul(stride)? as u32;
+            let bytes = self.read_guest_bytes(def.guest_ptr.wrapping_add(offset), tight_stride)?;
+            let read = |component: usize| {
+                let at = component * 4;
+                decode_fixed_16_16(u32::from_le_bytes([
+                    bytes[at],
+                    bytes[at + 1],
+                    bytes[at + 2],
+                    bytes[at + 3],
+                ]))
+            };
+            let x = read(0) + translation.0;
+            let y = read(1) + translation.1;
+            let z = (components >= 3).then(|| read(2)).unwrap_or(0.0);
+            let w = (components >= 4).then(|| read(3)).unwrap_or(1.0);
+            points.push(project_mvp_position(mvp, x, y, z, w));
+        }
+        Some(points)
     }
 
     fn live_decode_generated_uvs(&mut self, state_ptr: u32) -> Option<([(f32, f32); 4], bool)> {
@@ -6701,6 +6827,8 @@ impl Eapp {
                     }
                     self.input_event_reversed_clear_pending = false;
                 }
+                let vortex_direct = self.metadata.title == "12345"
+                    && fliwheel_var_os("VORTEX_PR3_GL165").is_some();
                 let button_bits = match self.metadata.title.as_str() {
                     "55555" => {
                         // Bejeweled uses the four clickwheel quadrants as a
@@ -6716,6 +6844,13 @@ impl Eapp {
                         // while InputEvents:0 supplies only the wheel packet.
                         // Returning the action bit as well changes the title's
                         // compact input state relative to that oracle.
+                        0
+                    }
+                    "12345" if vortex_direct => {
+                        // PR #3's Vortex runner writes only the wheel sample
+                        // through InputEvents:0. Select/Menu are carried by
+                        // the title-local flags word below, not this generic
+                        // logical-button return value.
                         0
                     }
                     _ => Self::input_state_bits(&state),
@@ -6740,8 +6875,27 @@ impl Eapp {
                 } else {
                     state.clone()
                 };
-                let event_list = self.build_input_event_list(&event_state);
-                let event_wheel_bits = if matches!(self.metadata.title.as_str(), "1B200" | "12345")
+                // Vortex has a flags-word button ABI in the direct oracle,
+                // so do not allocate or publish the generic linked event
+                // nodes. Still track the logical edge so a Select/Menu press
+                // can queue the same current wheel sample that the oracle
+                // queues alongside the flag transition.
+                let vortex_pressed = if vortex_direct {
+                    let current = self.input_event_id_mask(&event_state);
+                    let previous = self.input_event_prev_mask;
+                    self.input_event_prev_mask = current;
+                    current & !previous != 0
+                } else {
+                    false
+                };
+                let event_list = if vortex_direct {
+                    0
+                } else {
+                    self.build_input_event_list(&event_state)
+                };
+                let event_wheel_bits = if vortex_direct && vortex_pressed {
+                    self.lost_wheel_event_bits()
+                } else if matches!(self.metadata.title.as_str(), "1B200" | "12345")
                     && event_list != 0
                 {
                     // RetailOS queues the current wheel sample alongside every
@@ -6776,7 +6930,7 @@ impl Eapp {
                     }
                     let _ = self.write_guest_u32(VORTEX_INPUT_FLAGS, vortex_flags);
                 }
-                if args[0] != 0 {
+                if args[0] != 0 && !vortex_direct {
                     self.write_guest_u32(args[0], bits);
                 }
                 if args[1] != 0 {
@@ -6850,7 +7004,9 @@ impl Eapp {
                         state
                     );
                 }
-                bits
+                // The direct InputPoll stub returns zero; the wheel packet is
+                // observed through the second out-pointer instead.
+                if vortex_direct { 0 } else { bits }
             }
             1 => self.alloc_zeroed(0x40),
             _ => 0,

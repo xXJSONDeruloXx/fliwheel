@@ -218,6 +218,10 @@ pub struct LiveGlState {
     pub current_state_ptr: u32,
     pub current_material_epoch: u64,
     pub translation: (f32, f32),
+    /// The current vertex MVP uploaded through OpenGLES:125. Vortex submits
+    /// model-space glyphs for its gameplay objects and relies on this matrix
+    /// at draw time; most other title families pass screen-space vertices.
+    pub mvp: Option<[f32; 16]>,
     /// Transform model for the Tetris material groups. The guest establishes
     /// the board origin immediately before the matrix texture draw, then
     /// wraps each cell material's tile draws in paired translations.
@@ -335,6 +339,7 @@ impl LiveGlState {
             current_state_ptr: 0,
             current_material_epoch: 0,
             translation: (0.0, 0.0),
+            mvp: None,
             frame_base_translation: (0.0, 0.0),
             board_base_translation_valid: false,
             frame_material_bound: false,
