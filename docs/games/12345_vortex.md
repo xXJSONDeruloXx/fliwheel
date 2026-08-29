@@ -420,3 +420,14 @@ is 10, and the rendered gameplay glyph has matching position, rotation, color,
 and texture coverage. Name-entry wheel selection, confirmation, complete
 control mapping, audio timing, pause/return, and longer content traversal
 remain open.
+
+## Iteration 34 — clean-state copy lifecycle
+
+The oracle mutates the supplied bundle with Vortex's first-run `options`,
+`stats`, `quicka`, and `quickb` files. The new reproducible clean-copy and
+frame-offset evidence is recorded in
+[`20260829_vortex_copy_lifecycle.md`](../game_tests/20260829_vortex_copy_lifecycle.md).
+It confirms that both runners use the same `OpenGLES:21` callsite and 320x240
+bottom-left copy contract. The remaining name-entry background difference is
+the rotating source-frame phase at that copy boundary, not a missing texture
+handler. Menu/return, audio, and longer-content acceptance remain open.
