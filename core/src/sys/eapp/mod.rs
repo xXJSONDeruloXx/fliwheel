@@ -365,10 +365,13 @@ const GL_PALETTE8_R5_G6_B5_OES: u32 = 0x8b97;
 
 fn ordinal45_resource_format(format: u32) -> Option<TextureFormat> {
     match format {
-        // Observed in Mahjong resource texture objects. These are copied from
-        // guest work RAM and decoded as alpha masks with white tint until more
-        // exact palette/color state is proven.
-        0x8808 | 0x0801 => Some(TextureFormat::A8),
+        // Mahjong's resource tokens are not GL_ALPHA enums. The reference
+        // runner's paired uploads identify 0x8808 as the 552x110 RGBA5551
+        // title sheet (`GL_UNSIGNED_SHORT_5_5_5_1`) and 0x0801 as the 40x36
+        // RGB565 icon sheet; treating either as A8 or 32-bit RGBA produces
+        // the dotted/garbled title that this path used to show.
+        0x8808 => Some(TextureFormat::Rgba5551),
+        0x0801 => Some(TextureFormat::Rgb565),
         _ => None,
     }
 }
@@ -3431,7 +3434,7 @@ impl Eapp {
     /// r1 pointing at a stack descriptor whose word 1 points at a work-RAM
     /// texture object. That object carries packed dimensions at word 4,
     /// material handle at word 2, pixel pointer at word 9, and a format-ish
-    /// word at word 10 (`0x8808`/`0x0801` observed as A8 resources).
+    /// word at word 10 (`0x8808` = RGBA5551, `0x0801` = RGB565).
     ///
     /// This is deliberately guarded to copied guest bytes from mapped work RAM;
     /// unsupported shapes are ignored so ordinal-99 remains the primary upload
@@ -8457,6 +8460,7 @@ impl Eapp {
                 .bundle_dir
                 .to_str()
                 .map_or(false, |p| p.contains("1B200"));
+            let is_mahjong = self.metadata.title == "77777";
             let is_vortex = self.metadata.title == "12345";
             let owner = args[0];
             let callback_pc = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
@@ -8486,6 +8490,10 @@ impl Eapp {
                 && fliwheel_var("EAPP_MSPACMAN_ASYNC2_COMPLETE")
                     .map(|v| v == "1" || v == "true")
                     .unwrap_or(true);
+            let mahjong_complete = is_mahjong
+                && fliwheel_var("MAHJONG_ASYNC2_COMPLETE")
+                    .map(|v| v == "1" || v == "true")
+                    .unwrap_or(false);
             info!(
                 target: "EAPP_IMPORT",
                 "AsyncFileIO:2 owner={:#010x} cb_pc={:#010x} cb_ctx={:#010x} complete={}",
@@ -8498,6 +8506,7 @@ impl Eapp {
                     || sims_complete
                     || royal_complete
                     || mspacman_complete
+                    || mahjong_complete
                     || is_lost) as u8
             );
             if is_lost && owner != 0 && callback_pc != 0 {
@@ -8660,6 +8669,159 @@ impl Eapp {
                     callback_pc,
                     if ok { 0 } else { u32::MAX },
                     delivered
+                );
+                return 1;
+            }
+            if mahjong_complete && owner != 0 && callback_pc != 0 {
+                // Mahjong's resource reader is the ordinary RetailOS stream
+                // contract, unlike the title-specific completion shims below.
+                // The open callback has already published the small stream
+                // handle in the file object's +0 slot and staged the RLB bytes
+                // separately. AsyncFileIO:2 then receives requests whose +8
+                // field points at that file object and whose +2c field carries
+                // the handle. The guest's callback at 0x18016948 forwards
+                // (request, resource-context) to 0x18016d5c, which validates
+                // resource_context+0x128 == request before it consumes the
+                // result fields.
+                let req = owner;
+                let object = self.read_guest_u32(req.wrapping_add(0x08)).unwrap_or(0);
+                let op = self.read_guest_u8(req.wrapping_add(0x04)).unwrap_or(0);
+                let stream = self.read_guest_u32(req.wrapping_add(0x2c)).unwrap_or(0);
+                let destination = self.read_guest_u32(req.wrapping_add(0x14)).unwrap_or(0);
+                let requested_raw = self.read_guest_u32(req.wrapping_add(0x18)).unwrap_or(0);
+                let mut delivered = 0usize;
+                let mut new_offset = self
+                    .staged_files
+                    .get(&object)
+                    .map(|staged| staged.offset)
+                    .unwrap_or(0);
+                let mut ok = self.async_open_files.contains_key(&stream);
+
+                match op {
+                    5 => {
+                        // The reference worker sign-extends +0x0c and uses
+                        // the C whence byte at +0x10: 0=set, 1=current,
+                        // 2=end. A seek transfers no bytes but still reports
+                        // success and the resulting position at +0x28.
+                        let offset = self.read_guest_u32(req.wrapping_add(0x0c)).unwrap_or(0) as i32;
+                        let whence = self.read_guest_u8(req.wrapping_add(0x10)).unwrap_or(0) as u32;
+                        if let Some(staged) = self.staged_files.get_mut(&object) {
+                            let base = match whence {
+                                1 => staged.offset as i64,
+                                2 => staged.len as i64,
+                                _ => 0,
+                            };
+                            let target = (base + offset as i64).clamp(0, staged.len as i64) as usize;
+                            staged.offset = target;
+                            new_offset = target;
+                            info!(
+                                target: "EAPP_IMPORT",
+                                "AsyncFileIO:2 Mahjong seek req={:#010x} object={:#010x} handle={:#010x} offset={:+} whence={} -> {}",
+                                req,
+                                object,
+                                stream,
+                                offset,
+                                whence,
+                                target
+                            );
+                        } else {
+                            ok = false;
+                        }
+                    }
+                    3 | 4 => {
+                        // Mahjong uses both op 3 and op 4 for payload reads
+                        // selected by its resource state machine. Treat the
+                        // request length as a bounded read from the staged RLB
+                        // and publish both the byte count and new position,
+                        // matching the direct runner's AsyncRead contract.
+                        let staged_range = self.staged_files.get(&object).map(|staged| {
+                            (
+                                staged.payload_addr,
+                                staged.len as usize,
+                                staged.offset,
+                                staged.host_path.clone(),
+                            )
+                        });
+                        let requested = if requested_raw == u32::MAX {
+                            staged_range
+                                .as_ref()
+                                .map(|(_, len, offset, _)| len.saturating_sub(*offset))
+                                .unwrap_or(0)
+                        } else {
+                            requested_raw as usize
+                        };
+                        if let Some((payload_addr, payload_len, file_offset, host_path)) = staged_range {
+                            let source_offset = file_offset.min(payload_len);
+                            let available = payload_len.saturating_sub(source_offset);
+                            let count = requested.min(available);
+                            if destination != 0 {
+                                let source = payload_addr.wrapping_add(source_offset as u32);
+                                if let Some(payload) = self.read_guest_bytes(source, count) {
+                                    if self.write_guest_bytes(destination, &payload) {
+                                        delivered = count;
+                                        new_offset = source_offset.saturating_add(count);
+                                        if let Some(staged) = self.staged_files.get_mut(&object) {
+                                            staged.offset = new_offset;
+                                        }
+                                        info!(
+                                            target: "EAPP_IMPORT",
+                                            "AsyncFileIO:2 Mahjong read op={} req={:#010x} object={:#010x} handle={:#010x} source={:#010x}+{} dest={:#010x} requested={} delivered={} path={}",
+                                            op,
+                                            req,
+                                            object,
+                                            stream,
+                                            payload_addr,
+                                            source_offset,
+                                            destination,
+                                            requested,
+                                            count,
+                                            host_path.display()
+                                        );
+                                    }
+                                }
+                            } else if requested == 0 {
+                                ok = true;
+                            }
+                        } else {
+                            ok = false;
+                        }
+                        ok = ok && (requested == 0 || delivered == requested);
+                    }
+                    _ => {
+                        // The resource reader should only submit op 3/4/5
+                        // here. Leave an unknown operation visible as a
+                        // failed completion instead of silently advancing the
+                        // loader with stale result fields.
+                        ok = false;
+                    }
+                }
+
+                self.write_guest_u32(req.wrapping_add(0x20), if ok { 0 } else { u32::MAX });
+                self.write_guest_u32(req.wrapping_add(0x24), delivered as u32);
+                self.write_guest_u32(req.wrapping_add(0x28), new_offset as u32);
+                if object != 0 {
+                    self.write_guest_u32(object.wrapping_add(0x08), delivered as u32);
+                }
+                self.async_callback_queued_count = self.async_callback_queued_count.wrapping_add(1);
+                self.pending_guest_calls.push_back(PendingGuestCall {
+                    pc: callback_pc,
+                    arg0: req,
+                    arg1: callback_ctx,
+                    arg2: 0,
+                    arg3: 0,
+                });
+                info!(
+                    target: "EAPP_IMPORT",
+                    "AsyncFileIO:2 Mahjong completion req={:#010x} op={} object={:#010x} handle={:#010x} cb_pc={:#010x} cb_ctx={:#010x} status={} bytes={} pos={}",
+                    req,
+                    op,
+                    object,
+                    stream,
+                    callback_pc,
+                    callback_ctx,
+                    if ok { 0 } else { u32::MAX },
+                    delivered,
+                    new_offset
                 );
                 return 1;
             }
@@ -8847,9 +9009,10 @@ impl Eapp {
                 // callback is supplied by the guest in owner+0x34; it is not a
                 // fixed address because every EAPP binary has its own code
                 // layout. Keep whole-file completion title-scoped: Tetris,
-                // Texas Hold'em, Royal Solitaire, Sudoku, and The Sims remain
-                // opt-in, while Ms. PAC-MAN's measured contract is enabled by
-                // default. LOST follows the PR #3 direct-runner contract too:
+                // Texas Hold'em, Royal Solitaire, Sudoku, Mahjong, and The
+                // Sims remain opt-in, while Ms. PAC-MAN's measured contract is
+                // enabled by default. LOST follows the PR #3 direct-runner
+                // contract too:
                 // its options.sav probe completes and invokes the owner
                 // callback before the render loop can advance to the next
                 // asynchronous asset.
@@ -8889,6 +9052,7 @@ impl Eapp {
                     .bundle_dir
                     .to_str()
                     .map_or(false, |p| p.contains("14004"));
+                let is_mahjong = self.metadata.title == "77777";
                 let is_vortex = self.metadata.title == "12345";
                 let tetris_complete = is_tetris
                     && fliwheel_var("EAPP_ASYNC3_COMPLETE")
@@ -8912,6 +9076,10 @@ impl Eapp {
                     && fliwheel_var("EAPP_MSPACMAN_ASYNC0_COMPLETE")
                         .map(|v| v == "1" || v == "true")
                         .unwrap_or(true);
+                let mahjong_complete = is_mahjong
+                    && fliwheel_var("MAHJONG_ASYNC0_COMPLETE")
+                        .map(|v| v == "1" || v == "true")
+                        .unwrap_or(false);
                 let complete = is_lost
                     || is_vortex
                     || tetris_complete
@@ -8919,7 +9087,8 @@ impl Eapp {
                     || sudoku_complete
                     || sims_complete
                     || royal_complete
-                    || mspacman_complete;
+                    || mspacman_complete
+                    || mahjong_complete;
                 let callback_pc = self.read_guest_u32(owner.wrapping_add(0x34)).unwrap_or(0);
                 if let Some(host_path) = self.resolve_or_create_host_path(&path) {
                     self.note_audio_asset_path(&host_path);
@@ -8937,6 +9106,20 @@ impl Eapp {
                         self.next_async_file_handle =
                             self.next_async_file_handle.wrapping_add(1).max(1);
                         self.async_open_files.insert(handle, host_path.clone());
+                        Some(handle)
+                    } else {
+                        None
+                    };
+                    let mahjong_handle = if is_mahjong {
+                        // Mahjong's owner callback publishes this small stream
+                        // id into the shared file object. Its staged payload
+                        // address is deliberately kept separate: the guest
+                        // passes the id back on every op-3/op-4/op-5 request.
+                        let handle = self.next_async_file_handle;
+                        self.next_async_file_handle =
+                            self.next_async_file_handle.wrapping_add(1).max(1);
+                        self.async_open_files.insert(handle, host_path.clone());
+                        self.async_file_offsets.insert(handle, 0);
                         Some(handle)
                     } else {
                         None
@@ -8980,7 +9163,13 @@ impl Eapp {
                         let payload_addr = existing_stage
                             .map(|(payload_addr, _)| payload_addr)
                             .unwrap_or_else(|| self.alloc_zeroed(n));
-                        let payload_offset = existing_stage.map(|(_, offset)| offset).unwrap_or(0);
+                        let payload_offset = if is_mahjong {
+                            // A new RetailOS open starts at offset zero even if
+                            // the host-side staged image is reused.
+                            0
+                        } else {
+                            existing_stage.map(|(_, offset)| offset).unwrap_or(0)
+                        };
                         let payload_written = existing_stage.is_some()
                             || (payload_addr != 0 && self.write_guest_bytes(payload_addr, &bytes));
                         if payload_written {
@@ -8993,6 +9182,7 @@ impl Eapp {
                                 owner.wrapping_add(0x2c),
                                 lost_handle
                                     .or(vortex_handle)
+                                    .or(mahjong_handle)
                                     .unwrap_or(payload_addr),
                             );
                             let req = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
@@ -9092,6 +9282,25 @@ impl Eapp {
                                 }
                             }
                         }
+                        if mahjong_complete {
+                            // The bufferless open result is consumed by
+                            // 0x18016df4/0x18016c3c as the resource-loader
+                            // result. Mahjong's measured zero-result branch
+                            // is what releases the first RLB consumer; the
+                            // stream id remains in the object's +0 slot via
+                            // the owner callback above.
+                            let object = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
+                            if object != 0 {
+                                self.write_guest_u32(object.wrapping_add(0x08), 0);
+                            }
+                            self.write_guest_u32(owner.wrapping_add(0x24), 0);
+                            info!(
+                                target: "EAPP_IMPORT",
+                                "AsyncFileIO:0 Mahjong stream handle={:#010x} object={:#010x} result=0",
+                                mahjong_handle.unwrap_or(0),
+                                object
+                            );
+                        }
                         // The Sims preload reuses the owner/context object that
                         // handled the initial save-file probe. Retail clears most
                         // of that object's request fields before opening
@@ -9187,7 +9396,10 @@ impl Eapp {
                             0
                         };
                         self.write_guest_u32(owner.wrapping_add(0x20), status);
-                        self.write_guest_u32(owner.wrapping_add(0x24), n);
+                        self.write_guest_u32(
+                            owner.wrapping_add(0x24),
+                            if mahjong_complete { 0 } else { n },
+                        );
                         let req = self.read_guest_u32(owner.wrapping_add(0x08)).unwrap_or(0);
                         self.async_callback_queued_count =
                             self.async_callback_queued_count.wrapping_add(1);
@@ -9195,7 +9407,7 @@ impl Eapp {
                             pc: callback_pc,
                             arg0: owner,
                             arg1: if is_lost || is_vortex { 0 } else { status },
-                            arg2: if is_lost || is_vortex { 0 } else { n },
+                            arg2: if is_lost || is_vortex || mahjong_complete { 0 } else { n },
                             arg3: 0,
                         });
                         if self.startup_progress.enabled {
@@ -13198,9 +13410,9 @@ mod tests {
     use super::{
         decode_palette8, is_palette8_compressed_upload_call, live_gl_default_present_vflip,
         env_bool_or_default, matrix_helper_transform, orthographic_matrix,
-        parse_holdem_sfx_bank, parse_vortex_sfx_bank, Eapp,
+        ordinal45_resource_format, parse_holdem_sfx_bank, parse_vortex_sfx_bank, Eapp,
         EappInputState, GL_IDENTITY_MATRIX, GL_PALETTE8_R5_G6_B5_OES, GL_PALETTE8_RGBA8_OES,
-        GL_TEXTURE_2D, GL_TEXTURE_RECTANGLE,
+        GL_TEXTURE_2D, GL_TEXTURE_RECTANGLE, TextureFormat,
     };
 
     #[test]
@@ -13213,6 +13425,13 @@ mod tests {
             "FLIWHEEL_TEST_UNSET_TEXAS_ASYNC_GATE",
             false
         ));
+    }
+
+    #[test]
+    fn mahjong_resource_tokens_match_reference_upload_formats() {
+        assert_eq!(ordinal45_resource_format(0x8808), Some(TextureFormat::Rgba5551));
+        assert_eq!(ordinal45_resource_format(0x0801), Some(TextureFormat::Rgb565));
+        assert_eq!(ordinal45_resource_format(0x1908), None);
     }
 
     #[test]

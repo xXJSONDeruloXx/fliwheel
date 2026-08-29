@@ -1,6 +1,6 @@
 # Mahjong (Bundle 77777)
 
-**Status:** ⚠️ TEXTURE/UV PARTIAL | **Evidence:** scripted probe shows dotted/garbled title output, no board | **Engine:** Tetris Runtime
+**Status:** 🟡 READABLE TITLE ART + RLB STREAM PARTIAL | **Evidence:** opt-in stream/format probe matches the reference title art; no board or full-play receipt yet | **Engine:** Tetris Runtime
 
 ## Quick Start
 ```bash
@@ -28,4 +28,11 @@ FLIWHEEL_EXPERIMENTAL_GL_HLE=1
 FLIWHEEL_GL_GATE_B=1
 FLIWHEEL_GL_LIVE_CONTINUOUS=1
 FLIWHEEL_GL_PRESENT_VFLIP=1
+FLIWHEEL_MAHJONG_ASYNC0_COMPLETE=1
+FLIWHEEL_MAHJONG_ASYNC2_COMPLETE=1
 ```
+
+The stream and format milestone is recorded in
+[the 2026-08-29 test note](../game_tests/20260829_mahjong_stream_and_format.md).
+These completion flags remain opt-in until the menu, board controls, audio,
+and save/persistence paths have each been verified.

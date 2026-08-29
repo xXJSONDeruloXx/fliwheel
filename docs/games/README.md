@@ -14,7 +14,7 @@ older pages retain historical investigation notes and are not completion claims.
 | Texas Hold'em | 33333 | 🟡 Default route reaches coherent poker table; hand flow, sound, and save open | [→](33333_holdem.md) |
 | Ms. PAC-MAN | 14004 | 🟡 Normal-path Stage 1 + collision/life + headed WAV sink; full play open | [→](14004_mspacman.md) |
 | PAC-MAN | AAAAA | 🟡 Normal-path Stage 1 + pause/resume + one collision/life cycle + headed WAV sink; repeated lives and full play open | [→](AAAAA_pacman.md) |
-| Mahjong | 77777 | 🟡 Texture/UV partial | [→](77777_mahjong.md) |
+| Mahjong | 77777 | 🟡 Readable title art + measured RLB stream under opt-in gates; gameplay open | [→](77777_mahjong.md) |
 | Mini Golf | 88888 | 🟡 Loading/progress only | [→](88888_minigolf.md) |
 | The Sims Bowling | 1500C | 🟡 Coherent title screen; follow-up/gameplay open | [→](1500C_simsbowling.md) |
 | The Sims Pool | 1500E | 🟡 Coherent title screen; follow-up/gameplay open | [→](1500E_simspool.md) |
