@@ -1,0 +1,27 @@
+# Direct PR #3 oracle: probe the four non-Select physical button bits in play.
+# The runner's labels are intentionally kept explicit so the resulting
+# screen changes can identify Vortex's title-local mapping.
+500: select
+600: select
+620: select
+640: select
+660: select
+680: select
+700: select
+720: select
+920: select
+1400: select
+1599: shot
+1600: prev
+1601: shot
+1700: shot
+1800: play
+1801: shot
+1900: shot
+2000: next
+2001: shot
+2100: shot
+2200: menu
+2201: shot
+2300: shot
+2301: quit
