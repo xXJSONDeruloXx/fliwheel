@@ -449,3 +449,17 @@ replay produced 14 queued events and 14 `played sound` receipts without
 decoder or file-open errors. This establishes host decode/dispatch, while
 four-voice saturation, physical waveform equivalence, exact overlap/timing,
 and later content sound paths remain open.
+
+## Iteration 37 — long-run SFX and pause-save oracle parity
+
+Commits `cf018ed`, `402cd21`, and `d286465` extend the shared audio ABI,
+enforce the four-voice host limit, and implement Vortex's synchronous
+pause-save writes. A fixed-clock Fliwheel run reaches frame 2402 without a
+fatal signature, extracts all 47 effects, and follows the oracle's first-level
+SFX families through the long route. The remaining event timing/handle drift
+and physical mixer equivalence are not closed.
+
+The matched Menu route now writes `stats`, `en/stats`, `quicka`, and `options`
+with the observed payload sizes. Both the current PR #3 oracle and Fliwheel
+freeze after the Menu frame without drawing a pause UI; interactive pause,
+return, and later level traversal remain open.

@@ -1,7 +1,7 @@
 # Vortex PR #3 copy and input lifecycle
 
 Date: 2026-08-29 UTC  
-fliwheel commit: `0994139`
+fliwheel commit: `d286465`
 Corpus: `/Volumes/NO NAME/fliwheel-decrypted-corpus-20260826/20 iPod games/Games_RO/12345`  
 Oracle: `/tmp/ipod-emulator-pr3/target/release/play`
 
@@ -88,6 +88,29 @@ This proves host decode/dispatch for the observed attract/gameplay triggers,
 not physical waveform equivalence. The oracle's four-voice pool behavior,
 volume/overlap timing, and later level-specific sound paths still need direct
 comparison.
+
+## Pause-save and frozen-frame lifecycle
+
+Commit `d286465` models Vortex's synchronous pause-save sequence. On the
+matched Menu route, Fliwheel handles `AsyncFileIO:12/14/16` for the four
+observed payloads: `stats` (228 bytes), `en/stats` (2128 bytes), `quicka`
+(18988 bytes), and `options` (12 bytes). The write receipt is:
+
+```text
+/tmp/vortex_fli_menu_write_probe_20260829.log
+```
+
+The direct PR #3 call log then shows only the present call after frame 1601;
+Fliwheel produces the same frozen framebuffer and zero-draw continuation in
+the targeted capture:
+
+```text
+/tmp/fliwheel_vortex_menu_write_capture_out_uYs7JJ/
+```
+
+This closes the save/write ABI and pause-freeze lifecycle against the oracle.
+Neither implementation renders a pause-menu UI or resumes gameplay on this
+route, so interactive pause/return remains open.
 
 ## Boundary
 
