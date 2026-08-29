@@ -26,6 +26,17 @@ cargo build --release -p fliwheel-desktop --bin eapp
 TIMEOUT_SECONDS=8 ./scripts/test_decrypted_games.sh /path/to/Games_RO
 ```
 
+Open the user-facing library launcher with no bundle argument:
+
+```sh
+target/release/eapp
+```
+
+The launcher discovers known `Games_RO` roots, lets users add or forget a
+source without touching its files, and starts each selected game in its own
+window. Use `target/release/eapp --library /path/to/Games_RO` to register a
+library source explicitly.
+
 Run one bundle directly:
 
 ```sh

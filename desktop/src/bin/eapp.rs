@@ -13,15 +13,22 @@ use minifb::{Key, ScaleMode, Window, WindowOptions};
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
 use structopt::StructOpt;
 
+mod library;
+use library::run_library_ui;
+
 pub type DynResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "fliwheel-eapp")]
 #[structopt(about = "Run a decrypted iPod clickwheel game via the EAPP runner.")]
 struct Args {
-    /// Path to a Games_RO/<id> bundle directory.
+    /// Path to a Games_RO/<id> bundle directory. Omit it to open the library.
     #[structopt(parse(from_os_str))]
-    bundle_dir: PathBuf,
+    bundle_dir: Option<PathBuf>,
+
+    /// Add a Games_RO root or one bundle to the library on startup.
+    #[structopt(long, parse(from_os_str))]
+    library: Option<PathBuf>,
 
     /// Run a fixed number of CPU cycles and then exit.
     #[structopt(long)]
@@ -303,7 +310,17 @@ fn main() -> DynResult<()> {
         .init();
 
     let args = Args::from_args();
-    let mut system = Eapp::from_bundle_dir(&args.bundle_dir)?;
+    let Some(bundle_dir) = args.bundle_dir else {
+        if args.headless {
+            return Err("--headless requires a bundle directory".into());
+        }
+        if let Err(error) = run_library_ui(args.library) {
+            return Err(error.into());
+        }
+        return Ok(());
+    };
+
+    let mut system = Eapp::from_bundle_dir(&bundle_dir)?;
     if let Ok(spec) = std::env::var("EAPP_GL_TRACE") {
         if let Some((s, e)) = spec.split_once('-') {
             if let (Ok(start), Ok(end)) = (s.parse(), e.parse()) {
