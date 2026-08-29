@@ -12,4 +12,5 @@
 600: select
 601: shot
 650: shot
-651: quit
+651: shot
+652: quit
