@@ -716,7 +716,12 @@ pub fn rasterize_triangle_tinted_with_vertex_colors(
                     (primary[0] * 255.0).round() as u8,
                     (primary[1] * 255.0).round() as u8,
                     (primary[2] * 255.0).round() as u8,
-                    (primary[3] * 255.0).round() as u8,
+                    // The direct PR #3 textured path uses the color array
+                    // for RGB modulation only. Texture alpha is the source
+                    // coverage; an enabled color array's fourth component
+                    // does not make an otherwise opaque GL_RGB/RGB565 quad
+                    // translucent.
+                    255,
                 )
             });
             let src = match primary_modulated {
@@ -934,6 +939,31 @@ mod tests {
         );
         assert_eq!(cov, 1);
         assert_eq!(fb[0], Rgba8::rgba(64, 128, 255, 128));
+    }
+
+    #[test]
+    fn textured_vertex_alpha_does_not_reduce_texture_coverage() {
+        let tex = Texture::from_bytes(
+            &[0x00, 0xff, 0x00, 0xff],
+            1,
+            1,
+            TextureFormat::Rgba8888,
+            Rgba8::rgba(255, 255, 255, 255),
+        );
+        let mut fb = vec![Rgba8::rgba(0, 0, 0, 0)];
+        let colors = [[1.0, 1.0, 1.0, 0.25]; 4];
+        let cov = rasterize_quad_tinted_with_vertex_colors(
+            &mut fb,
+            1,
+            1,
+            &tex,
+            &[(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)],
+            &[(0.0, 0.0), (0.0, 0.0), (0.0, 0.0), (0.0, 0.0)],
+            Rgba8::rgba(255, 255, 255, 255),
+            Some(&colors),
+        );
+        assert_eq!(cov, 1);
+        assert_eq!(fb[0], Rgba8::rgba(0, 255, 0, 255));
     }
 
     #[test]
