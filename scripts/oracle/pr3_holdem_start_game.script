@@ -1,0 +1,24 @@
+# Direct PR #3 oracle: carry the deterministic name-entry route into Start Game.
+100: select
+120: select
+140: select
+160: select
+180: select
+200: select
+220: select
+240: wheel +104
+360: wheel +4
+400: wheel +4
+440: wheel +4
+480: select
+600: shot
+800: select
+820: shot
+840: shot
+900: shot
+1000: shot
+1200: shot
+1500: shot
+2000: shot
+2500: shot
+3000: quit

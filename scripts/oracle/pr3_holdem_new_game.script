@@ -1,0 +1,26 @@
+# Direct PR #3 oracle: enter Start Game, choose New Game, and watch the table.
+100: select
+120: select
+140: select
+160: select
+180: select
+200: select
+220: select
+240: wheel +104
+360: wheel +4
+400: wheel +4
+440: wheel +4
+480: select
+800: select
+900: shot
+1000: select
+1020: shot
+1040: shot
+1100: shot
+1200: shot
+1500: shot
+2000: shot
+2500: shot
+3000: shot
+3500: shot
+4000: quit
