@@ -431,3 +431,13 @@ It confirms that both runners use the same `OpenGLES:21` callsite and 320x240
 bottom-left copy contract. The remaining name-entry background difference is
 the rotating source-frame phase at that copy boundary, not a missing texture
 handler. Menu/return, audio, and longer-content acceptance remain open.
+
+## Iteration 35 — audio-manager reset and SFX trigger parity
+
+Commit `66045eb` matches the direct runner's Vortex request state at the audio
+manager callback. The guest now executes its own `0x180111cc` reset, writes
+`0x7fff` to `0x18063264`, and reaches the `Audio:13/14/15/2` trigger group at
+frame 128. The 47 Vortex source handles are zero-based as in PR #3. This is
+the trigger contract, not yet audible playback: the embedded `media/sfx` bank
+still needs to be parsed into host voice assets and routed through the desktop
+audio queue.

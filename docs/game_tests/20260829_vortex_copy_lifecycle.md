@@ -1,7 +1,7 @@
 # Vortex PR #3 copy and input lifecycle
 
 Date: 2026-08-29 UTC  
-fliwheel commit: `6b6a901`  
+fliwheel commit: `66045eb`  
 Corpus: `/Volumes/NO NAME/fliwheel-decrypted-corpus-20260826/20 iPod games/Games_RO/12345`  
 Oracle: `/tmp/ipod-emulator-pr3/target/release/play`
 
@@ -55,6 +55,22 @@ show near-identical rendered brick-field frames after the Level 1 transition;
 the remaining acceptance work is pause/return, full button semantics,
 audio-output mapping/timing, and traversal beyond the currently scripted
 content.
+
+## Audio-manager reset parity
+
+Commit `66045eb` applies the measured Vortex callback state needed to reach the
+guest's own audio-manager reset. PR #3 reaches `0x18010f4c` with request state
+`10`, then executes `0x180111cc`/`0x180111f0` and writes `0x7fff` to
+`0x18063264`. Before this change fliwheel reached the same callback with the
+`9/12` copy shape, wrote zero at that word, and never reached the title's
+`Audio:13/14/15/2` SFX trigger sequence.
+
+The permanent Fliwheel run reproduces the `0x7fff` write and reaches the first
+trigger at frame 128, with later trigger groups at frames 239, 246, 253, and
+later. Vortex's 47 `Audio:0` registrations are also now zero-based, matching
+the direct runner's handles. This establishes trigger-level parity only; the
+embedded `media/sfx` bank still needs extraction and host voice routing before
+audible output can be accepted.
 
 ## Boundary
 
