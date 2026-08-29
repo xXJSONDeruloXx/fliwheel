@@ -50,6 +50,12 @@ const WORK_RAM_BASE: u32 = 0x1000_0000;
 /// 0x01; the generic fliwheel InputEvents packet uses logical field bits and
 /// therefore cannot replace this title-local ABI by itself.
 const VORTEX_INPUT_FLAGS: u32 = 0x1806_3e5c;
+const GL_IDENTITY_MATRIX: [f32; 16] = [
+    1.0, 0.0, 0.0, 0.0,
+    0.0, 1.0, 0.0, 0.0,
+    0.0, 0.0, 1.0, 0.0,
+    0.0, 0.0, 0.0, 1.0,
+];
 /// Separate guest heap used by the RetailOS-style allocator imports. PR #3's
 /// direct runner keeps this arena above the synthetic app RAM, and LOST's
 /// internal pool allocator relies on that separation during initialization.
@@ -77,6 +83,65 @@ fn fliwheel_var(suffix: &str) -> Result<String, std::env::VarError> {
         }
         Err(error) => Err(error),
     }
+}
+
+/// Multiply two column-major 4x4 matrices using the render-server layout.
+fn multiply_column_major(a: &[f32; 16], b: &[f32; 16]) -> [f32; 16] {
+    let mut out = [0.0; 16];
+    for column in 0..4 {
+        for row in 0..4 {
+            out[column * 4 + row] = (0..4)
+                .map(|inner| a[inner * 4 + row] * b[column * 4 + inner])
+                .sum();
+        }
+    }
+    out
+}
+
+/// Build one post-multiplied matrix helper result for the Vortex ABI.
+fn matrix_helper_transform(
+    ordinal: u32,
+    current: [f32; 16],
+    args: [u32; 4],
+    stack_z: f32,
+) -> Option<[f32; 16]> {
+    let mut transform = GL_IDENTITY_MATRIX;
+    let float_arg = |index: usize| f32::from_bits(args[index]);
+    match ordinal {
+        169 => {
+            transform[12] = float_arg(1);
+            transform[13] = float_arg(2);
+            transform[14] = float_arg(3);
+        }
+        171 => {
+            transform[0] = float_arg(1);
+            transform[5] = float_arg(2);
+            transform[10] = float_arg(3);
+        }
+        173 => {
+            let angle = float_arg(1).to_radians();
+            let (mut x, mut y, mut z) = (float_arg(2), float_arg(3), stack_z);
+            let length = (x * x + y * y + z * z).sqrt();
+            if length > 0.0 {
+                x /= length;
+                y /= length;
+                z /= length;
+            }
+            let (sin, cos) = angle.sin_cos();
+            let inverse_cos = 1.0 - cos;
+            transform[0] = x * x * inverse_cos + cos;
+            transform[1] = y * x * inverse_cos + z * sin;
+            transform[2] = x * z * inverse_cos - y * sin;
+            transform[4] = x * y * inverse_cos - z * sin;
+            transform[5] = y * y * inverse_cos + cos;
+            transform[6] = y * z * inverse_cos + x * sin;
+            transform[8] = x * z * inverse_cos + y * sin;
+            transform[9] = y * z * inverse_cos - x * sin;
+            transform[10] = z * z * inverse_cos + cos;
+        }
+        _ => return None,
+    }
+    Some(multiply_column_major(&current, &transform))
 }
 
 // Use a 64 MiB synthetic app RAM window, matching the high-memory 5G-class
@@ -2621,6 +2686,11 @@ impl Eapp {
             }
             169 => {
                 self.live_handle_translate(args);
+                self.live_handle_vortex_matrix_op(169, args);
+                0
+            }
+            171 | 173 | 175 => {
+                self.live_handle_vortex_matrix_op(ordinal, args);
                 0
             }
             // OpenGLES:147 is the scalar fixed-point form of the colour
@@ -2825,7 +2895,7 @@ impl Eapp {
                 0
             }
             // Draw-adjacent state ordinals; recorded by observation only.
-            175 | 149 | 125 => 0,
+            149 | 125 => 0,
             // Ordinal 4: glBindTexture(target, texture).
             // r0=target (e.g. 0xDE1=GL_TEXTURE_2D), r1=texture_name.
             // Capture the texture name so that the next ordinal-99 upload
@@ -3774,6 +3844,63 @@ impl Eapp {
             lg.translation.0 += tx;
             lg.translation.1 += ty;
         }
+    }
+
+    /// Apply the matrix helpers used by the direct PR #3 Vortex oracle.
+    ///
+    /// Vortex builds the rotating outer overlay in guest memory with
+    /// `translate`, `rotate`, and `multMatrix`; the next vertex-array
+    /// submission reads the resulting coordinates from that state. The
+    /// ordinary translation accumulator remains the compatibility path for
+    /// other title families, so these writes stay behind the Vortex PR3 A/B
+    /// flag.
+    fn live_handle_vortex_matrix_op(&mut self, ordinal: u32, args: [u32; 4]) {
+        if self.metadata.title != "12345" || fliwheel_var_os("VORTEX_PR3_GL165").is_none() {
+            return;
+        }
+        let dst = args[0];
+        if dst == 0 {
+            return;
+        }
+        let out = if ordinal == 175 {
+            let a = self.read_guest_float_matrix(args[1]);
+            let b = self.read_guest_float_matrix(args[2]);
+            a.zip(b).map(|(a, b)| multiply_column_major(&a, &b))
+        } else {
+            let current = self.read_guest_float_matrix(dst);
+            let z = self
+                .read_guest_u32(self.cpu.reg_get(self.cpu.mode(), reg::SP))
+                .map(f32::from_bits)
+                .unwrap_or(0.0);
+            current.and_then(|current| matrix_helper_transform(ordinal, current, args, z))
+        };
+        let Some(matrix) = out else {
+            return;
+        };
+        for (index, value) in matrix.iter().enumerate() {
+            if !self.write_guest_u32(dst.wrapping_add((index as u32) * 4), value.to_bits()) {
+                return;
+            }
+        }
+        if fliwheel_var_os("EAPP_GL_MATRIX_LOG").is_some() {
+            info!(
+                target: "EAPP_GL",
+                "vortex_matrix ordinal={} dst={:#010x} m={matrix:?}",
+                ordinal,
+                dst
+            );
+        }
+    }
+
+    fn read_guest_float_matrix(&mut self, addr: u32) -> Option<[f32; 16]> {
+        if addr == 0 {
+            return None;
+        }
+        let mut matrix = [0.0; 16];
+        for (index, value) in matrix.iter_mut().enumerate() {
+            *value = f32::from_bits(self.read_guest_u32(addr.wrapping_add((index as u32) * 4))?);
+        }
+        Some(matrix)
     }
 
     /// OpenGLES:13, glClearColor(r, g, b, a).
@@ -12229,9 +12356,9 @@ fn vma_to_offset(addr: u32) -> Result<u32, EappBuildError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        decode_palette8, is_palette8_compressed_upload_call, live_gl_default_present_vflip, Eapp,
-        EappInputState, GL_PALETTE8_R5_G6_B5_OES, GL_PALETTE8_RGBA8_OES, GL_TEXTURE_2D,
-        GL_TEXTURE_RECTANGLE,
+        decode_palette8, is_palette8_compressed_upload_call, live_gl_default_present_vflip,
+        matrix_helper_transform, Eapp, EappInputState, GL_IDENTITY_MATRIX,
+        GL_PALETTE8_R5_G6_B5_OES, GL_PALETTE8_RGBA8_OES, GL_TEXTURE_2D, GL_TEXTURE_RECTANGLE,
     };
 
     #[test]
@@ -12419,5 +12546,32 @@ mod tests {
         assert!(!live_gl_default_present_vflip("zuma"));
         assert!(!live_gl_default_present_vflip("bejeweled"));
         assert!(live_gl_default_present_vflip("66666"));
+    }
+
+    #[test]
+    fn vortex_matrix_helpers_match_centered_rotation_contract() {
+        let args = [0, 160.0f32.to_bits(), 120.0f32.to_bits(), 0];
+        let translated = matrix_helper_transform(169, GL_IDENTITY_MATRIX, args, 0.0).unwrap();
+        assert_eq!(translated[12], 160.0);
+        assert_eq!(translated[13], 120.0);
+
+        let rotated = matrix_helper_transform(
+            173,
+            translated,
+            [0, (-707.4536f32).to_bits(), 0, 0],
+            1.0,
+        )
+        .unwrap();
+        let centered = matrix_helper_transform(
+            169,
+            rotated,
+            [0, (-160.0f32).to_bits(), (-120.0f32).to_bits(), 0],
+            0.0,
+        )
+        .unwrap();
+        assert!((centered[0] - 0.9761).abs() < 0.001);
+        assert!((centered[1] - 0.2172).abs() < 0.001);
+        assert!((centered[4] + 0.2172).abs() < 0.001);
+        assert!((centered[5] - 0.9761).abs() < 0.001);
     }
 }
