@@ -720,6 +720,10 @@ pub struct Eapp {
     /// (ordinals 12/14/16). Keyed by the small guest-visible handle written
     /// into the caller's file object.
     async_open_files: HashMap<u32, PathBuf>,
+    /// Current offsets for synchronous AsyncFileIO writes. Vortex uses the
+    /// same ordinal numbers for its pause-menu save store that Tetris uses for
+    /// direct reads, so keep write position separate from the read path.
+    async_file_offsets: HashMap<u32, usize>,
     next_async_file_handle: u32,
     /// Synthetic handles returned by the legacy `Filesytem:0` open call.
     /// These are kept separate from direct AsyncFileIO handles because the
@@ -1111,6 +1115,7 @@ impl Eapp {
             guest_callback_invocation_count: 0,
             async_pending_requests: HashSet::new(),
             async_open_files: HashMap::new(),
+            async_file_offsets: HashMap::new(),
             next_async_file_handle: 1,
             filesystem_open_files: HashMap::new(),
             next_filesystem_handle: 1,
@@ -7788,6 +7793,64 @@ impl Eapp {
             let handle = args[0];
             let buffer = args[1];
             let len = args[2] as usize;
+            if self.metadata.title == "12345" {
+                // Vortex uses the same ordinal for its synchronous pause-menu
+                // save writer. PR #3 opens `stats`/`en/stats` with #12,
+                // writes the guest buffer with #14, and expects status zero;
+                // do not send this shape through the read contract above.
+                if handle == u32::MAX || buffer == 0 || len >= 1 << 24 {
+                    warn!(
+                        target: "EAPP_IMPORT",
+                        "AsyncFileIO:14 Vortex write called with invalid args=[{:#010x},{:#010x},{:#010x},{:#010x}]",
+                        args[0],
+                        args[1],
+                        args[2],
+                        args[3]
+                    );
+                    return 1;
+                }
+                let Some(host_path) = self.async_open_files.get(&handle).cloned() else {
+                    warn!(
+                        target: "EAPP_IMPORT",
+                        "AsyncFileIO:14 Vortex unknown write handle={} buffer={:#010x} len={}",
+                        handle,
+                        buffer,
+                        len
+                    );
+                    return 1;
+                };
+                let Some(bytes) = self.read_guest_bytes(buffer, len) else {
+                    warn!(
+                        target: "EAPP_IMPORT",
+                        "AsyncFileIO:14 Vortex could not read guest write buffer={:#010x} len={}",
+                        buffer,
+                        len
+                    );
+                    return 1;
+                };
+                let offset = self.async_file_offsets.get(&handle).copied().unwrap_or(0);
+                let end = offset.saturating_add(bytes.len());
+                let mut file_bytes = fs::read(&host_path).unwrap_or_default();
+                if file_bytes.len() < end {
+                    file_bytes.resize(end, 0);
+                }
+                file_bytes[offset..end].copy_from_slice(&bytes);
+                let ok = fs::write(&host_path, &file_bytes).is_ok();
+                if ok {
+                    self.async_file_offsets.insert(handle, end);
+                }
+                info!(
+                    target: "EAPP_IMPORT",
+                    "AsyncFileIO:14 Vortex write handle={} path={} buffer={:#010x} len={} offset={} result={}",
+                    handle,
+                    host_path.display(),
+                    buffer,
+                    len,
+                    offset,
+                    if ok { "ok" } else { "FAILED" }
+                );
+                return if ok { 0 } else { 1 };
+            }
             if handle == u32::MAX || buffer == 0 {
                 warn!(target: "EAPP_IMPORT", "AsyncFileIO:14 called with invalid args=[{:#010x},{:#010x},{:#010x},{:#010x}]", args[0], args[1], args[2], args[3]);
                 return 0;
@@ -7825,6 +7888,13 @@ impl Eapp {
             let handle = args[0];
             let known = self.async_open_files.contains_key(&handle);
             info!(target: "EAPP_IMPORT", "AsyncFileIO:16 handle={} known={}", handle, known);
+            if self.metadata.title == "12345" {
+                // Vortex's #16 is the synchronous close paired with its
+                // pause-menu #12/#14 write sequence. The PR #3 contract uses
+                // zero for a successful close; the read/status convention
+                // below remains for the older direct-handle callers.
+                return 0;
+            }
             return if known { 1 } else { 0 };
         }
 
@@ -8603,6 +8673,7 @@ impl Eapp {
                         self.write_guest_u32(args[2], handle);
                     }
                     self.async_open_files.insert(handle, host_path.clone());
+                    self.async_file_offsets.insert(handle, 0);
                     info!(target: "EAPP_IMPORT", "AsyncFileIO:12 opened {} -> handle {} status=0", host_path.display(), handle);
                     return 0;
                 }
