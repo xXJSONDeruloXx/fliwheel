@@ -1,5 +1,6 @@
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::convert::TryInto;
 use std::fs;
 use std::fs::OpenOptions;
 use std::hash::{Hash, Hasher};
@@ -749,6 +750,10 @@ pub struct Eapp {
     /// so this shadow catalog is what lets the host sink resolve a sound.
     audio_resource_paths: HashMap<(u32, u32), PathBuf>,
     audio_last_registration: Option<(u32, u32)>,
+    /// Extracted WAV paths for Vortex's embedded `media/sfx` bank, in the
+    /// same order as the guest's 47 Audio:7 buffer registrations.
+    vortex_sfx_paths: Vec<PathBuf>,
+    vortex_sfx_bind_index: usize,
     audio_events: EappAudioEventQueue,
     /// Directory entries from most recent AsyncFileIO:7 directory enumeration.
     /// Stored so the game can query pack names via subsequent calls.
@@ -1110,6 +1115,8 @@ impl Eapp {
             audio_mspacman_pending_asset_paths: VecDeque::new(),
             audio_resource_paths: HashMap::new(),
             audio_last_registration: None,
+            vortex_sfx_paths: Vec::new(),
+            vortex_sfx_bind_index: 0,
             audio_events: Arc::new(Mutex::new(VecDeque::new())),
             async_dir_entries: Vec::new(),
             gl_trace_frames: None,
@@ -7500,12 +7507,42 @@ impl Eapp {
                 }
                 handle
             }
+            7 if self.metadata.title == "12345" && self.gl_hle_enabled() => {
+                // Vortex stores all 47 effects in one raw bank. The guest's
+                // Audio:7 calls arrive in bank order, so bind each call to
+                // the corresponding extracted RIFF rather than interpreting
+                // the guest buffer pointer as a host filename.
+                let bank_index = self.vortex_sfx_bind_index;
+                self.vortex_sfx_bind_index = self.vortex_sfx_bind_index.saturating_add(1);
+                self.ensure_vortex_sfx_paths();
+                let host_path = self
+                    .vortex_sfx_paths
+                    .get(bank_index)
+                    .filter(|path| !path.as_os_str().is_empty())
+                    .cloned();
+                if let (Some(source), Some(host_path)) =
+                    (self.audio_handles.get_mut(&args[0]), host_path)
+                {
+                    source.host_path = Some(host_path.clone());
+                    if std::env::var_os("EAPP_AUDIO_EVENT_TRACE").is_some() {
+                        info!(
+                            target: "EAPP_AUDIO",
+                            "AudioSourceMap Vortex handle={:#010x} bank={} path={}",
+                            args[0],
+                            bank_index,
+                            host_path.display()
+                        );
+                    }
+                }
+                0
+            }
             2 => {
                 // PopCap titles configure a source with Audio:13/14/15 and
                 // commit the trigger with Audio:2. The source handle is the
                 // value returned by Audio:0, so resolve the previously bound
                 // WAV only at this final trigger point.
-                if self.uses_wav_audio_source_abi()
+                if (self.metadata.title == "12345" && self.gl_hle_enabled())
+                    || self.uses_wav_audio_source_abi()
                     || self.uses_pacman_wav_audio_source_abi()
                     || self.uses_mspacman_wav_audio_source_abi()
                 {
@@ -10407,6 +10444,85 @@ impl Eapp {
         }
     }
 
+    /// Extract Vortex's embedded `media/sfx` RIFF bank into the per-bundle
+    /// save area. The bank has a small table/header followed by 47 complete
+    /// WAV chunks; extraction keeps the existing desktop queue's path-only
+    /// contract and never changes the downloaded source file.
+    fn ensure_vortex_sfx_paths(&mut self) {
+        if !self.vortex_sfx_paths.is_empty() {
+            return;
+        }
+        let Some(bank_path) = self.resolve_bundle_path("media/sfx") else {
+            warn!(target: "EAPP_AUDIO", "Vortex SFX bank media/sfx is missing");
+            return;
+        };
+        let Ok(bank) = fs::read(&bank_path) else {
+            warn!(
+                target: "EAPP_AUDIO",
+                "Vortex SFX bank could not be read: {}",
+                bank_path.display()
+            );
+            return;
+        };
+        let Some(ranges) = parse_vortex_sfx_bank(&bank) else {
+            warn!(
+                target: "EAPP_AUDIO",
+                "Vortex SFX bank has no validated 47-WAV layout: {}",
+                bank_path.display()
+            );
+            return;
+        };
+
+        let bundle_output = self
+            .metadata
+            .bundle_dir
+            .join(SAVE_DIR)
+            .join("vortex-sfx");
+        let output_dir = if fs::create_dir_all(&bundle_output).is_ok() {
+            bundle_output
+        } else {
+            let fallback = std::env::temp_dir().join("fliwheel-vortex-sfx");
+            if fs::create_dir_all(&fallback).is_err() {
+                warn!(
+                    target: "EAPP_AUDIO",
+                    "Vortex SFX output directory is unavailable: {}",
+                    fallback.display()
+                );
+                return;
+            }
+            fallback
+        };
+
+        let mut paths = Vec::with_capacity(ranges.len());
+        for (index, (start, end)) in ranges.iter().copied().enumerate() {
+            let path = output_dir.join(format!("sfx-{index:02}.wav"));
+            let expected_len = (end - start) as u64;
+            let already_extracted = fs::metadata(&path)
+                .ok()
+                .is_some_and(|metadata| metadata.len() == expected_len);
+            if !already_extracted && fs::write(&path, &bank[start..end]).is_err() {
+                warn!(
+                    target: "EAPP_AUDIO",
+                    "Vortex SFX chunk {} could not be extracted to {}",
+                    index,
+                    path.display()
+                );
+                paths.push(PathBuf::new());
+            } else {
+                paths.push(path);
+            }
+        }
+        self.vortex_sfx_paths = paths;
+        if std::env::var_os("EAPP_AUDIO_EVENT_TRACE").is_some() {
+            info!(
+                target: "EAPP_AUDIO",
+                "Vortex SFX bank extracted chunks={} output={}",
+                self.vortex_sfx_paths.len(),
+                output_dir.display()
+            );
+        }
+    }
+
     fn uses_wav_audio_source_abi(&self) -> bool {
         matches!(self.metadata.title.as_str(), "44444" | "55555")
     }
@@ -12413,6 +12529,62 @@ impl Memory for EappBus {
     }
 }
 
+/// Return the byte ranges of the 47 validated WAV chunks embedded in Vortex's
+/// raw `media/sfx` bank. The bytes before the first RIFF are a table/header;
+/// each RIFF size includes the WAVE payload after its eight-byte prefix.
+fn parse_vortex_sfx_bank(data: &[u8]) -> Option<Vec<(usize, usize)>> {
+    let mut ranges = Vec::with_capacity(47);
+    let mut scan = 0usize;
+    while scan + 12 <= data.len() {
+        let rel = data[scan..]
+            .windows(4)
+            .position(|chunk| chunk == b"RIFF")?;
+        let start = scan + rel;
+        let end = parse_vortex_wav_end(data, start)?;
+        ranges.push((start, end));
+        scan = end;
+        if ranges.len() == 47 {
+            break;
+        }
+    }
+    (ranges.len() == 47).then_some(ranges)
+}
+
+fn parse_vortex_wav_end(data: &[u8], start: usize) -> Option<usize> {
+    if data.get(start..start + 4)? != b"RIFF" || data.get(start + 8..start + 12)? != b"WAVE" {
+        return None;
+    }
+    let riff_size = u32::from_le_bytes(data.get(start + 4..start + 8)?.try_into().ok()?) as usize;
+    let end = start.checked_add(8)?.checked_add(riff_size)?;
+    if end > data.len() || riff_size < 4 {
+        return None;
+    }
+
+    let mut pos = start + 12;
+    let mut has_pcm_fmt = false;
+    let mut has_data = false;
+    while pos + 8 <= end {
+        let chunk_id = data.get(pos..pos + 4)?;
+        let chunk_size =
+            u32::from_le_bytes(data.get(pos + 4..pos + 8)?.try_into().ok()?) as usize;
+        let chunk_end = pos.checked_add(8)?.checked_add(chunk_size)?;
+        if chunk_end > end {
+            return None;
+        }
+        if chunk_id == b"fmt " && chunk_size >= 16 {
+            let format = u16::from_le_bytes(data.get(pos + 8..pos + 10)?.try_into().ok()?);
+            has_pcm_fmt = format == 1;
+        } else if chunk_id == b"data" {
+            has_data = true;
+        }
+        pos = chunk_end.checked_add(chunk_size & 1)?;
+        if pos > end {
+            return None;
+        }
+    }
+    (has_pcm_fmt && has_data).then_some(end)
+}
+
 /// Best-effort reader for a binary P6 PPM (used by the optional live-vs-offline
 /// pixel diff). Returns the decoded RGBA8 pixel buffer or None on any parse
 /// error. Only supports the exact format written by `framebuffer_to_ppm`.
@@ -12617,9 +12789,38 @@ fn vma_to_offset(addr: u32) -> Result<u32, EappBuildError> {
 mod tests {
     use super::{
         decode_palette8, is_palette8_compressed_upload_call, live_gl_default_present_vflip,
-        matrix_helper_transform, orthographic_matrix, Eapp, EappInputState, GL_IDENTITY_MATRIX,
-        GL_PALETTE8_R5_G6_B5_OES, GL_PALETTE8_RGBA8_OES, GL_TEXTURE_2D, GL_TEXTURE_RECTANGLE,
+        matrix_helper_transform, orthographic_matrix, parse_vortex_sfx_bank, Eapp,
+        EappInputState, GL_IDENTITY_MATRIX, GL_PALETTE8_R5_G6_B5_OES, GL_PALETTE8_RGBA8_OES,
+        GL_TEXTURE_2D, GL_TEXTURE_RECTANGLE,
     };
+
+    #[test]
+    fn vortex_sfx_bank_finds_only_complete_pcm_wavs() {
+        let mut bank = vec![0u8; 12];
+        for index in 0..47u8 {
+            let payload = [index, index.wrapping_add(1), index.wrapping_add(2), index.wrapping_add(3)];
+            let riff_size = 4 + 8 + 16 + 8 + payload.len();
+            bank.extend_from_slice(b"RIFF");
+            bank.extend_from_slice(&(riff_size as u32).to_le_bytes());
+            bank.extend_from_slice(b"WAVEfmt ");
+            bank.extend_from_slice(&16u32.to_le_bytes());
+            bank.extend_from_slice(&1u16.to_le_bytes());
+            bank.extend_from_slice(&1u16.to_le_bytes());
+            bank.extend_from_slice(&32_000u32.to_le_bytes());
+            bank.extend_from_slice(&64_000u32.to_le_bytes());
+            bank.extend_from_slice(&2u16.to_le_bytes());
+            bank.extend_from_slice(&16u16.to_le_bytes());
+            bank.extend_from_slice(b"data");
+            bank.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+            bank.extend_from_slice(&payload);
+        }
+
+        let ranges = parse_vortex_sfx_bank(&bank).expect("47 complete WAV chunks");
+        assert_eq!(ranges.len(), 47);
+        assert_eq!(&bank[ranges[0].0..ranges[0].0 + 4], b"RIFF");
+        assert_eq!(ranges[0].0, 12);
+        assert!(parse_vortex_sfx_bank(&bank[..ranges[45].1]).is_none());
+    }
 
     #[test]
     fn palette8_rgba8_decodes_palette_then_indices() {
