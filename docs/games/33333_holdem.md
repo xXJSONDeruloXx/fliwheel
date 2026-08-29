@@ -33,6 +33,10 @@
   `EAPP_TEXAS_ASYNC2_COMPLETE=0` to disable an individual stage for an A/B
   diagnostic. `FLIWHEEL_EAPP_ASYNC3_COMPLETE=1` remains Tetris-only and is not
   part of the Hold'em contract.
+- The `Sounds/sounds.blob` length table is now validated and extracted into
+  27 temporary WAV sources. Startup `Audio:0` registrations map bank indices
+  `0..26` to those sources. The tested hand route did not yet produce an
+  `Audio:2` playback commit, so audible gameplay and mixer timing remain open.
 
 ## Historical scoped progress (2026-08-26)
 
@@ -90,6 +94,7 @@ traversal still need their own evidence.
 
 ## Current evidence
 - Default table route: [2026-08-29 default async receipt](../game_tests/20260829_holdem_default_async.md)
+- Sound-bank source route: [2026-08-29 Hold'em audio bank receipt](../game_tests/20260829_holdem_audio_bank.md)
 - Corrected matrix: `/tmp/fliwheel_holdem_matrix_20260826/interactive_matrix.md`
 - 30,000,000-cycle log: `/tmp/fliwheel_holdem_matrix_20260826/logs/33333.log`
 - 100 startup captures: `/tmp/fliwheel_holdem_matrix_20260826/captures/33333/`

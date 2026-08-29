@@ -779,6 +779,9 @@ pub struct Eapp {
     /// same order as the guest's 47 Audio:7 buffer registrations.
     vortex_sfx_paths: Vec<PathBuf>,
     vortex_sfx_bind_index: usize,
+    /// Extracted WAV paths for Hold'em's length-table `Sounds/sounds.blob`
+    /// bank. The guest's Audio:0 r2 value is the stable 0..26 bank index.
+    holdem_sfx_paths: Vec<PathBuf>,
     audio_events: EappAudioEventQueue,
     /// Directory entries from most recent AsyncFileIO:7 directory enumeration.
     /// Stored so the game can query pack names via subsequent calls.
@@ -1147,6 +1150,7 @@ impl Eapp {
             audio_last_registration: None,
             vortex_sfx_paths: Vec::new(),
             vortex_sfx_bind_index: 0,
+            holdem_sfx_paths: Vec::new(),
             audio_events: Arc::new(Mutex::new(VecDeque::new())),
             async_dir_entries: Vec::new(),
             gl_trace_frames: None,
@@ -7643,7 +7647,21 @@ impl Eapp {
                     table_base: args[2],
                     host_path: None,
                 };
-                if self.uses_wav_audio_source_abi() {
+                if self.uses_holdem_blob_audio_source_abi() {
+                    source.host_path = self.holdem_sfx_paths.get(args[2] as usize).cloned();
+                    if let (Some(host_path), true) = (
+                        source.host_path.as_ref(),
+                        std::env::var_os("EAPP_AUDIO_EVENT_TRACE").is_some(),
+                    ) {
+                        info!(
+                            target: "EAPP_AUDIO",
+                            "AudioSourceMap Hold'em handle={:#010x} bank={} path={}",
+                            handle,
+                            args[2],
+                            host_path.display()
+                        );
+                    }
+                } else if self.uses_wav_audio_source_abi() {
                     self.audio_pending_asset_handle = Some(handle);
                 } else if self.uses_pacman_wav_audio_source_abi() {
                     self.audio_pacman_pending_handles.push_back(handle);
@@ -7730,13 +7748,16 @@ impl Eapp {
                 // value returned by Audio:0, so resolve the previously bound
                 // WAV only at this final trigger point.
                 if (self.metadata.title == "12345" && self.gl_hle_enabled())
+                    || self.uses_holdem_blob_audio_source_abi()
                     || self.uses_wav_audio_source_abi()
                     || self.uses_pacman_wav_audio_source_abi()
                     || self.uses_mspacman_wav_audio_source_abi()
                 {
                     if let Some(source) = self.audio_handles.get(&args[0]).cloned() {
                         if let Some(host_path) = source.host_path {
-                            let resource_index = if self.uses_mspacman_wav_audio_source_abi() {
+                            let resource_index = if self.uses_mspacman_wav_audio_source_abi()
+                                || self.uses_holdem_blob_audio_source_abi()
+                            {
                                 source.table_base
                             } else {
                                 source.slot_index
@@ -10653,6 +10674,15 @@ impl Eapp {
     }
 
     fn note_audio_asset_path(&mut self, host_path: &Path) {
+        if self.uses_holdem_blob_audio_source_abi()
+            && host_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name == "sounds.blob")
+        {
+            self.ensure_holdem_sfx_paths(host_path);
+            return;
+        }
         if self.uses_wav_audio_source_abi() {
             self.note_wav_audio_asset_path(host_path);
             return;
@@ -10778,6 +10808,81 @@ impl Eapp {
         }
     }
 
+    /// Extract Hold'em's 27 embedded PCM WAVs. Unlike Vortex's raw RIFF scan,
+    /// this bank begins with a count and one byte length per entry, followed
+    /// by the concatenated RIFF chunks. Validate both the table and each WAV
+    /// boundary before exposing any path to the host sink.
+    fn ensure_holdem_sfx_paths(&mut self, bank_path: &Path) {
+        if !self.holdem_sfx_paths.is_empty() {
+            return;
+        }
+        let Ok(bank) = fs::read(bank_path) else {
+            warn!(
+                target: "EAPP_AUDIO",
+                "Hold'em sound blob could not be read: {}",
+                bank_path.display()
+            );
+            return;
+        };
+        let Some(ranges) = parse_holdem_sfx_bank(&bank) else {
+            warn!(
+                target: "EAPP_AUDIO",
+                "Hold'em sound blob has no validated length-table WAV layout: {}",
+                bank_path.display()
+            );
+            return;
+        };
+
+        let bundle_output = self
+            .metadata
+            .bundle_dir
+            .join(SAVE_DIR)
+            .join("holdem-sfx");
+        let output_dir = if fs::create_dir_all(&bundle_output).is_ok() {
+            bundle_output
+        } else {
+            let fallback = std::env::temp_dir().join("fliwheel-holdem-sfx");
+            if fs::create_dir_all(&fallback).is_err() {
+                warn!(
+                    target: "EAPP_AUDIO",
+                    "Hold'em sound output directory is unavailable: {}",
+                    fallback.display()
+                );
+                return;
+            }
+            fallback
+        };
+
+        let mut paths = Vec::with_capacity(ranges.len());
+        for (index, (start, end)) in ranges.iter().copied().enumerate() {
+            let path = output_dir.join(format!("sfx-{index:02}.wav"));
+            let expected_len = (end - start) as u64;
+            let already_extracted = fs::metadata(&path)
+                .ok()
+                .is_some_and(|metadata| metadata.len() == expected_len);
+            if !already_extracted && fs::write(&path, &bank[start..end]).is_err() {
+                warn!(
+                    target: "EAPP_AUDIO",
+                    "Hold'em sound chunk {} could not be extracted to {}",
+                    index,
+                    path.display()
+                );
+                paths.push(PathBuf::new());
+            } else {
+                paths.push(path);
+            }
+        }
+        self.holdem_sfx_paths = paths;
+        if std::env::var_os("EAPP_AUDIO_EVENT_TRACE").is_some() {
+            info!(
+                target: "EAPP_AUDIO",
+                "Hold'em sound blob extracted chunks={} output={}",
+                self.holdem_sfx_paths.len(),
+                output_dir.display()
+            );
+        }
+    }
+
     fn uses_wav_audio_source_abi(&self) -> bool {
         matches!(self.metadata.title.as_str(), "44444" | "55555")
     }
@@ -10788,6 +10893,10 @@ impl Eapp {
 
     fn uses_mspacman_wav_audio_source_abi(&self) -> bool {
         self.metadata.title == "14004"
+    }
+
+    fn uses_holdem_blob_audio_source_abi(&self) -> bool {
+        self.metadata.title == "33333"
     }
 
     fn note_wav_audio_asset_path(&mut self, host_path: &Path) {
@@ -12805,6 +12914,47 @@ fn parse_vortex_sfx_bank(data: &[u8]) -> Option<Vec<(usize, usize)>> {
     (ranges.len() == 47).then_some(ranges)
 }
 
+/// Return the byte ranges of the WAV chunks in Hold'em's `sounds.blob`.
+/// The first word is a count, followed by one u32 length for each chunk;
+/// payload bytes begin immediately after that table.
+fn parse_holdem_sfx_bank(data: &[u8]) -> Option<Vec<(usize, usize)>> {
+    let count = u32::from_le_bytes(data.get(0..4)?.try_into().ok()?) as usize;
+    if count == 0 || count > 128 {
+        return None;
+    }
+    let data_start = (count + 1).checked_mul(4)?;
+    if data_start > data.len() {
+        return None;
+    }
+
+    let mut offset = data_start;
+    let mut ranges = Vec::with_capacity(count);
+    for index in 0..count {
+        let length_offset = 4 + index * 4;
+        let length = u32::from_le_bytes(
+            data.get(length_offset..length_offset + 4)?
+                .try_into()
+                .ok()?,
+        ) as usize;
+        let end = offset.checked_add(length)?;
+        let riff_end = parse_vortex_wav_end(data, offset)?;
+        // The table stores each RIFF record rounded up to a four-byte
+        // boundary. Preserve and validate the zero fill before the next
+        // record rather than handing it to the WAV decoder.
+        let aligned_riff_end = riff_end.checked_add(3)? & !3;
+        if length == 0
+            || end > data.len()
+            || end != aligned_riff_end
+            || data.get(riff_end..end)?.iter().any(|byte| *byte != 0)
+        {
+            return None;
+        }
+        ranges.push((offset, end));
+        offset = end;
+    }
+    (offset == data.len()).then_some(ranges)
+}
+
 fn parse_vortex_wav_end(data: &[u8], start: usize) -> Option<usize> {
     if data.get(start..start + 4)? != b"RIFF" || data.get(start + 8..start + 12)? != b"WAVE" {
         return None;
@@ -13045,7 +13195,7 @@ mod tests {
     use super::{
         decode_palette8, is_palette8_compressed_upload_call, live_gl_default_present_vflip,
         env_bool_or_default, matrix_helper_transform, orthographic_matrix,
-        parse_vortex_sfx_bank, Eapp,
+        parse_holdem_sfx_bank, parse_vortex_sfx_bank, Eapp,
         EappInputState, GL_IDENTITY_MATRIX, GL_PALETTE8_R5_G6_B5_OES, GL_PALETTE8_RGBA8_OES,
         GL_TEXTURE_2D, GL_TEXTURE_RECTANGLE,
     };
@@ -13088,6 +13238,38 @@ mod tests {
         assert_eq!(&bank[ranges[0].0..ranges[0].0 + 4], b"RIFF");
         assert_eq!(ranges[0].0, 12);
         assert!(parse_vortex_sfx_bank(&bank[..ranges[45].1]).is_none());
+    }
+
+    #[test]
+    fn holdem_sfx_bank_honors_length_table_boundaries() {
+        let mut wav = Vec::new();
+        wav.extend_from_slice(b"RIFF");
+        wav.extend_from_slice(&36u32.to_le_bytes());
+        wav.extend_from_slice(b"WAVEfmt ");
+        wav.extend_from_slice(&16u32.to_le_bytes());
+        wav.extend_from_slice(&1u16.to_le_bytes());
+        wav.extend_from_slice(&1u16.to_le_bytes());
+        wav.extend_from_slice(&32_000u32.to_le_bytes());
+        wav.extend_from_slice(&64_000u32.to_le_bytes());
+        wav.extend_from_slice(&2u16.to_le_bytes());
+        wav.extend_from_slice(&16u16.to_le_bytes());
+        wav.extend_from_slice(b"data");
+        wav.extend_from_slice(&0u32.to_le_bytes());
+        assert_eq!(wav.len(), 44);
+
+        let mut bank = Vec::new();
+        bank.extend_from_slice(&2u32.to_le_bytes());
+        bank.extend_from_slice(&(wav.len() as u32).to_le_bytes());
+        bank.extend_from_slice(&(wav.len() as u32).to_le_bytes());
+        bank.extend_from_slice(&wav);
+        bank.extend_from_slice(&wav);
+
+        assert_eq!(
+            parse_holdem_sfx_bank(&bank),
+            Some(vec![(12, 56), (56, 100)])
+        );
+        bank.pop();
+        assert!(parse_holdem_sfx_bank(&bank).is_none());
     }
 
     #[test]
