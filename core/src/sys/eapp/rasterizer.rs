@@ -46,6 +46,25 @@ impl Texture {
             pixels,
         }
     }
+
+    /// Decode bytes from a live GL upload. The hardware-facing uploader uses
+    /// nearest-integer expansion for packed 5/6-bit channels; the public
+    /// offline helper retains its historical truncating behavior for replay
+    /// fixtures and manifest-derived expectations.
+    pub(crate) fn from_live_gl_bytes(
+        raw: &[u8],
+        width: usize,
+        height: usize,
+        format: TextureFormat,
+        a8_tint: Rgba8,
+    ) -> Self {
+        let pixels = decode_texture_pixels_impl(raw, width, height, format, a8_tint, true);
+        Self {
+            width,
+            height,
+            pixels,
+        }
+    }
 }
 
 /// A texture decoded from the title's manifest rather than uploaded by the
@@ -380,6 +399,17 @@ pub fn decode_texture_pixels(
     format: TextureFormat,
     a8_tint: Rgba8,
 ) -> Vec<Rgba8> {
+    decode_texture_pixels_impl(raw, width, height, format, a8_tint, false)
+}
+
+fn decode_texture_pixels_impl(
+    raw: &[u8],
+    width: usize,
+    height: usize,
+    format: TextureFormat,
+    a8_tint: Rgba8,
+    round_packed_channels: bool,
+) -> Vec<Rgba8> {
     let expected = match format {
         TextureFormat::Rgb565 | TextureFormat::Rgba5551 | TextureFormat::Rgba4444 => {
             width * height * 2
@@ -389,6 +419,13 @@ pub fn decode_texture_pixels(
         TextureFormat::A8 => width * height,
     };
     assert_eq!(raw.len(), expected);
+    let expand = |value: u16, max: u16| -> u8 {
+        if round_packed_channels {
+            ((value * 255 + max / 2) / max) as u8
+        } else {
+            (value * 255 / max) as u8
+        }
+    };
     match format {
         TextureFormat::Rgb565 => raw
             .chunks_exact(2)
@@ -398,9 +435,9 @@ pub fn decode_texture_pixels(
                 let g = ((px >> 5) & 0x3f) as u8;
                 let b = (px & 0x1f) as u8;
                 Rgba8::rgba(
-                    (r as u16 * 255 / 31) as u8,
-                    (g as u16 * 255 / 63) as u8,
-                    (b as u16 * 255 / 31) as u8,
+                    expand(r.into(), 31),
+                    expand(g.into(), 63),
+                    expand(b.into(), 31),
                     255,
                 )
             })
@@ -414,9 +451,9 @@ pub fn decode_texture_pixels(
                 let b = ((px >> 1) & 0x1f) as u8;
                 let a = (px & 0x1) as u8;
                 Rgba8::rgba(
-                    (r as u16 * 255 / 31) as u8,
-                    (g as u16 * 255 / 31) as u8,
-                    (b as u16 * 255 / 31) as u8,
+                    expand(r.into(), 31),
+                    expand(g.into(), 31),
+                    expand(b.into(), 31),
                     if a != 0 { 255 } else { 0 },
                 )
             })
@@ -956,6 +993,22 @@ mod tests {
         assert_eq!((decoded.width, decoded.height), (1, 1));
         assert_eq!(decoded.format, TextureFormat::Rgb565);
         assert_eq!(decoded.pixels[0], Rgba8::rgba(255, 0, 0, 255));
+    }
+
+    #[test]
+    fn live_packed_colour_expansion_rounds_like_gl_uploads() {
+        // Red=3 and green=11 are the first packed values where truncation
+        // differs from the PR runner's nearest-integer expansion.
+        let raw = 0x19_6bu16.to_le_bytes();
+        let pixels = Texture::from_live_gl_bytes(
+            &raw,
+            1,
+            1,
+            TextureFormat::Rgb565,
+            Rgba8::rgba(255, 255, 255, 255),
+        )
+        .pixels;
+        assert_eq!(pixels[0], Rgba8::rgba(25, 45, 90, 255));
     }
 
     #[test]

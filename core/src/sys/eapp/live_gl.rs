@@ -827,7 +827,7 @@ impl LiveGlState {
             if payload.len() < expected {
                 return None;
             }
-            Some(Texture::from_bytes(
+            Some(Texture::from_live_gl_bytes(
                 &payload[..expected],
                 width as usize,
                 height as usize,
@@ -947,7 +947,7 @@ impl LiveGlState {
         if payload.len() < expected {
             return false;
         }
-        let patch = Texture::from_bytes(
+        let patch = Texture::from_live_gl_bytes(
             &payload[..expected],
             width,
             height,
