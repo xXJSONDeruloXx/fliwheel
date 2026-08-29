@@ -7743,10 +7743,10 @@ impl Eapp {
                 0
             }
             2 => {
-                // PopCap titles configure a source with Audio:13/14/15 and
-                // commit the trigger with Audio:2. The source handle is the
-                // value returned by Audio:0, so resolve the previously bound
-                // WAV only at this final trigger point.
+                // WAV-backed titles configure a source with Audio:13/14/15
+                // and commit the trigger with Audio:2. The source handle is
+                // the value returned by Audio:0, so resolve the previously
+                // bound WAV only at this final trigger point.
                 if (self.metadata.title == "12345" && self.gl_hle_enabled())
                     || self.uses_holdem_blob_audio_source_abi()
                     || self.uses_wav_audio_source_abi()
@@ -10884,7 +10884,7 @@ impl Eapp {
     }
 
     fn uses_wav_audio_source_abi(&self) -> bool {
-        matches!(self.metadata.title.as_str(), "44444" | "55555")
+        matches!(self.metadata.title.as_str(), "44444" | "55555" | "99999")
     }
 
     fn uses_pacman_wav_audio_source_abi(&self) -> bool {

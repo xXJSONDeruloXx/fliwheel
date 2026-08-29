@@ -10,7 +10,7 @@ older pages retain historical investigation notes and are not completion claims.
 | Game | Bundle | Current state | Docs |
 |------|---------|---------------|------|
 | Tetris | 66666 | 🟡 Core controls + centered board; gameplay parity open | [→](66666_tetris.md) |
-| Cubis 2 | 99999 | 🟡 Main menu rendering corrected; board, controls, audio, and save open | [→](99999_cubis2.md) |
+| Cubis 2 | 99999 | 🟡 Main menu + board rendering and effect WAV sink path verified; matching, music, and save open | [→](99999_cubis2.md) |
 | Texas Hold'em | 33333 | 🟡 Default route reaches coherent poker table; hand flow, sound, and save open | [→](33333_holdem.md) |
 | Ms. PAC-MAN | 14004 | 🟡 Normal-path Stage 1 + collision/life + headed WAV sink; full play open | [→](14004_mspacman.md) |
 | PAC-MAN | AAAAA | 🟡 Normal-path Stage 1 + pause/resume + one collision/life cycle + headed WAV sink; repeated lives and full play open | [→](AAAAA_pacman.md) |
