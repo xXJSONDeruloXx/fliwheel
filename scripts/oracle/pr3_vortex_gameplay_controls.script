@@ -1,0 +1,22 @@
+# Direct PR #3 oracle: start the first Vortex level, then exercise wheel motion.
+500: select
+600: select
+620: select
+640: select
+660: select
+680: select
+700: select
+720: select
+920: select
+1400: select
+1499: shot
+1500: wheel +24
+1501: shot
+1512: shot
+1524: shot
+1550: wheel -48
+1551: shot
+1570: shot
+1600: shot
+1700: shot
+1701: quit
