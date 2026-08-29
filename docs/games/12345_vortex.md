@@ -345,7 +345,10 @@ scene, controls, sound, and long-run behavior against the direct PR oracle.
 The direct PR #3 runner reports Vortex's button-flags word at
 `0x18063e5c` and writes Select as bit `0x01`. fliwheel's generic
 `InputEvents:0` packet uses a logical action bit instead, so the title did not
-react even though the host action was visible in the HLE log.
+react even though the host action was visible in the HLE log. Under the
+Vortex PR3 gate, fliwheel now follows the direct poll contract: it mirrors
+Select/Menu into the title-local word, writes the wheel packet only through
+the second stack output, and does not publish the generic linked event list.
 
 The new bundle-gated bridge mirrors the measured Select and Menu states into
 that word. With `FLIWHEEL_EAPP_INPUT_SCRIPT='action:500-505'`, the colored
@@ -383,3 +386,37 @@ the oracle, with the previously matched texture fingerprints and no fatal
 signature. This closes the first long-run content-geometry mismatch; name
 entry, confirmation, controls, sound, pause/return, and broader content
 coverage remain open.
+
+## Iteration 33 Update: MVP application, oracle timing, and textured alpha
+
+The direct runner applies a scripted action after the guest frame carrying the
+same label, so its first poll arrives at frame `N+1`. fliwheel samples its
+environment script during the guest frame. The equivalent fliwheel comparison
+therefore uses the same actions at `N+1` (Select at 501/601/.../1401, wheel
+`+24` at 1501, and wheel `-48` at 1551). This is a harness timing boundary,
+not a global input delay in headed play.
+
+Commit `fb7d737` applies the Vortex upload MVP from `OpenGLES:125` and uses it
+for the model-space gameplay glyph after the measured `169/173/175` matrix
+chain. The frame-1700 guest MVP is now byte-for-byte equal to the oracle's
+matrix, including the 83.31-degree gameplay rotation. Commit `6738318` then
+matches the oracle's textured color-array rule: array RGB modulates the
+texture, while texture alpha remains the source coverage.
+
+The 1,702-frame comparison is clean on both sides and has the same per-frame
+draw counts at the captured checkpoints. Fliwheel's mean absolute RGB channel
+delta against the oracle is now:
+
+```text
+frame 1499: 0.749353    frame 1501: 0.748051
+frame 1512: 0.755239    frame 1524: 0.752040
+frame 1551: 0.228650    frame 1570: 0.210430
+frame 1600: 0.038255    frame 1700: 0.756806
+```
+
+The remaining small delta is software-rasterizer rounding and coverage
+rather than a missing Vortex object: frame 1700's maximum channel difference
+is 10, and the rendered gameplay glyph has matching position, rotation, color,
+and texture coverage. Name-entry wheel selection, confirmation, complete
+control mapping, audio timing, pause/return, and longer content traversal
+remain open.

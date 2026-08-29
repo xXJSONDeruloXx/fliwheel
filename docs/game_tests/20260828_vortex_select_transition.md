@@ -9,9 +9,10 @@ Oracle: `/tmp/ipod-emulator-pr3/target/release/play` at PR #3
 
 This is a direct decrypted-eApp comparison. Neither run boots an IPSW. The
 oracle's Vortex defaults use its discovered button-flags word at
-`0x18063e5c`, where Select is bit `0x01`; fliwheel now mirrors its logical
-Select and Menu states into that same title-local word while retaining the
-generic `InputEvents:0` packet.
+`0x18063e5c`, where Select is bit `0x01`; fliwheel mirrors its logical
+Select and Menu states into that same title-local word. Under the Vortex PR3
+gate, fliwheel also matches the direct poll shape: the wheel packet is written
+through the second stack output and no generic linked event node is published.
 
 The reproducible oracle script is
 [`scripts/oracle/pr3_vortex_select.script`](../../scripts/oracle/pr3_vortex_select.script).
@@ -84,3 +85,18 @@ The lifecycle trace is 88 draws in both runners. This is still a direct
 decrypted-eApp/HLE comparison; neither side boots an IPSW. The remaining
 acceptance work is interactive name entry and confirmation, gameplay controls,
 sound, pause/return, and longer content traversal.
+
+## Follow-up: oracle-timed gameplay render
+
+For a direct frame-to-frame comparison, the oracle's `FRAME: ACTION` script
+updates host state after the labeled guest frame. Its first wheel poll is
+therefore one frame later. The fliwheel equivalent uses Select at
+501/601/621/641/661/681/701/721/921/1401, wheel `+24` at 1501, and wheel
+`-48` at 1551.
+
+With commits `fb7d737` and `6738318`, both runs complete 1,702 frames with
+matching checkpoint draw counts. The Vortex `OpenGLES:125` MVP and the
+`169/173/175` matrix chain match the oracle at frame 1700. The textured
+gameplay glyph also uses the oracle's RGB-only vertex-color modulation, so its
+texture alpha remains opaque where the source texture is opaque. The frame
+1700 mean absolute RGB channel delta is `0.756806`, maximum channel delta 10.
