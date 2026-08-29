@@ -732,6 +732,12 @@ pub struct Eapp {
     /// host PCM sink is wired so the ABI does not collapse every source to 0.
     audio_handles: HashMap<u32, AudioHandle>,
     next_audio_handle: u32,
+    /// Descriptor fields written by the shared Audio setters. PR #3 models
+    /// these as state behind the framework calls, and titles can query the
+    /// transport byte again through Audio:23/Audio:39 before releasing a
+    /// source. Keep this separate from host-path identity so the two halves
+    /// of the ABI cannot accidentally alias one another.
+    audio_fields: HashMap<(u32, u32), u32>,
     /// PopCap titles register each sound source immediately before its async
     /// WAV header read. Keep the most recent source until that read supplies
     /// the host path, then bind the path to the synthetic handle.
@@ -1110,6 +1116,7 @@ impl Eapp {
             next_filesystem_handle: 1,
             audio_handles: HashMap::new(),
             next_audio_handle: 1,
+            audio_fields: HashMap::new(),
             audio_pending_asset_handle: None,
             audio_pacman_pending_handles: VecDeque::new(),
             audio_mspacman_pending_asset_paths: VecDeque::new(),
@@ -7431,6 +7438,46 @@ impl Eapp {
         }
 
         match ordinal {
+            3 | 4 | 5 => {
+                // The shared transport calls update the descriptor state byte
+                // at +0x3d. PR #3's #5 path also stops its attached voice;
+                // fliwheel's event queue is edge-based, so retaining the
+                // measured state is the guest-visible part of that contract.
+                let state = match ordinal {
+                    3 => 2,
+                    4 => 1,
+                    _ => 3,
+                };
+                self.audio_fields.insert((args[0], 0x3d), state);
+                0
+            }
+            8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 17 | 18 | 20 => {
+                // PR #3 records these setters as descriptor fields rather
+                // than treating them as inert calls. #9, #17, and #18 are
+                // byte-valued setters; the remaining values retain the full
+                // 32-bit argument.
+                let offset = match ordinal {
+                    8 => 0x08,
+                    9 => 0x0c,
+                    10 => 0x10,
+                    11 => 0x14,
+                    12 => 0x18,
+                    13 => 0x1c,
+                    14 => 0x24,
+                    15 => 0x20,
+                    17 => 0x3d,
+                    18 => 0x3e,
+                    20 => 0x28,
+                    _ => unreachable!(),
+                };
+                let value = if matches!(ordinal, 9 | 17 | 18) {
+                    args[1] & 0xff
+                } else {
+                    args[1]
+                };
+                self.audio_fields.insert((args[0], offset), value);
+                0
+            }
             0 => {
                 // Tetris calls Audio:0 as (active_channel, slot_index,
                 // table_base, 0), then stores the returned source handle in
@@ -7563,8 +7610,15 @@ impl Eapp {
                 }
                 0
             }
-            1 | 23 => {
+            23 => self
+                .audio_fields
+                .get(&(args[0], 0x04))
+                .copied()
+                .unwrap_or(0),
+            39 => u32::from(self.audio_fields.get(&(args[0], 0x3d)) == Some(&1)),
+            1 => {
                 let removed = self.audio_handles.remove(&args[0]);
+                self.audio_fields.retain(|(handle, _), _| *handle != args[0]);
                 if fliwheel_var_os("AUDIO_TRACE").is_some() {
                     info!(
                         target: "EAPP_AUDIO",
