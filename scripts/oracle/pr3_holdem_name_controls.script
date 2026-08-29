@@ -15,4 +15,9 @@
 460: shot
 480: select
 500: shot
-501: quit
+600: shot
+800: shot
+1000: shot
+1500: shot
+2000: shot
+2001: quit
