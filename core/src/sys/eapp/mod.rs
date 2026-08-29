@@ -2039,6 +2039,21 @@ impl Eapp {
                     }
                 }
             }
+            if pc == 0x1801_0f4cu32 && self.gl_hle_enabled() {
+                // PR #3 reaches this Vortex request callback with state 10,
+                // entering the guest's own audio-manager reset at 0x180111cc.
+                // The HLE async completion path otherwise leaves the request
+                // in the equivalent 9/12 copy state, which writes zero at
+                // +0x104 and suppresses every subsequent SFX trigger. Keep
+                // the correction at the measured callback and only for the
+                // matching request shape; the guest still performs the reset.
+                let req = self.cpu.reg_get(self.cpu.mode(), 0);
+                let state = self.read_guest_u8(req.wrapping_add(0x44)).unwrap_or(0);
+                let kind = self.read_guest_u32(req.wrapping_add(0x4c)).unwrap_or(0);
+                if state == 9 && kind == 0x0c {
+                    let _ = self.write_guest_bytes(req.wrapping_add(0x44), &[0x0a]);
+                }
+            }
             if (0x1800_ab08u32..=0x1800_ab3cu32).contains(&pc) {
                 let mode = self.cpu.mode();
                 let current_r4 = self.cpu.reg_get(mode, 4);
@@ -7393,6 +7408,12 @@ impl Eapp {
             );
             return 1;
         }
+        if ordinal == 52 && self.metadata.title == "12345" {
+            // Vortex uses Audio:52 as its 0xff divisor/format default. The
+            // PR #3 runner returns 0xff for its normal call (r0=0x10001);
+            // only the LOST render-server shape above returns 1.
+            return 0xff;
+        }
         if ordinal == 51 && args[3] >= 0x1000_0000 {
             info!(
                 target: "EAPP_GL",
@@ -7410,7 +7431,16 @@ impl Eapp {
                 // passes that exact handle to Audio:23 and Audio:1. A
                 // non-negative synthetic identity is enough for this first
                 // ABI layer; staged PCM binding remains a separate step.
-                let handle = self.next_audio_handle.max(1);
+                // Vortex's 47 descriptors use the zero-based slot returned by the
+                // PR #3 runner, including slot 0. The other title families use
+                // the existing one-based synthetic handle convention.
+                let vortex_zero_based = self.metadata.title == "12345"
+                    && fliwheel_var_os("VORTEX_PR3_GL165").is_some();
+                let handle = if vortex_zero_based {
+                    self.next_audio_handle.saturating_sub(1)
+                } else {
+                    self.next_audio_handle.max(1)
+                };
                 self.next_audio_handle = self.next_audio_handle.wrapping_add(1).max(1);
                 let mut source = AudioHandle {
                     source_type: args[0],
