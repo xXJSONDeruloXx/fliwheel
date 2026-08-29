@@ -144,6 +144,27 @@ fn matrix_helper_transform(
     Some(multiply_column_major(&current, &transform))
 }
 
+/// Build the column-major orthographic projection used by OpenGLES:167.
+fn orthographic_matrix(args: [u32; 4], top: f32, z_near: f32, z_far: f32) -> Option<[f32; 16]> {
+    let (left, right, bottom) = (
+        f32::from_bits(args[1]),
+        f32::from_bits(args[2]),
+        f32::from_bits(args[3]),
+    );
+    if args[0] == 0 || right == left || top == bottom || z_far == z_near {
+        return None;
+    }
+    let mut out = [0.0; 16];
+    out[0] = 2.0 / (right - left);
+    out[5] = 2.0 / (top - bottom);
+    out[10] = -2.0 / (z_far - z_near);
+    out[12] = -(right + left) / (right - left);
+    out[13] = -(top + bottom) / (top - bottom);
+    out[14] = -(z_far + z_near) / (z_far - z_near);
+    out[15] = 1.0;
+    Some(out)
+}
+
 // Use a 64 MiB synthetic app RAM window, matching the high-memory 5G-class
 // iPods that many clickwheel games targeted. Smaller scratch windows truncate
 // guest heaps/arenas: PopCap titles were observed copying assets past both
@@ -2715,7 +2736,7 @@ impl Eapp {
                 // ordinary vertex-array submission path. PR #3's direct HLE
                 // runner returns success here; leaving the generic zero
                 // result makes the title stop after its clear/present pair.
-                u32::from(self.metadata.title == "1B200")
+                u32::from(matches!(self.metadata.title.as_str(), "1B200" | "12345"))
             }
             37 => {
                 self.live_handle_draw(args);
@@ -2735,7 +2756,13 @@ impl Eapp {
             // Neutral names until exact ABI semantics are proven.
             158 => {
                 self.live_handle_candidate_begin();
-                0
+                if self.metadata.title == "12345"
+                    && fliwheel_var_os("VORTEX_PR3_GL165").is_some()
+                {
+                    0x3000
+                } else {
+                    0
+                }
             }
             157 => {
                 self.live_handle_candidate_present();
@@ -2826,7 +2853,13 @@ impl Eapp {
             }
             // Ordinal 167: shader program use/bind. Lost doesn't call this but TWA does.
             167 => {
-                info!(target: "EAPP_GL", "ordinal_167: shader_bind program={:#010x}", args[0]);
+                if self.metadata.title == "12345"
+                    && fliwheel_var_os("VORTEX_PR3_GL165").is_some()
+                {
+                    self.live_handle_vortex_ortho(args);
+                } else {
+                    info!(target: "EAPP_GL", "ordinal_167: shader_bind program={:#010x}", args[0]);
+                }
                 0
             }
             // Ordinal 152: glGetProgramiv or similar query. Lost calls this after 164.
@@ -3901,6 +3934,43 @@ impl Eapp {
             *value = f32::from_bits(self.read_guest_u32(addr.wrapping_add((index as u32) * 4))?);
         }
         Some(matrix)
+    }
+
+    fn live_handle_vortex_ortho(&mut self, args: [u32; 4]) {
+        let stack = self.cpu.reg_get(self.cpu.mode(), reg::SP);
+        let top = self
+            .read_guest_u32(stack)
+            .map(f32::from_bits)
+            .unwrap_or(0.0);
+        let z_near = self
+            .read_guest_u32(stack.wrapping_add(4))
+            .map(f32::from_bits)
+            .unwrap_or(0.0);
+        let z_far = self
+            .read_guest_u32(stack.wrapping_add(8))
+            .map(f32::from_bits)
+            .unwrap_or(0.0);
+        let Some(matrix) = orthographic_matrix(args, top, z_near, z_far) else {
+            info!(
+                target: "EAPP_GL",
+                "vortex_ortho skipped dst={:#010x} top={} z_near={} z_far={}",
+                args[0],
+                top,
+                z_near,
+                z_far
+            );
+            return;
+        };
+        for (index, value) in matrix.iter().enumerate() {
+            if !self.write_guest_u32(args[0].wrapping_add((index as u32) * 4), value.to_bits()) {
+                return;
+            }
+        }
+        info!(
+            target: "EAPP_GL",
+            "vortex_ortho dst={:#010x} m={matrix:?}",
+            args[0]
+        );
     }
 
     /// OpenGLES:13, glClearColor(r, g, b, a).
@@ -12357,7 +12427,7 @@ fn vma_to_offset(addr: u32) -> Result<u32, EappBuildError> {
 mod tests {
     use super::{
         decode_palette8, is_palette8_compressed_upload_call, live_gl_default_present_vflip,
-        matrix_helper_transform, Eapp, EappInputState, GL_IDENTITY_MATRIX,
+        matrix_helper_transform, orthographic_matrix, Eapp, EappInputState, GL_IDENTITY_MATRIX,
         GL_PALETTE8_R5_G6_B5_OES, GL_PALETTE8_RGBA8_OES, GL_TEXTURE_2D, GL_TEXTURE_RECTANGLE,
     };
 
@@ -12573,5 +12643,22 @@ mod tests {
         assert!((centered[1] - 0.2172).abs() < 0.001);
         assert!((centered[4] + 0.2172).abs() < 0.001);
         assert!((centered[5] - 0.9761).abs() < 0.001);
+    }
+
+    #[test]
+    fn vortex_ortho_helper_matches_screen_projection_contract() {
+        let matrix = orthographic_matrix(
+            [0x1806_3e7c, 0.0f32.to_bits(), 320.0f32.to_bits(), 0.0f32.to_bits()],
+            240.0,
+            -1.0,
+            1.0,
+        )
+        .unwrap();
+        assert!((matrix[0] - 0.00625).abs() < 1e-6);
+        assert!((matrix[5] - 0.008333334).abs() < 1e-6);
+        assert!((matrix[10] + 1.0).abs() < 1e-6);
+        assert_eq!(matrix[12], -1.0);
+        assert_eq!(matrix[13], -1.0);
+        assert_eq!(matrix[15], 1.0);
     }
 }
