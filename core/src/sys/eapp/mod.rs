@@ -649,6 +649,11 @@ pub struct Eapp {
     lost_wheel_raw: u8,
     lost_wheel_remainder: f32,
     lost_wheel_pending: VecDeque<u8>,
+    /// Hold'em uses the same 120-step/raw-byte input stream as the PR #3
+    /// runner, but keeps its cursor independent from LOST/Vortex.
+    holdem_wheel_raw: u8,
+    holdem_wheel_remainder: f32,
+    holdem_wheel_pending: VecDeque<u8>,
     render_state: Arc<Mutex<Vec<u32>>>,
     controls: Option<EappBinds>,
     next_alloc: u32,
@@ -1079,6 +1084,9 @@ impl Eapp {
             lost_wheel_raw: 0,
             lost_wheel_remainder: 0.0,
             lost_wheel_pending: VecDeque::new(),
+            holdem_wheel_raw: 0,
+            holdem_wheel_remainder: 0.0,
+            holdem_wheel_pending: VecDeque::new(),
             render_state,
             controls: Some(controls),
             next_alloc: WORK_RAM_BASE + 0x1000,
@@ -6867,6 +6875,11 @@ impl Eapp {
                 }
                 let vortex_direct = self.metadata.title == "12345"
                     && fliwheel_var_os("VORTEX_PR3_GL165").is_some();
+                let holdem_direct = self
+                    .metadata
+                    .bundle_dir
+                    .to_str()
+                    .map_or(false, |path| path.contains("33333"));
                 let button_bits = match self.metadata.title.as_str() {
                     "55555" => {
                         // Bejeweled uses the four clickwheel quadrants as a
@@ -6891,10 +6904,18 @@ impl Eapp {
                         // logical-button return value.
                         0
                     }
+                    "33333" if holdem_direct => {
+                        // Hold'em's direct-runner contract likewise exposes
+                        // buttons through its title-local word. InputEvents:0
+                        // contributes only the wheel sample here.
+                        0
+                    }
                     _ => Self::input_state_bits(&state),
                 };
                 let wheel_bits = if matches!(self.metadata.title.as_str(), "1B200" | "12345") {
                     self.lost_wheel_poll_bits(state.wheel_delta)
+                } else if holdem_direct {
+                    self.holdem_wheel_poll_bits(state.wheel_delta)
                 } else {
                     self.wheel_input_bits(state.wheel_delta)
                 };
@@ -6926,7 +6947,7 @@ impl Eapp {
                 } else {
                     false
                 };
-                let event_list = if vortex_direct {
+                let event_list = if vortex_direct || holdem_direct {
                     0
                 } else {
                     self.build_input_event_list(&event_state)
@@ -6968,12 +6989,7 @@ impl Eapp {
                     }
                     let _ = self.write_guest_u32(VORTEX_INPUT_FLAGS, vortex_flags);
                 }
-                if self
-                    .metadata
-                    .bundle_dir
-                    .to_str()
-                    .map_or(false, |path| path.contains("33333"))
-                {
+                if holdem_direct {
                     // Hold'em uses the same low-level button-word ABI as the
                     // direct PR #3 runner. Keep the measured Select/Menu
                     // bits in sync with the generic input packet while the
@@ -6987,7 +7003,7 @@ impl Eapp {
                     }
                     let _ = self.write_guest_u32(HOLDEM_INPUT_FLAGS, holdem_flags);
                 }
-                if args[0] != 0 && !vortex_direct {
+                if args[0] != 0 && !vortex_direct && !holdem_direct {
                     self.write_guest_u32(args[0], bits);
                 }
                 if args[1] != 0 {
@@ -7063,7 +7079,7 @@ impl Eapp {
                 }
                 // The direct InputPoll stub returns zero; the wheel packet is
                 // observed through the second out-pointer instead.
-                if vortex_direct { 0 } else { bits }
+                if vortex_direct || holdem_direct { 0 } else { bits }
             }
             1 => self.alloc_zeroed(0x40),
             _ => 0,
@@ -7184,6 +7200,45 @@ impl Eapp {
             self.lost_wheel_pending.push_back(self.lost_wheel_raw);
             0
         }
+    }
+
+    /// Hold'em's name-entry wheel consumes the same transformed 120-step
+    /// position byte used by PR #3's direct runner. Unlike the shared
+    /// 96-detent model, each pending detent must be presented on its own poll
+    /// so the guest's delta-based selector sees the full rotation.
+    const HOLDEM_WHEEL_DETENTS: i16 = 120;
+
+    fn holdem_wheel_byte(raw: u8) -> u8 {
+        ((((0x77i32 - raw as i32) * 8) / 3) & 0xff) as u8
+    }
+
+    fn holdem_wheel_packet(raw: u8) -> u32 {
+        (1 << 30) | Self::holdem_wheel_byte(raw) as u32
+    }
+
+    fn holdem_wheel_poll_bits(&mut self, delta: f32) -> u32 {
+        if delta.is_finite() {
+            self.holdem_wheel_remainder += delta;
+        }
+        let mut added = 0usize;
+        while self.holdem_wheel_remainder.abs() >= 1.0
+            && added < Self::HOLDEM_WHEEL_DETENTS as usize
+        {
+            let step = if self.holdem_wheel_remainder > 0.0 {
+                1
+            } else {
+                -1
+            };
+            self.holdem_wheel_remainder -= step as f32;
+            self.holdem_wheel_raw = ((self.holdem_wheel_raw as i16 + step)
+                .rem_euclid(Self::HOLDEM_WHEEL_DETENTS)) as u8;
+            self.holdem_wheel_pending.push_back(self.holdem_wheel_raw);
+            added += 1;
+        }
+        self.holdem_wheel_pending
+            .pop_front()
+            .map(Self::holdem_wheel_packet)
+            .unwrap_or(0)
     }
 
     /// Bejeweled treats a clickwheel-side tap as a touch packet whose angle
@@ -13055,6 +13110,13 @@ mod tests {
         assert_eq!(Eapp::normalized_wheel_position(48), 0x80);
         assert_eq!(Eapp::normalized_wheel_position(72), 0xc0);
         assert_eq!(Eapp::normalized_wheel_position(95), 0xfd);
+    }
+
+    #[test]
+    fn holdem_wheel_encoder_matches_pr3_raw_ring() {
+        assert_eq!(Eapp::holdem_wheel_byte(0), 0x3d);
+        assert_eq!(Eapp::holdem_wheel_byte(1), 0x3a);
+        assert_eq!(Eapp::holdem_wheel_packet(104), 0x4000_0028);
     }
 
     #[test]
