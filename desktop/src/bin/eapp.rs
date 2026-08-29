@@ -64,7 +64,15 @@ impl From<EappBinds> for MinifbControls {
 struct DesktopAudio {
     _stream: OutputStream,
     handle: OutputStreamHandle,
+    voices: Vec<DesktopAudioVoice>,
 }
+
+struct DesktopAudioVoice {
+    path: PathBuf,
+    sink: Sink,
+}
+
+const DESKTOP_AUDIO_VOICE_LIMIT: usize = 4;
 
 impl DesktopAudio {
     fn new() -> Option<Self> {
@@ -73,7 +81,11 @@ impl DesktopAudio {
             return None;
         }
         match OutputStream::try_default() {
-            Ok((_stream, handle)) => Some(Self { _stream, handle }),
+            Ok((_stream, handle)) => Some(Self {
+                _stream,
+                handle,
+                voices: Vec::new(),
+            }),
             Err(err) => {
                 warn!(target: "EAPP_AUDIO", "no desktop audio output: {}", err);
                 None
@@ -81,7 +93,11 @@ impl DesktopAudio {
         }
     }
 
-    fn pump(&self, events: &EappAudioEventQueue) {
+    fn pump(&mut self, events: &EappAudioEventQueue) {
+        // The iPod's effect mixer has four descriptors. A retained Sink keeps
+        // the same lifetime boundary on the host; detached sinks would allow
+        // an unbounded overlap that the device cannot produce.
+        self.voices.retain(|voice| !voice.sink.empty());
         let pending = match events.lock() {
             Ok(mut queue) => queue.drain(..).collect::<Vec<_>>(),
             Err(_) => return,
@@ -134,6 +150,29 @@ impl DesktopAudio {
                     continue;
                 }
             };
+            // A descriptor retrigger restarts its current voice instead of
+            // layering a second copy of the same effect over it. The event
+            // queue exposes the resolved path, which is the stable source
+            // identity available at this frontend boundary.
+            self.voices.retain(|voice| {
+                if voice.path == path {
+                    voice.sink.stop();
+                    false
+                } else {
+                    true
+                }
+            });
+            if self.voices.len() >= DESKTOP_AUDIO_VOICE_LIMIT {
+                warn!(
+                    target: "EAPP_AUDIO",
+                    "dropped sound frame={} type={} index={} path={} reason=voice_pool_full",
+                    event.frame,
+                    event.resource_type,
+                    event.resource_index,
+                    path.display()
+                );
+                continue;
+            }
             let sink = match Sink::try_new(&self.handle) {
                 Ok(sink) => sink,
                 Err(err) => {
@@ -142,7 +181,10 @@ impl DesktopAudio {
                 }
             };
             sink.append(source);
-            sink.detach();
+            self.voices.push(DesktopAudioVoice {
+                path: path.clone(),
+                sink,
+            });
             info!(
                 target: "EAPP_AUDIO",
                 "played sound frame={} type={} index={} path={}",
@@ -189,7 +231,7 @@ fn run_minifb_ui(
     kill_rx: chan::Receiver<()>,
 ) {
     let mut controls = controls.into();
-    let audio = DesktopAudio::new();
+    let mut audio = DesktopAudio::new();
 
     let mut window = Window::new(
         &title,
@@ -210,7 +252,7 @@ fn run_minifb_ui(
     let mut emu_buffer = Vec::new();
 
     'ui: while window.is_open() && kill_rx.try_recv().is_err() {
-        if let Some(audio) = audio.as_ref() {
+        if let Some(audio) = audio.as_mut() {
             audio.pump(&audio_events);
         }
 
